@@ -1,0 +1,38 @@
+[project]
+name = "hydrogen-materials-discovery"
+version = "0.1.0"
+description = "Deep learning (GNNs + causal ML) for hydrogen production materials discovery — PG-S2-47, Adelaide University"
+requires-python = ">=3.10"
+readme = "README.md"
+
+dependencies = [
+    "torch>=2.2",
+    "torch-geometric>=2.5",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "scikit-learn>=1.4",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+    "pymatgen>=2024.3.1",
+    "rdkit>=2023.9.5",
+    "econml>=0.15",
+    "dowhy>=0.11",
+    "pyyaml>=6.0",
+    "tqdm>=4.66",
+    "mlflow>=2.11",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.4",
+    "jupyter>=1.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "backend/tests"]
