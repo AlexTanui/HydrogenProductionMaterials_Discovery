@@ -5,6 +5,10 @@ API contracts, and terminology. This repo currently contains **structure
 only** — folders and empty placeholder files. No implementation exists yet;
 this document is the spec each person builds their part against.
 
+For *when* things happen — phase sequencing, weekly ownership, integration
+checkpoints, definition of done, fallback order — see
+[ROADMAP.md](ROADMAP.md).
+
 **Client:** Adelaide University — College of Engineering & IT
 **Agency supervisor:** Henry Li (<henry.li@adelaide.edu.au>)
 **Academic supervisor:** Dhika Pratama (<dhika.pratama@adelaide.edu.au>)

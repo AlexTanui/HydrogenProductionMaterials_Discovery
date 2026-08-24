@@ -15,5 +15,9 @@ placeholder files, no implementation yet.
 responsibilities, full architecture, folder-by-folder ownership, API
 contracts, data schema, experiment config schema, and terminology.
 
+**Then: [ROADMAP.md](ROADMAP.md)** — the 10-week execution plan: phase
+sequencing, week-by-week ownership, integration checkpoints, per-phase
+definition of done, and the fallback order if a track falls behind.
+
 [CLAUDE.md](CLAUDE.md) has the condensed command/convention reference used
 by Claude Code once implementation begins.
