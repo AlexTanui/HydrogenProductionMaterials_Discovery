@@ -2,33 +2,24 @@
 
 Companion to [glossary.md](glossary.md) (team structure, architecture,
 contracts). That document says *what* goes where; this one says *when* and
-*in what order*, and why the plan looks the way it does given real
-constraints.
+*in what order*. This plan follows the supervisor-issued research proposal
+directly — three phases, each building on the last, using MD17 as the
+benchmark dataset (see `glossary.md`'s note on how that relates to the
+project's title).
 
-**Ambition level:** full — foundation-model fine-tuning, rigorous
-leakage-aware evaluation, causal discovery cross-validated against
-explainability, an active-learning platform, and surrogate-guided
-candidate proposal. Nothing here is descoped by default; the fallback
-order in §5 exists for if — not when — time runs short.
+**Constraints:**
 
-**Constraints this plan is built around:**
 - **Timeline:** 10 weeks, hard deadline.
-- **Compute:** personal GPUs / Colab only — no university cluster or cloud
-  credits. This rules out training large models from scratch and drives
-  the two methodological calls below.
+- **Compute:** personal GPUs / Colab only. Unlike the platform's earlier
+  ambition (fine-tuning a large pretrained foundation model), this plan is
+  comfortably within that budget — a from-scratch MPNN on a single MD17
+  molecule at a time is a small model on small graphs (~10–20 atoms). No
+  compute-driven scope adjustment is needed here.
 
-**Two adjustments made to keep "very ambitious" realistic on this compute:**
-1. **Phase 1 uses adapter/partial fine-tuning**, not full fine-tuning or
-   training from scratch. Load a pretrained checkpoint (CHGNet or
-   MACE-MP-0-small), freeze most of it, fine-tune only the output head /
-   last few layers. Fits Colab session limits, and is arguably the more
-   defensible methodological choice on a small downstream dataset anyway
-   (lower overfitting risk than full fine-tuning).
-2. **Phase 4 uses surrogate-guided search** (genetic algorithm or Bayesian
-   optimization over the Phase 1 model + its uncertainty as the fitness
-   function), not a trained deep generative model (CDVAE/DiffCSP-style).
-   Same goal — propose novel candidates, not just rank an existing pool —
-   at a compute cost that fits personal hardware.
+Phases 1–3 are **sequential by nature** — Phase 2 extends the Phase 1 model,
+Phase 3 is informed by findings from both — but data pipeline work,
+benchmarking-harness design, literature review, and platform work can all
+start in week 1 in parallel, against the contracts in `glossary.md`.
 
 ---
 
@@ -36,89 +27,73 @@ order in §5 exists for if — not when — time runs short.
 
 | Phase | Goal | Depends on |
 |---|---|---|
-| 0 — Foundations | Multi-source data fusion, canonical schema, leakage-aware splits | — |
-| 1 — Modeling | Fine-tuned foundation model + calibrated uncertainty | Phase 0 |
-| 2 — Causal validation | Causal discovery over structure→property, cross-checked against GNN explainability | Phase 1 (needs model embeddings/predictions) |
-| 3 — Platform | Active-learning ranking wired into backend/frontend | Phase 1 (needs real predictions + uncertainty) |
-| 4 — Discovery loop | Surrogate-guided search proposing new candidates | Phase 1 (needs trusted uncertainty) |
+| 1 — Basic MPNN | Deterministic message-passing baseline predicting energy + forces on MD17 | — |
+| 2 — BLIP reproduction | Reproduce BLIP's weight-space Gaussian stochasticity for uncertainty | Phase 1 model |
+| 3 — Graph-space stochasticity | The team's own contribution: stochasticity in node/edge representations instead of weights | Phase 1 + 2 findings, literature review |
+| Platform | Backend/frontend serving predictions + the three-phase benchmark comparison | Each ml phase, as it lands |
 
-Phases 1–4 run as **parallel tracks**, not a strict relay — each person
-starts in week 1 against the contracts in `glossary.md`, using stub/mock
-data until the phase they depend on lands for real. Integration checkpoints
-(§3) are where tracks actually connect.
+Per the proposal itself, Phase 3 is expected to be the most open-ended —
+its exact mechanism (node dropout, edge dropout, Gaussian perturbation,
+learnable perturbation strength) is a team decision made from the
+literature review and Phase 1/2 results, not fixed in advance.
 
 ---
 
 ## 2. Week-by-week plan
 
-| Week | Shijin — data | Ruturaj — model | Dongxiao — causal | Fazin — QA/eval | Alex — platform |
+| Week | Shijin — data | Ruturaj — model | Dongxiao — research/eval | Fazin — QA/benchmarking | Alex — platform |
 |---|---|---|---|---|---|
-| 1–2 | Fuse Catalysis-Hub / Materials Project / Open Catalyst into canonical schema; leakage-aware (family-based) splits | Select + load pretrained checkpoint (CHGNet / MACE-MP-0-small); baseline eval | Literature review on causal priors (d-band center, Sabatier principle) | Define eval protocol + metrics (§4 DoD) | Scaffold backend/frontend against real schema, not stubs |
-| 3–4 | Data quality/bias audit; δ-correction for DFT-functional inconsistency across sources | Adapter fine-tuning (frozen backbone, tuned head); add ensemble/conformal uncertainty | Causal discovery (NOTEARS or PC algorithm) on Phase-1 embeddings | Build benchmark harness; regression tests against Phase 0 splits | Wire `POST /predictions` to the real model (replace stub) |
-| 5–6 | Support feature extraction as needed by Dongxiao/Ruturaj | Finalize model; calibrate uncertainty | GNNExplainer / integrated-gradients cross-validation vs. causal graph | Run full benchmark suite; catch leakage/overfit before it's load-bearing elsewhere | Build active-learning ranking endpoint (predicted activity + uncertainty) |
-| 7–8 | — | Support the search fitness function (Phase 4) | Write up causal findings for the technical report | Validate uncertainty calibration — this gates whether Phase 4 can be trusted | Implement GA/BO surrogate-guided search; live candidate queue UI |
-| 9 | **Integration week — everyone.** Wire all tracks together; end-to-end test the full pipeline (data → model → causal validation → ranked/searched candidates → UI) | | | | |
+| 1–2 | Bronze → silver: dedupe (aspirin/malonaldehyde/toluene/ccsd_t-ethanol format duplicates, azobenzene/paracetamol/AT-AT-CG-CG npz-vs-zip redundancy), unify format, tag every file with molecule + theory level (see `glossary.md` §3 inventory) | Phase 1 MPNN/SchNet-style baseline architecture | Literature review: Gilmer 2017, Schütt 2017 (SchNet) — Phase 1 grounding; start BLIP paper | Define eval protocol; energy/force MAE metric implementation | Scaffold backend/frontend against the MD17-based contracts in `glossary.md` §4–5 |
+| 3–4 | Silver → gold: apply trajectory-block splits (preserving the literature-standard splits that ship with aspirin/malonaldehyde/toluene/ccsd_t-ethanol, per §5); validate no train/test leakage | Train Phase 1 baseline; validate autograd forces (finite-difference check against `F = -∂E/∂R`) | Finish BLIP paper deep-dive; document the core mechanism to reproduce | Regression-test Phase 1 reproducibility; benchmark harness skeleton | Wire `POST /predictions` to the real Phase 1 checkpoint (replace stub) |
+| 5–6 | Extend gold pipeline to the larger MD22 molecules if scope allows (stretch — 370-atom nanotube needs the cutoff-radius question from `glossary.md` §5 resolved first) | Implement Phase 2 (BLIP-style stochastic weights); multiple MC forward passes for uncertainty | Implement/validate UQ metrics (ECE, uncertainty–error Spearman correlation); calibration analysis | Extend benchmark harness with UQ metrics; run Phase 1 vs Phase 2 comparison | Wire uncertainty into `/predictions` + `/benchmarks`; update Predict/Benchmarks pages |
+| 7–8 | — | Implement Phase 3 (graph-space stochasticity), per the team's chosen approach | Evaluate Phase 3 vs Phase 1/2; statistical analysis; start writing up findings | Run full three-phase benchmark suite; verify a fair comparison protocol (same splits, same MC sample counts) | Finalize dashboard's three-phase comparison view |
+| 9 | **Integration week — everyone.** Wire all three phases into `/benchmarks`; end-to-end test data → model → metrics → dashboard | | | | |
 | 10 | **Buffer + report/demo polish.** Assume integration week surfaces at least one real bug — this week absorbs it, not the deadline | | | | |
 
 ---
 
 ## 3. Integration checkpoints
 
-Don't wait for week 9 to discover two tracks don't fit together. Treat
-these as hard sync points:
-
-- **End of week 2:** Phase 0 schema is frozen. Every other track builds
-  against it from here — a schema change after this point is a
-  cross-team blocker, raise it immediately rather than working around it
-  locally.
-- **End of week 4:** Phase 1 produces real predictions + uncertainty for
-  the first time. Alex swaps the backend off the stub predictor here;
-  Dongxiao starts causal discovery on real embeddings, not placeholders.
-- **End of week 6:** Uncertainty calibration is validated by Fazin. This
-  is the actual gate for starting Phase 4 — a surrogate-guided search
-  built on miscalibrated uncertainty will confidently propose bad
-  candidates, which is worse than not having Phase 4 at all.
-- **Week 9:** full pipeline integration, as above.
+- **End of week 2:** MD17 data pipeline + splitting strategy frozen. Every
+  other track builds against it from here.
+- **End of week 4:** Phase 1 produces real energy/force predictions.
+  Alex swaps the backend off the stub predictor here.
+- **End of week 6:** Phase 2 uncertainty is calibrated and validated by
+  Fazin/Dongxiao. This is the credibility gate before Phase 3 comparisons
+  mean anything.
+- **Week 9:** full three-phase integration, as above.
 
 ---
 
 ## 4. Definition of done, per phase
 
-- **Phase 0:** canonical schema documented in `docs/data_dictionary.md`;
-  splits are by material family, not random; a written note on which
-  confounders were identified and how (δ-correction, dataset flag, etc.).
-- **Phase 1:** fine-tuned checkpoint beats a naive baseline (e.g. mean
-  predictor) on the Phase 0 test split by a stated margin; uncertainty
-  estimates exist and are calibrated (not just present).
-- **Phase 2:** a causal graph exists over the structural features
-  considered; a written comparison of causal-graph findings vs.
-  GNNExplainer output, including where they *disagree* — disagreement is
-  a finding, not a failure.
-- **Phase 3:** `/predictions` and `/benchmarks` serve real (not stub)
-  data; the frontend queue reflects live ranking, not a static table.
-- **Phase 4:** the search proposes at least one candidate outside the
-  original training pool, with a predicted-activity + uncertainty
-  estimate attached, and a documented fitness function.
+- **Phase 1:** energy MAE and force MAE reported on the held-out
+  (trajectory-block) test split; forces verified against a finite-difference
+  check of the energy gradient, not just "the model runs."
+- **Phase 2:** BLIP's core mechanism (input-dependent Gaussian stochasticity
+  in message/update weights) is reproduced; ECE and uncertainty–error
+  correlation are computed and compared against Phase 1's (lack of) UQ.
+- **Phase 3:** at least one graph-space stochasticity variant is
+  implemented and evaluated on the same metrics and splits as Phase 1/2,
+  with a written comparison — including where it *doesn't* beat BLIP,
+  since that's a legitimate finding for RQ2/RQ3, not a failure.
+- **Platform:** `/predictions` and `/benchmarks` serve real (not stub)
+  data for whichever phases have landed; the dashboard's three-phase
+  comparison reflects live benchmark results.
 
 ---
 
 ## 5. Fallback order (decide now, not in week 8)
 
-If a track falls behind, descope in this order — decided now so it's a
-plan, not a panic call under deadline pressure:
-
-1. **Phase 4 first** — shrink the candidate search space, or cut the
-   search down to a simpler heuristic (e.g. greedy ranking instead of
-   full GA/BO).
-2. **Phase 3's UI polish** — the ranking/search logic matters more for
-   the report than a polished frontend; a working endpoint with a plain
-   table beats a broken interactive queue.
-3. **Phase 2 depth** — causal discovery is the most research-heavy piece;
-   fall back to ATE estimation on the top few hand-picked features
-   (the original, simpler scope) rather than full causal graph discovery.
-4. **Phase 0–1 are non-negotiable.** Everything else depends on them
-   being correct; there is no cheaper fallback version of "the data and
-   base model are trustworthy."
+1. **Phase 3 scope first** — the proposal itself flags this as the most
+   open-ended phase; fall back to the simplest variant (e.g. plain node
+   feature dropout) rather than exploring multiple perturbation strategies.
+2. **Platform polish** — a working `/benchmarks` endpoint with a plain
+   table beats a broken interactive comparison view.
+3. **Phase 2 depth** — fall back to fewer MC samples / a simpler
+   calibration analysis rather than the full ECE + Spearman treatment.
+4. **Phase 1 is non-negotiable.** Everything else depends on a working,
+   validated baseline.
 
 ---
 

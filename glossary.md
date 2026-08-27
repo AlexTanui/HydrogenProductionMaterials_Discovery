@@ -2,8 +2,9 @@
 
 Single source of truth for team structure, architecture, folder ownership,
 API contracts, and terminology. This repo currently contains **structure
-only** — folders and empty placeholder files. No implementation exists yet;
-this document is the spec each person builds their part against.
+only** in `ml/` — folders and empty placeholder files there; `backend/` and
+`frontend/` have a working interface-preview build. This document is the
+spec each person builds their part against.
 
 For *when* things happen — phase sequencing, weekly ownership, integration
 checkpoints, definition of done, fallback order — see
@@ -12,6 +13,19 @@ checkpoints, definition of done, fallback order — see
 **Client:** Adelaide University — College of Engineering & IT
 **Agency supervisor:** Henry Li (<henry.li@adelaide.edu.au>)
 **Academic supervisor:** Dhika Pratama (<dhika.pratama@adelaide.edu.au>)
+
+**Relationship between the project title and the technical plan:** the
+university project is titled *Hydrogen Production Materials Discovery*, but
+the concrete, supervisor-issued technical research plan (*Adaptive
+Graph-Space Uncertainty Modelling for Machine Learning Interatomic
+Potentials*) is scoped around **MD17** — a standard molecular dynamics
+benchmark — not a hydrogen-catalyst dataset. That's intentional, not a
+mismatch: the deliverable is a validated modeling *methodology* (an MPNN
+with rigorously evaluated uncertainty quantification), developed and proven
+on a well-understood benchmark before it would ever be pointed at real
+catalyst screening. Everything in this document reflects the MD17/MLIP
+scope — that supersedes any earlier framing around `catalytic_activity`,
+`stability`, or causal ML, which is no longer part of the technical plan.
 
 ---
 
@@ -40,39 +54,41 @@ one way — never add a dependency in the reverse direction.
         │                          │
         ▼                          ▼
   experiments/               backend/app.db
-  (configs, checkpoints,     (SQLite: materials,
-   results)                  prediction logs)
+  (configs, checkpoints,     (prediction logs)
+   results)
 ```
 
-- **`ml/`** — the actual research deliverable. Data featurization, GNN
-  models, causal ML, training/evaluation/benchmarking. This is what the
-  literature review and technical report are written about. Has no
-  dependency on `backend/` or `frontend/` — must be runnable and testable
-  entirely on its own.
+- **`ml/`** — the actual research deliverable: three MPNN-family models on
+  MD17 (deterministic baseline, BLIP weight-space stochasticity, graph-space
+  stochasticity), trained and evaluated for both prediction accuracy
+  (energy/force MAE) and uncertainty quality (calibration, uncertainty–error
+  correlation). This is what the literature review and technical report are
+  written about. Has no dependency on `backend/` or `frontend/` — must be
+  runnable and testable entirely on its own.
 - **`backend/`** — FastAPI service. Imports from `ml/` to load a trained
   checkpoint and serve predictions over HTTP. Does not duplicate modeling
   logic.
 - **`frontend/`** — React/Vite dashboard. Talks to `backend/` only through
-  HTTP (its API client module) — no knowledge of PyTorch, graphs, or
-  chemistry.
+  HTTP (its API client module) — no knowledge of PyTorch, graphs, or physics.
 
 ---
 
 ## 3. Folder-by-folder guide (who builds what)
 
-### `ml/` — owner: Ruturaj (models) + Shijin (data) + Dongxiao (causal/eval)
+### `ml/` — owner: Ruturaj (models) + Shijin (data) + Fazin (benchmarking/UQ metrics) + Dongxiao (evaluation, literature-informed Phase 3 design)
 
 | Path | What goes here | Suggested owner |
 |---|---|---|
-| `ml/data/preprocessing.py` | Normalize raw dataset exports (Catalysis-Hub, Materials Project, Open Catalyst Project, MD17/MD22) into the canonical schema (§5) | Shijin |
-| `ml/data/featurization.py` | Convert a normalized record (SMILES or CIF/structure) into a graph representation (nodes, edges, node/edge features) | Shijin, with Ruturaj on graph feature design |
-| `ml/data/datasets.py` | PyTorch Geometric `Dataset`/`InMemoryDataset` wrapper over the featurized data, train/val/test split logic | Shijin |
-| `ml/models/gnn.py` | GNN architectures (GCN / GAT / MPNN or equivalent) that regress catalytic activity / stability from a graph | Ruturaj |
-| `ml/models/causal.py` | Causal ML (e.g. double machine learning) to estimate which structural features causally affect the target, controlling for confounders (dataset source, synthesis conditions) | Dongxiao |
-| `ml/training/train.py` | Training loop, config-driven (reads an experiment YAML, never hardcodes hyperparameters) | Ruturaj |
-| `ml/training/evaluate.py` | Scores a trained checkpoint on the held-out test split, writes metrics | Fazin |
-| `ml/training/benchmark.py` | Runs every experiment config and produces one comparison table for the report | Fazin |
-| `ml/utils/metrics.py` | Shared regression metrics (MAE, RMSE, R²) | Fazin |
+| `ml/data/md17.py` | Load raw MD17 trajectory files (`z` atomic numbers, `R` coordinates, `E` energy, `F` forces) and build a neighbor graph per configuration (nodes = atoms, edges = atom pairs within a cutoff radius, edge feature = interatomic distance) | Shijin, with Ruturaj on graph feature design |
+| `ml/data/preprocessing.py` | Trajectory-aware splitting (contiguous time blocks, **not** random — see §5) and any unit/coordinate normalization | Shijin |
+| `ml/data/datasets.py` | PyTorch Geometric `Dataset` wrapper producing `Data(x, pos, edge_index, edge_attr, y=energy, force=forces)` | Shijin |
+| `ml/models/mpnn.py` | **Phase 1** — deterministic MPNN baseline (SchNet-style continuous-filter message passing) predicting total energy; forces via autograd (`F = -∂E/∂R`) | Ruturaj |
+| `ml/models/blip.py` | **Phase 2** — reproduces BLIP: input-dependent Gaussian stochasticity in the MPNN message/update weights, evaluated via multiple stochastic forward passes | Ruturaj, with Dongxiao on calibration analysis |
+| `ml/models/graph_stochastic.py` | **Phase 3** — the team's own contribution: stochasticity in node/edge representations instead of weights (dropout, Gaussian perturbation, or learnable perturbation strength — approach to be settled by the literature review, see `docs/literature_review.md`) | Whole team; Ruturaj implements, Dongxiao evaluates |
+| `ml/training/train.py` | Training loop, config-driven, combined energy+force loss | Ruturaj |
+| `ml/training/evaluate.py` | Scores a checkpoint: energy/force MAE always; ECE + uncertainty–error correlation for Phase 2/3 | Fazin |
+| `ml/training/benchmark.py` | Runs all three phases and produces the single comparison table (§4 `/benchmarks` shape) for the report | Fazin |
+| `ml/utils/metrics.py` | `energy_mae`, `force_mae`, `expected_calibration_error`, `uncertainty_error_correlation` (Spearman) | Fazin |
 | `ml/utils/logging.py` | Shared run logging | whoever needs it first |
 | `ml/config.py` | The `ExperimentConfig` schema all YAML configs must match (§6) | Ruturaj, agreed with Fazin/Dongxiao |
 
@@ -80,16 +96,16 @@ one way — never add a dependency in the reverse direction.
 
 | Path | What goes here |
 |---|---|
-| `experiments/configs/*.yaml` | One file per experiment: architecture choice + hyperparameters. Schema in §6. |
+| `experiments/configs/*.yaml` | One file per run: which phase/molecule/hyperparameters. Schema in §6. |
 | `experiments/checkpoints/` | Trained model weights (gitignored — never commit these) |
-| `experiments/results/` | Per-experiment metrics JSON + combined benchmark CSV, produced by `ml/training/evaluate.py` / `benchmark.py` |
+| `experiments/results/` | Per-run metrics JSON + combined benchmark CSV, produced by `ml/training/evaluate.py` / `benchmark.py` |
 
 ### `backend/` — owner: Alex, with Fazin on test coverage
 
 | Path | What goes here | Owner |
 |---|---|---|
 | `backend/app/api/` | One route module per resource — must implement the contracts in §4 exactly | Alex |
-| `backend/app/models/db.py` | SQLAlchemy tables (materials, prediction logs) | Alex |
+| `backend/app/models/db.py` | SQLAlchemy tables (prediction logs) | Alex |
 | `backend/app/models/schemas.py` | Pydantic request/response models matching §4 | Alex |
 | `backend/app/services/inference.py` | The **only** place that loads/calls a model from `ml/` | Alex |
 | `backend/app/core/config.py` | Settings (DB URL, checkpoint path, CORS) | Alex |
@@ -99,34 +115,72 @@ one way — never add a dependency in the reverse direction.
 
 | Path | What goes here |
 |---|---|
-| `frontend/src/pages/Dashboard.tsx` | Landing page / project summary |
-| `frontend/src/pages/Predict.tsx` | Form to submit a candidate material, calls `POST /predictions` |
-| `frontend/src/pages/Benchmarks.tsx` | Table/chart of `GET /benchmarks` results |
+| `frontend/src/pages/Dashboard.tsx` | Landing page: project purpose, the three-phase research plan |
+| `frontend/src/pages/Predict.tsx` | Pick an MD17 molecule + frame, calls `POST /predictions`, shows predicted energy/force/uncertainty |
+| `frontend/src/pages/Benchmarks.tsx` | Chart/table comparing all three phases on `GET /benchmarks` |
 | `frontend/src/api/client.ts` | The **only** file allowed to call `fetch()` — pages must go through here |
 
-### `docs/` — deliverable placeholders (empty, to be filled in as work completes)
+### `docs/` — deliverable placeholders (to be filled in as work completes)
 
 | Path | Deliverable it corresponds to | Owner |
 |---|---|---|
-| `docs/literature_review.md` | Deliverable 1: literature review of AI methods | Dongxiao |
-| `docs/data_dictionary.md` | Canonical data schema + source provenance (detail behind §5) | Shijin |
+| `docs/literature_review.md` | Deliverable 1: literature review — Gilmer et al. 2017, Schütt et al. 2017 (SchNet), BLIP, GRAND, DropEdge, DropConn, Edge-Variational GCNs; used to settle the Phase 3 approach | Dongxiao |
+| `docs/data_dictionary.md` | MD17 schema + trajectory-splitting rationale (detail behind §5) | Shijin |
 | `docs/architecture.md` | Expanded version of §2, kept in sync as the system evolves | Alex |
 | `docs/api.md` | Expanded version of §4, kept in sync as endpoints are built | Alex |
-| `docs/technical_report.md` | Deliverable 5: final technical report | Dongxiao, assembled with input from all |
-| `docs/model_cards/` | One card per checkpoint reported in the technical report | Ruturaj / Fazin |
+| `docs/technical_report.md` | Deliverable 5: final technical report, built around the Three-Phase Technical Summary table | Dongxiao, assembled with input from all |
+| `docs/model_cards/` | One card per checkpoint (one per phase, minimum) | Ruturaj / Fazin |
 
 ### `tests/` — owner: Fazin
 
-`tests/test_featurization.py`, `tests/test_models.py` — unit tests for the
-`ml/` package (separate from `backend/tests/`, which covers the API).
+`tests/test_md17.py`, `tests/test_models.py` — unit tests for the `ml/`
+package (separate from `backend/tests/`, which covers the API).
 
-### `data/` — owner: Shijin
+### `data/` — owner: Shijin — staged bronze → silver → gold
 
-`data/raw/` (untouched source exports, gitignored), `data/processed/`
-(output of `ml/data/preprocessing.py`, gitignored), `data/external/`
-(reference data, e.g. lookup tables). Nothing here is committed except the
-`.gitkeep` placeholders — data ships separately (S3/Snowflake per Shijin's
-pipeline), never into git.
+Nothing under `data/` is committed except `.gitkeep` placeholders — the
+payload is ~1GB and ships on each person's machine, never into git.
+
+| Stage | Path | Contents |
+|---|---|---|
+| **Bronze** | `data/bronze/` | Raw, untouched, as-downloaded. Whatever format the source gives — `.npz`, or `.zip` containing `.xyz`/`.npz`. Never edited in place. |
+| **Silver** | `data/silver/` | Deduplicated, format-unified, validated. One `.npz` per molecule+theory-level, always in the `z/R/E/F` shape from §5, with shape/NaN/unit checks passed. |
+| **Gold** | `data/gold/` | Production-ready. Silver data with the trajectory-block train/val/test split (§5) applied and saved alongside it — this is the only stage `ml/data/datasets.py` reads from. |
+
+`ml/data/preprocessing.py` owns bronze → silver → gold; `ml/data/md17.py`
+owns silver/gold → PyG graph construction at train time.
+
+**What's actually in bronze right now** (inspected 2026-08-27 — update this
+table as the roster changes):
+
+| File | Molecule | Theory | Atoms | Configs | Note |
+|---|---|---|---|---|---|
+| `md17_ethanol.npz` | ethanol | DFT (aims, PBE+TS, light tier 1) | 9 | 555,092 | |
+| `ethanol_ccsd_t.zip` / `ethanol_ccsd_t (1).zip` | ethanol | CCSD(T) | 9 | — | **Same split, two formats** (one has `.npz` inside, the other `.xyz`) — not byte-duplicates (different md5), pick one format at silver, don't load both |
+| `benzene2018_dft.npz` | benzene | DFT PBE-TS 500K | 12 | 49,863 | |
+| `azobenzene_dft.npz` + `.zip` | azobenzene | DFT | 24 | 99,999 | zip's `.xyz` is redundant with the npz — drop at silver |
+| `paracetamol_dft.npz` + `.zip` | paracetamol | DFT PBE-TS 500K | 20 | 106,490 | same redundancy as azobenzene |
+| `aspirin_ccsd.zip` | aspirin | CCSD | 21 | — | ships with a **literature-standard train/test split already applied** (`-train.xyz`/`-test.xyz`) — preserve it rather than re-splitting, for comparability with published MD17 results |
+| `malonaldehyde_ccsd_t.zip` | malonaldehyde | CCSD(T) | 9 | — | same pre-split situation as aspirin |
+| `toluene_ccsd_t.zip` | toluene | CCSD(T) | 15 | — | same pre-split situation as aspirin |
+| `md17_uracil.zip` | uracil | DFT | 12 | — | single `.xyz`, no pre-split |
+| `md22_AT-AT-CG-CG.npz` + `.zip` | AT-AT-CG-CG | DFT PBE+MBD 500K | 118 | 10,153 | MD22 (large-molecule benchmark); zip redundant with npz |
+| `md22_DHA.npz` | DHA | DFT | 56 | 69,753 | MD22 |
+| `md22_buckyball-catcher.npz` | buckyball-catcher | DFT (FHI-aims, PBE-MBD) | 148 | 6,102 | MD22 |
+| `md22_double-walled_nanotube.zip` | double-walled nanotube | DFT | 370 | — | MD22; `.xyz` only, no `.npz` provided — needs an XYZ parser at silver |
+
+Two things this inventory makes concrete for the silver step:
+
+1. **Theory level is not cosmetic metadata — track it as part of the
+   dataset key.** CCSD(T) is a materially more accurate (and more
+   expensive to obtain) reference than DFT. `ethanol` exists at both
+   levels here; train/evaluate them as separate datasets
+   (`ethanol_dft`, `ethanol_ccsd_t`), never pooled.
+2. **Where a literature-standard split already ships with the data
+   (aspirin, malonaldehyde, toluene, and the CCSD(T) ethanol pair),
+   preserve it** instead of applying the trajectory-block split from
+   scratch — it's what published benchmarks compare against, and
+   re-splitting throws that comparability away for no benefit.
 
 ### `reports/` — owner: whoever generates the figure
 
@@ -149,56 +203,74 @@ Liveness check. Response:
 
 ### `POST /predictions`
 
-Score one candidate material with the currently loaded checkpoint. Every
-call must be logged (material queried, prediction, model version) for later
-analysis.
+Predict energy, force magnitude, and (for stochastic phases) uncertainty
+for one MD17 configuration. Every call is logged for later analysis.
 
 Request:
 
 ```json
-{ "smiles": "O=C=O" }
+{ "molecule": "aspirin", "frame_index": 0 }
 ```
 
 Response:
 
 ```json
 {
-  "smiles": "O=C=O",
-  "predicted_activity": 0.4123,
-  "model_name": "baseline"
+  "molecule": "aspirin",
+  "frame_index": 0,
+  "predicted_energy": -406234.5,
+  "predicted_force_rms": 12.3,
+  "uncertainty": 0.08,
+  "phase": "phase1_deterministic"
 }
 ```
 
-### `GET /materials?skip=0&limit=50`
+`predicted_energy` in kcal/mol, `predicted_force_rms` in kcal/mol/Å (root-
+mean-square over all atoms — the per-atom force vector field itself isn't
+serialized here, only its summary magnitude). `uncertainty` is `null` for
+the Phase 1 deterministic model, which has none by construction.
 
-List ingested materials, paginated. Response:
+### `GET /molecules`
+
+The fixed catalog of MD17 molecules available to predict on — a static
+reference list, not a live database (MD17's molecule set doesn't change).
+
+```json
+[
+  { "molecule": "aspirin", "num_atoms": 21 },
+  { "molecule": "ethanol", "num_atoms": 9 },
+  { "molecule": "benzene", "num_atoms": 12 }
+]
+```
+
+### `GET /benchmarks`
+
+Every entry from `experiments/results/*.json` — the Three-Phase Technical
+Summary, in the shape the report table (§6 of the proposal) needs directly:
 
 ```json
 [
   {
-    "material_id": "mp-1234",
-    "smiles": "O=C=O",
-    "source": "materials-project",
-    "catalytic_activity": 0.55,
-    "stability": 0.02
+    "phase": "phase1_deterministic",
+    "model": "mpnn",
+    "energy_mae": 0.42,
+    "force_mae": 1.15,
+    "ece": null,
+    "uncertainty_correlation": null
+  },
+  {
+    "phase": "phase2_blip",
+    "model": "blip_mpnn",
+    "energy_mae": 0.39,
+    "force_mae": 1.08,
+    "ece": 0.05,
+    "uncertainty_correlation": 0.61
   }
 ]
 ```
 
-### `GET /materials/{material_id}`
-
-Single material record, same shape as one list item above. 404 if not found.
-
-### `GET /benchmarks`
-
-Every entry from `experiments/results/*.json`, for the frontend Benchmarks
-page and the technical report. Response:
-
-```json
-[
-  { "experiment": "baseline", "model": "gcn", "mae": 0.12, "mse": 0.02, "rmse": 0.14, "r2": 0.81 }
-]
-```
+`ece` and `uncertainty_correlation` are `null` for the deterministic phase
+(no uncertainty to calibrate).
 
 ### Auth
 
@@ -207,27 +279,45 @@ adding auth first.
 
 ---
 
-## 5. Canonical data schema
+## 5. Data schema (MD17 + MD22)
 
-All raw source exports must be normalized to this schema by
-`ml/data/preprocessing.py` before they reach `ml/data/datasets.py`. Do not
-special-case source formats downstream of this point.
+Each sample is one snapshot along a molecular dynamics trajectory — either
+one of the standard MD17 small organic molecules, or one of the larger MD22
+systems (supramolecules, a nanotube). See §3's inventory table for exactly
+which molecules and theory levels are in `data/bronze/` right now.
 
-| Column | Type | Description |
+| Field | Type | Description |
 |---|---|---|
-| `material_id` | str | Stable unique ID, source-prefixed (e.g. `mp-1234`, `oc20-5678`) |
-| `smiles` | str | SMILES for molecular species/adsorbates. Empty for bulk crystals — use `cif_path` instead |
-| `catalytic_activity` | float | Primary regression target — normalized activity proxy (e.g. scaled negative adsorption energy for HER/OER) |
-| `stability` | float | Formation energy above hull, or equivalent stability proxy (lower = more stable) |
-| `source` | str | One of `catalysis-hub`, `materials-project`, `open-catalyst`, `md17`, `md22` |
+| `molecule` | str | Which molecule (e.g. `ethanol`, `aspirin`, `AT-AT-CG-CG`) |
+| `theory` | str | Level of quantum-chemistry theory (`DFT`, `CCSD`, `CCSD(T)`) — **part of the dataset's identity, not metadata to discard.** Never pool different theory levels of the same molecule as if they were one dataset |
+| `z` | int[num_atoms] | Atomic numbers — defines node identity |
+| `R` | float[num_atoms, 3] | 3D atomic coordinates in Å — defines node positions and, via a cutoff radius, the edge set |
+| `E` | float | Total potential energy (kcal/mol) — the primary regression target |
+| `F` | float[num_atoms, 3] | Per-atom force vectors (kcal/mol/Å) — the secondary regression target, typically weighted higher in the training loss than energy (see §6) |
 
-Candidate sources to evaluate and document in `docs/data_dictionary.md`:
-Catalysis-Hub.org (DFT adsorption energies), Materials Project (formation
-energy, stability, structures), Open Catalyst Project (OC20/OC22), MD17/MD22
-(molecular dynamics trajectories, relevant to Shijin's data handling scope).
+Confirmed from inspecting the actual files: every source file already uses
+Å and kcal/mol (`r_unit`/`e_unit` fields where present), so no unit
+conversion is needed across the current roster — but validate this
+assumption at silver rather than assuming it holds for anything added later.
 
-Known confounders to control for in causal analysis: DFT functional used,
-synthesis method, dataset source (see `ml/models/causal.py`).
+**Graph construction:** nodes = atoms, node feature = embedded atomic
+number `z`. Edges connect atom pairs within a cutoff radius (default 5 Å),
+edge feature = interatomic distance. This replaces SMILES/CIF-based
+featurization for this phase of the project — SMILES doesn't carry the 3D
+geometry an energy/force model needs. MD22's larger systems (up to 370
+atoms) make the cutoff radius matter more than it does for MD17 — a fixed
+5 Å radius produces a much sparser relative graph on the nanotube than on
+ethanol; revisit per-molecule if Phase 1 underperforms on the larger systems.
+
+**Splitting:** adjacent trajectory frames are nearly identical (the MD
+timestep is small). A **random** frame split leaks near-duplicate
+structures across train/test and inflates apparent accuracy. Default to
+contiguous trajectory blocks instead (e.g. first 80% of timesteps → train,
+last 20% → test) — **except** where the bronze data already ships a
+literature-standard split (aspirin, malonaldehyde, toluene, CCSD(T)
+ethanol — see §3), which should be preserved as-is for comparability with
+published results. Both cases are handled by `ml/data/preprocessing.py` at
+the silver → gold step.
 
 ---
 
@@ -237,26 +327,31 @@ Every training run must be defined by a YAML file in `experiments/configs/`
 matching this shape — no hardcoded hyperparameters in training scripts.
 
 ```yaml
-name: baseline
+name: phase1_baseline
 data:
-  raw_path: data/raw/materials.csv
-  target: catalytic_activity
-  train_split: 0.7
-  val_split: 0.15
-  test_split: 0.15
+  molecule: aspirin         # see §3 inventory for the current bronze roster
+  theory: ccsd               # dft | ccsd | ccsd_t — must match, never pool across levels
+  gold_path: data/gold/aspirin_ccsd.npz  # training reads gold only, never bronze/silver directly
+  cutoff_radius: 5.0         # Å, for neighbor graph construction
+  train_split: 0.8           # contiguous trajectory blocks, not random — see §5
+  val_split: 0.1
+  test_split: 0.1
+  use_literature_split: true # true for aspirin/malonaldehyde/toluene/ccsd_t-ethanol — see §3
   seed: 42
 model:
-  name: gcn        # gcn | gat | mpnn
-  hidden_channels: 64
-  num_layers: 3
-  dropout: 0.1
+  phase: mpnn               # mpnn | blip | graph_stochastic
+  hidden_channels: 128
+  num_layers: 4
+  num_mc_samples: 20         # stochastic forward passes for UQ (blip / graph_stochastic only)
+  perturbation_strength: 0.1 # graph_stochastic only
 train:
-  epochs: 50
+  epochs: 200
   batch_size: 32
-  lr: 0.001
-  weight_decay: 0.00001
-  patience: 10
-  device: cpu       # cpu | cuda
+  lr: 0.0005
+  energy_loss_weight: 1.0
+  force_loss_weight: 100.0   # forces conventionally weighted much higher than energy
+  patience: 20
+  device: cpu                # cpu | cuda
 ```
 
 ---
@@ -265,14 +360,18 @@ train:
 
 | Term | Meaning |
 |---|---|
-| **GNN** | Graph Neural Network — a model architecture operating on graph-structured data (atoms as nodes, bonds/proximity as edges) |
-| **GCN / GAT / MPNN** | Specific GNN variants: Graph Convolutional Network, Graph Attention Network, Message-Passing Neural Network |
-| **Causal ML / DML** | Causal machine learning; Double Machine Learning — estimates the effect of one feature on an outcome while controlling for confounders, distinct from correlation |
-| **Confounder** | A variable that influences both a feature and the outcome, risking a spurious correlation being mistaken for causation |
-| **HER / OER** | Hydrogen / Oxygen Evolution Reaction — the two half-reactions in water splitting for hydrogen production; the catalytic activity target relates to these |
-| **DFT** | Density Functional Theory — the quantum-chemistry simulation method used to compute most "ground truth" labels (formation energy, adsorption energy) in materials datasets |
+| **MLIP** | Machine Learning Interatomic Potential — a model that approximates DFT, predicting energy/forces from atomic species + coordinates |
+| **MPNN** | Message Passing Neural Network — atoms as nodes, interactions as edges; node representations are updated by aggregating neighbor information across edges |
+| **SchNet** | A continuous-filter convolutional MPNN variant (Schütt et al., 2017) used as the Phase 1 baseline architecture style |
+| **BLIP** | Bayesian Learned Interatomic Potentials — introduces input-dependent Gaussian stochasticity into MPNN message/update *weights*, enabling uncertainty estimation via stochastic forward passes (Phase 2) |
+| **Graph-space stochasticity** | This project's own direction: injecting stochasticity into node/edge *representations* instead of weights (Phase 3) |
+| **UQ** | Uncertainty Quantification — the model reports not just a prediction, but how much to trust it |
+| **ECE** | Expected Calibration Error — measures whether predicted uncertainty actually matches observed error (well-calibrated = low ECE) |
+| **Uncertainty–error correlation** | Spearman rank correlation between predicted uncertainty and actual prediction error — should be strongly positive for useful UQ |
+| **OOD** | Out-of-distribution — structures unlike the training data, where an MLIP's predictions become unreliable; the whole motivation for UQ |
+| **MD17** | Standard benchmark dataset: molecular dynamics trajectories with reference DFT/CCSD/CCSD(T) energy/forces for small organic molecules |
+| **MD22** | Companion benchmark to MD17 with much larger systems (supramolecules, a nanotube) — tests whether an MLIP generalizes beyond small-molecule scale |
+| **DFT** | Density Functional Theory — the quantum-chemistry simulation method whose output MLIPs approximate |
+| **Autograd force prediction** | Computing per-atom forces as `F = -∂E/∂R` via automatic differentiation of a predicted energy, which keeps the potential energy-conserving |
 | **Checkpoint** | A saved snapshot of trained model weights (`experiments/checkpoints/*.pt`) |
-| **SMILES** | A text notation for molecular structure, used as the input format for molecular (as opposed to bulk crystal) featurization |
-| **CIF** | Crystallographic Information File — standard format for crystal structure data |
-| **ATE** | Average Treatment Effect — the output of a causal estimator, quantifying a feature's causal impact on the target |
-| **Synthetic fallback** | Placeholder toy data used only to verify the pipeline runs end-to-end before real datasets are ingested — never used for reported results |
+| **Synthetic fallback / stub** | Placeholder deterministic output used to verify the pipeline runs end-to-end before a real checkpoint exists — never used for reported results |

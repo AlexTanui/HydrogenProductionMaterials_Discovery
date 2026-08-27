@@ -12,11 +12,15 @@ venv/
 # Jupyter
 .ipynb_checkpoints/
 
-# ML artifacts
-data/raw/*
-data/processed/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
+# ML artifacts — data/ is staged bronze -> silver -> gold, see glossary.md section 5
+data/bronze/*
+data/silver/*
+data/gold/*
+data/external/*
+!data/bronze/.gitkeep
+!data/silver/.gitkeep
+!data/gold/.gitkeep
+!data/external/.gitkeep
 experiments/results/*
 !experiments/results/.gitkeep
 *.pt
