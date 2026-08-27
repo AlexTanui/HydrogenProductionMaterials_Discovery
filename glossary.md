@@ -82,9 +82,9 @@ one way — never add a dependency in the reverse direction.
 | `ml/data/md17.py` | Load raw MD17 trajectory files (`z` atomic numbers, `R` coordinates, `E` energy, `F` forces) and build a neighbor graph per configuration (nodes = atoms, edges = atom pairs within a cutoff radius, edge feature = interatomic distance) | Shijin, with Ruturaj on graph feature design |
 | `ml/data/preprocessing.py` | Trajectory-aware splitting (contiguous time blocks, **not** random — see §5) and any unit/coordinate normalization | Shijin |
 | `ml/data/datasets.py` | PyTorch Geometric `Dataset` wrapper producing `Data(x, pos, edge_index, edge_attr, y=energy, force=forces)` | Shijin |
-| `ml/models/mpnn.py` | **Phase 1** — deterministic MPNN baseline (SchNet-style continuous-filter message passing) predicting total energy; forces via autograd (`F = -∂E/∂R`) | Ruturaj |
-| `ml/models/blip.py` | **Phase 2** — reproduces BLIP: input-dependent Gaussian stochasticity in the MPNN message/update weights, evaluated via multiple stochastic forward passes | Ruturaj, with Dongxiao on calibration analysis |
-| `ml/models/graph_stochastic.py` | **Phase 3** — the team's own contribution: stochasticity in node/edge representations instead of weights (dropout, Gaussian perturbation, or learnable perturbation strength — approach to be settled by the literature review, see `docs/literature_review.md`) | Whole team; Ruturaj implements, Dongxiao evaluates |
+| `ml/models/mpnn.py` | **Shared backbone + Phase 1** — a simple custom MPNN (Gilmer-style message passing with RBF/Gaussian-expanded distance edge features, not SchNet/PaiNN/DimeNet++) predicting total energy; forces via autograd (`F = -∂E/∂R`). Phases 2 and 3 both extend this same backbone rather than introducing a different architecture, so any difference in results is attributable to *where* stochasticity lives, not to three unrelated models | Ruturaj |
+| `ml/models/blip.py` | **Phase 2** — the Phase 1 backbone with BLIP-style input-dependent Gaussian stochasticity added to the message/update weights, evaluated via multiple stochastic forward passes | Ruturaj, with Dongxiao on calibration analysis |
+| `ml/models/graph_stochastic.py` | **Phase 3** — the Phase 1 backbone with stochasticity moved into node and/or edge representations instead of weights (dropout, Gaussian perturbation, or learnable perturbation strength — approach to be settled by the literature review, see `docs/literature_review.md`), compared against Phases 1 and 2 | Whole team; Ruturaj implements, Dongxiao evaluates |
 | `ml/training/train.py` | Training loop, config-driven, combined energy+force loss | Ruturaj |
 | `ml/training/evaluate.py` | Scores a checkpoint: energy/force MAE always; ECE + uncertainty–error correlation for Phase 2/3 | Fazin |
 | `ml/training/benchmark.py` | Runs all three phases and produces the single comparison table (§4 `/benchmarks` shape) for the report | Fazin |
@@ -367,7 +367,7 @@ train:
 |---|---|
 | **MLIP** | Machine Learning Interatomic Potential — a model that approximates DFT, predicting energy/forces from atomic species + coordinates |
 | **MPNN** | Message Passing Neural Network — atoms as nodes, interactions as edges; node representations are updated by aggregating neighbor information across edges |
-| **SchNet** | A continuous-filter convolutional MPNN variant (Schütt et al., 2017) used as the Phase 1 baseline architecture style |
+| **SchNet** | A continuous-filter convolutional MPNN variant (Schütt et al., 2017) — required Phase 1 background reading, but **not** the Phase 1 architecture itself; Phase 1 is a simpler Gilmer-style MPNN (see `ml/models/mpnn.py` in §3) |
 | **BLIP** | Bayesian Learned Interatomic Potentials — introduces input-dependent Gaussian stochasticity into MPNN message/update *weights*, enabling uncertainty estimation via stochastic forward passes (Phase 2) |
 | **Graph-space stochasticity** | This project's own direction: injecting stochasticity into node/edge *representations* instead of weights (Phase 3) |
 | **UQ** | Uncertainty Quantification — the model reports not just a prediction, but how much to trust it |
