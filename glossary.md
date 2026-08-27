@@ -139,7 +139,20 @@ package (separate from `backend/tests/`, which covers the API).
 ### `data/` — owner: Shijin — staged bronze → silver → gold
 
 Nothing under `data/` is committed except `.gitkeep` placeholders — the
-payload is ~1GB and ships on each person's machine, never into git.
+payload is ~1GB and, critically, **git never carries it to anyone**.
+Cloning this repo gets you the empty folder structure and nothing inside
+it. Everyone gets the actual bronze data by running:
+
+```bash
+scripts/download_bronze_data.sh
+```
+
+which fetches the MD17/MD22 files directly from their public sources
+(quantum-machine.org / sgdml.org — both public benchmark hosts, no
+credentials needed) into `data/bronze/{md17,md22}/`. It skips files
+already present, so it's safe to re-run. This is why bronze data is never
+manually copied between machines or committed — it's reproducible from a
+public source instead.
 
 Each stage is split into `md17/` and `md22/` subfolders — the two datasets
 have different molecule scales (MD22 atoms counts run up to 370 vs. MD17's
@@ -167,11 +180,11 @@ table as the roster changes):
 | `md17/aspirin_ccsd.zip` | aspirin | CCSD | 21 | — | ships with a **literature-standard train/test split already applied** (`-train.xyz`/`-test.xyz`) — preserve it rather than re-splitting, for comparability with published MD17 results |
 | `md17/malonaldehyde_ccsd_t.zip` | malonaldehyde | CCSD(T) | 9 | — | same pre-split situation as aspirin |
 | `md17/toluene_ccsd_t.zip` | toluene | CCSD(T) | 15 | — | same pre-split situation as aspirin |
-| `md17/md17_uracil.zip` | uracil | DFT | 12 | — | single `.xyz`, no pre-split |
+| `md17/md17_uracil.npz` | uracil | DFT | 12 | 133,770 | fetched by `scripts/download_bronze_data.sh`; the originally-uploaded `.zip` (`.xyz` only) is superseded by this — safe to remove |
 | `md22/md22_AT-AT-CG-CG.npz` + `.zip` | AT-AT-CG-CG | DFT PBE+MBD 500K | 118 | 10,153 | zip redundant with npz |
 | `md22/md22_DHA.npz` | DHA | DFT | 56 | 69,753 | |
 | `md22/md22_buckyball-catcher.npz` | buckyball-catcher | DFT (FHI-aims, PBE-MBD) | 148 | 6,102 | |
-| `md22/md22_double-walled_nanotube.zip` | double-walled nanotube | DFT | 370 | — | `.xyz` only, no `.npz` provided — needs an XYZ parser at silver |
+| `md22/md22_double-walled_nanotube.npz` | double-walled nanotube | DFT | 370 | 5,032 | fetched by `scripts/download_bronze_data.sh`; the originally-uploaded `.zip` (`.xyz` only) is superseded by this — safe to remove |
 
 Two things this inventory makes concrete for the silver step:
 
@@ -185,6 +198,12 @@ Two things this inventory makes concrete for the silver step:
    preserve it** instead of applying the trajectory-block split from
    scratch — it's what published benchmarks compare against, and
    re-splitting throws that comparability away for no benefit.
+
+### `scripts/` — owner: Shijin
+
+`scripts/download_bronze_data.sh` — fetches MD17/MD22 from their public
+sources into `data/bronze/`. The only sanctioned way bronze data gets onto
+a machine; see the `data/` section above.
 
 ### `reports/` — owner: whoever generates the figure
 
