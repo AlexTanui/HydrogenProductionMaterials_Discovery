@@ -12,15 +12,19 @@ venv/
 # Jupyter
 .ipynb_checkpoints/
 
-# ML artifacts — data/ is staged bronze -> silver -> gold, see glossary.md section 5
-data/bronze/*
-data/silver/*
-data/gold/*
-data/external/*
-!data/bronze/.gitkeep
-!data/silver/.gitkeep
-!data/gold/.gitkeep
-!data/external/.gitkeep
+# ML artifacts — data/ is staged bronze -> silver -> gold, split by dataset
+# (md17/md22), see glossary.md section 5. Keep directories + .gitkeep at any
+# depth, ignore everything else under them (the "!.../" before "!.../.gitkeep"
+# is required so git still traverses into ignored directories).
+data/bronze/**
+data/silver/**
+data/gold/**
+data/external/**
+!data/bronze/**/
+!data/silver/**/
+!data/gold/**/
+!data/external/**/
+!data/**/.gitkeep
 experiments/results/*
 !experiments/results/.gitkeep
 *.pt

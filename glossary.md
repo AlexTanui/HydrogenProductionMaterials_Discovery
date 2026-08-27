@@ -141,11 +141,15 @@ package (separate from `backend/tests/`, which covers the API).
 Nothing under `data/` is committed except `.gitkeep` placeholders — the
 payload is ~1GB and ships on each person's machine, never into git.
 
+Each stage is split into `md17/` and `md22/` subfolders — the two datasets
+have different molecule scales (MD22 atoms counts run up to 370 vs. MD17's
+~9–24) and shouldn't be loaded/split/benchmarked as if they were one thing.
+
 | Stage | Path | Contents |
 |---|---|---|
-| **Bronze** | `data/bronze/` | Raw, untouched, as-downloaded. Whatever format the source gives — `.npz`, or `.zip` containing `.xyz`/`.npz`. Never edited in place. |
-| **Silver** | `data/silver/` | Deduplicated, format-unified, validated. One `.npz` per molecule+theory-level, always in the `z/R/E/F` shape from §5, with shape/NaN/unit checks passed. |
-| **Gold** | `data/gold/` | Production-ready. Silver data with the trajectory-block train/val/test split (§5) applied and saved alongside it — this is the only stage `ml/data/datasets.py` reads from. |
+| **Bronze** | `data/bronze/md17/`, `data/bronze/md22/` | Raw, untouched, as-downloaded. Whatever format the source gives — `.npz`, or `.zip` containing `.xyz`/`.npz`. Never edited in place. |
+| **Silver** | `data/silver/md17/`, `data/silver/md22/` | Deduplicated, format-unified, validated. One `.npz` per molecule+theory-level, always in the `z/R/E/F` shape from §5, with shape/NaN/unit checks passed. |
+| **Gold** | `data/gold/md17/`, `data/gold/md22/` | Production-ready. Silver data with the trajectory-block train/val/test split (§5) applied and saved alongside it — this is the only stage `ml/data/datasets.py` reads from. |
 
 `ml/data/preprocessing.py` owns bronze → silver → gold; `ml/data/md17.py`
 owns silver/gold → PyG graph construction at train time.
@@ -155,19 +159,19 @@ table as the roster changes):
 
 | File | Molecule | Theory | Atoms | Configs | Note |
 |---|---|---|---|---|---|
-| `md17_ethanol.npz` | ethanol | DFT (aims, PBE+TS, light tier 1) | 9 | 555,092 | |
-| `ethanol_ccsd_t.zip` / `ethanol_ccsd_t (1).zip` | ethanol | CCSD(T) | 9 | — | **Same split, two formats** (one has `.npz` inside, the other `.xyz`) — not byte-duplicates (different md5), pick one format at silver, don't load both |
-| `benzene2018_dft.npz` | benzene | DFT PBE-TS 500K | 12 | 49,863 | |
-| `azobenzene_dft.npz` + `.zip` | azobenzene | DFT | 24 | 99,999 | zip's `.xyz` is redundant with the npz — drop at silver |
-| `paracetamol_dft.npz` + `.zip` | paracetamol | DFT PBE-TS 500K | 20 | 106,490 | same redundancy as azobenzene |
-| `aspirin_ccsd.zip` | aspirin | CCSD | 21 | — | ships with a **literature-standard train/test split already applied** (`-train.xyz`/`-test.xyz`) — preserve it rather than re-splitting, for comparability with published MD17 results |
-| `malonaldehyde_ccsd_t.zip` | malonaldehyde | CCSD(T) | 9 | — | same pre-split situation as aspirin |
-| `toluene_ccsd_t.zip` | toluene | CCSD(T) | 15 | — | same pre-split situation as aspirin |
-| `md17_uracil.zip` | uracil | DFT | 12 | — | single `.xyz`, no pre-split |
-| `md22_AT-AT-CG-CG.npz` + `.zip` | AT-AT-CG-CG | DFT PBE+MBD 500K | 118 | 10,153 | MD22 (large-molecule benchmark); zip redundant with npz |
-| `md22_DHA.npz` | DHA | DFT | 56 | 69,753 | MD22 |
-| `md22_buckyball-catcher.npz` | buckyball-catcher | DFT (FHI-aims, PBE-MBD) | 148 | 6,102 | MD22 |
-| `md22_double-walled_nanotube.zip` | double-walled nanotube | DFT | 370 | — | MD22; `.xyz` only, no `.npz` provided — needs an XYZ parser at silver |
+| `md17/md17_ethanol.npz` | ethanol | DFT (aims, PBE+TS, light tier 1) | 9 | 555,092 | |
+| `md17/ethanol_ccsd_t.zip` / `ethanol_ccsd_t (1).zip` | ethanol | CCSD(T) | 9 | — | **Same split, two formats** (one has `.npz` inside, the other `.xyz`) — not byte-duplicates (different md5), pick one format at silver, don't load both |
+| `md17/benzene2018_dft.npz` | benzene | DFT PBE-TS 500K | 12 | 49,863 | |
+| `md17/azobenzene_dft.npz` + `.zip` | azobenzene | DFT | 24 | 99,999 | zip's `.xyz` is redundant with the npz — drop at silver |
+| `md17/paracetamol_dft.npz` + `.zip` | paracetamol | DFT PBE-TS 500K | 20 | 106,490 | same redundancy as azobenzene |
+| `md17/aspirin_ccsd.zip` | aspirin | CCSD | 21 | — | ships with a **literature-standard train/test split already applied** (`-train.xyz`/`-test.xyz`) — preserve it rather than re-splitting, for comparability with published MD17 results |
+| `md17/malonaldehyde_ccsd_t.zip` | malonaldehyde | CCSD(T) | 9 | — | same pre-split situation as aspirin |
+| `md17/toluene_ccsd_t.zip` | toluene | CCSD(T) | 15 | — | same pre-split situation as aspirin |
+| `md17/md17_uracil.zip` | uracil | DFT | 12 | — | single `.xyz`, no pre-split |
+| `md22/md22_AT-AT-CG-CG.npz` + `.zip` | AT-AT-CG-CG | DFT PBE+MBD 500K | 118 | 10,153 | zip redundant with npz |
+| `md22/md22_DHA.npz` | DHA | DFT | 56 | 69,753 | |
+| `md22/md22_buckyball-catcher.npz` | buckyball-catcher | DFT (FHI-aims, PBE-MBD) | 148 | 6,102 | |
+| `md22/md22_double-walled_nanotube.zip` | double-walled nanotube | DFT | 370 | — | `.xyz` only, no `.npz` provided — needs an XYZ parser at silver |
 
 Two things this inventory makes concrete for the silver step:
 
@@ -329,9 +333,10 @@ matching this shape — no hardcoded hyperparameters in training scripts.
 ```yaml
 name: phase1_baseline
 data:
-  molecule: aspirin         # see §3 inventory for the current bronze roster
-  theory: ccsd               # dft | ccsd | ccsd_t — must match, never pool across levels
-  gold_path: data/gold/aspirin_ccsd.npz  # training reads gold only, never bronze/silver directly
+  dataset: md17               # md17 | md22 — which top-level folder under data/
+  molecule: aspirin           # see §3 inventory for the current bronze roster
+  theory: ccsd                 # dft | ccsd | ccsd_t — must match, never pool across levels
+  gold_path: data/gold/md17/aspirin_ccsd.npz  # training reads gold only, never bronze/silver directly
   cutoff_radius: 5.0         # Å, for neighbor graph construction
   train_split: 0.8           # contiguous trajectory blocks, not random — see §5
   val_split: 0.1
