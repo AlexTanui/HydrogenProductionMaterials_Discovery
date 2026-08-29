@@ -138,21 +138,37 @@ package (separate from `backend/tests/`, which covers the API).
 
 ### `data/` — owner: Shijin — staged bronze → silver → gold
 
-Nothing under `data/` is committed except `.gitkeep` placeholders — the
-payload is ~1GB and, critically, **git never carries it to anyone**.
-Cloning this repo gets you the empty folder structure and nothing inside
-it. Everyone gets the actual bronze data by running:
+`data/bronze/` (one canonical file per molecule+theory level, ~814MB) is
+committed via **Git LFS** — see `.gitattributes`. `data/silver/` and
+`data/gold/` stay `.gitkeep`-only until their pipelines produce real
+output; git never carries those, same as before.
 
-```bash
-scripts/download_bronze_data.sh
-```
+**Getting bronze data onto your machine — two ways:**
 
-which fetches the MD17/MD22 files directly from their public sources
-(quantum-machine.org / sgdml.org — both public benchmark hosts, no
-credentials needed) into `data/bronze/{md17,md22}/`. It skips files
-already present, so it's safe to re-run. This is why bronze data is never
-manually copied between machines or committed — it's reproducible from a
-public source instead.
+1. `git lfs install` once per machine, then `git clone`/`git pull` as
+   normal — LFS fetches the real files transparently. **Requires the
+   `git-lfs` client** (`brew install git-lfs` / `apt install git-lfs`);
+   without it you'll get pointer text files instead of real data.
+2. `scripts/download_bronze_data.sh` — fetches the same files straight
+   from their public sources (quantum-machine.org / sgdml.org, no
+   credentials needed). Kept as a fallback that doesn't depend on LFS at
+   all — use this if LFS bandwidth is exhausted (see below) or `git-lfs`
+   isn't installed.
+
+**Known constraint, not a hidden one:** GitHub's free tier gives 1GB of
+LFS storage and 1GB/month of LFS bandwidth. Our ~814MB fits storage with
+some headroom, but bandwidth is consumed on every clone/pull that fetches
+LFS content — a handful of team members cloning fresh will likely exceed
+the free monthly bandwidth quickly. If that happens, GitHub will start
+rejecting LFS downloads until the quota resets or a paid Data Pack is
+added; route 2 above still works when that happens, since it never
+touches GitHub's LFS quota at all.
+
+A few originally-downloaded files are **not** committed even though
+they'd match the LFS tracking pattern — see the redundancy notes in the
+inventory table below and the explicit exclusions in `.gitignore`. This
+was a deliberate call to not spend scarce LFS storage on files we'd
+already identified as redundant, not an oversight.
 
 Each stage is split into `md17/` and `md22/` subfolders — the two datasets
 have different molecule scales (MD22 atoms counts run up to 370 vs. MD17's

@@ -27,11 +27,10 @@ by Claude Code once implementation begins.
 
 ## Getting the data
 
-The MD17/MD22 dataset (~1GB) is never committed to this repo. Get it with:
-
-```bash
-scripts/download_bronze_data.sh
-```
-
-which pulls the public benchmark files into `data/bronze/{md17,md22}/`.
-Safe to re-run — it skips files you already have.
+`data/bronze/` (~814MB) is committed via **Git LFS**. Install the LFS
+client once (`brew install git-lfs` / `apt install git-lfs`), then
+`git lfs install` and clone/pull as normal — the real files come down
+automatically. If LFS bandwidth runs out or you'd rather skip it entirely,
+`scripts/download_bronze_data.sh` fetches the same files directly from
+their public sources instead. See `glossary.md` §3 for the full data
+staging story (bronze/silver/gold, why they're split by dataset).

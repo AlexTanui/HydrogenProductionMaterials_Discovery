@@ -13,18 +13,28 @@ venv/
 .ipynb_checkpoints/
 
 # ML artifacts — data/ is staged bronze -> silver -> gold, split by dataset
-# (md17/md22), see glossary.md section 5. Keep directories + .gitkeep at any
+# (md17/md22), see glossary.md section 5. bronze/ is tracked via Git LFS
+# (see .gitattributes) - only silver/gold/external stay gitignored until
+# their pipelines produce real files. Keep directories + .gitkeep at any
 # depth, ignore everything else under them (the "!.../" before "!.../.gitkeep"
 # is required so git still traverses into ignored directories).
-data/bronze/**
 data/silver/**
 data/gold/**
 data/external/**
-!data/bronze/**/
 !data/silver/**/
 !data/gold/**/
 !data/external/**/
 !data/**/.gitkeep
+
+# Documented-redundant bronze duplicates (glossary.md section 3) - superseded
+# by a canonical .npz already tracked via LFS. Excluded explicitly so a
+# broad `git add` never burns scarce LFS storage quota on them.
+data/bronze/md17/azobenzene_dft.zip
+data/bronze/md17/paracetamol_dft.zip
+data/bronze/md17/md17_uracil.zip
+data/bronze/md17/ethanol_ccsd_t (1).zip
+data/bronze/md22/md22_AT-AT-CG-CG.zip
+data/bronze/md22/md22_double-walled_nanotube.zip
 experiments/results/*
 !experiments/results/.gitkeep
 *.pt
