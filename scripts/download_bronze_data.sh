@@ -41,12 +41,26 @@ FILES=(
 
 mkdir -p "$BRONZE_DIR/md17" "$BRONZE_DIR/md22"
 
+# A file that "exists" isn't necessarily real data - if this repo was
+# cloned without git-lfs installed, these exact paths get populated with
+# ~130-byte LFS pointer text files instead of the real content. Treat
+# anything implausibly small, or literally an LFS pointer, as missing.
+is_real_file() {
+  local path="$1"
+  [[ -f "$path" ]] || return 1
+  local size
+  size=$(wc -c < "$path" | tr -d ' ')
+  [[ "$size" -gt 1024 ]] || return 1
+  head -c 200 "$path" | grep -q "git-lfs.github.com/spec" && return 1
+  return 0
+}
+
 for entry in "${FILES[@]}"; do
   target="${entry%%|*}"
   url="${entry##*|}"
   dest="$BRONZE_DIR/$target"
 
-  if [[ -f "$dest" && "$FORCE" != "--force" ]]; then
+  if is_real_file "$dest" && [[ "$FORCE" != "--force" ]]; then
     echo "skip (already have): $target"
     continue
   fi

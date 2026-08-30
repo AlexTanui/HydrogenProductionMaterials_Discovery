@@ -79,9 +79,9 @@ one way — never add a dependency in the reverse direction.
 
 | Path | What goes here | Suggested owner |
 |---|---|---|
-| `ml/data/md17.py` | Load raw MD17 trajectory files (`z` atomic numbers, `R` coordinates, `E` energy, `F` forces) and build a neighbor graph per configuration (nodes = atoms, edges = atom pairs within a cutoff radius, edge feature = interatomic distance) | Shijin, with Ruturaj on graph feature design |
-| `ml/data/preprocessing.py` | Trajectory-aware splitting (contiguous time blocks, **not** random — see §5) and any unit/coordinate normalization | Shijin |
-| `ml/data/datasets.py` | PyTorch Geometric `Dataset` wrapper producing `Data(x, pos, edge_index, edge_attr, y=energy, force=forces)` | Shijin |
+| `ml/data/md17.py` | **Implemented.** Load raw MD17 trajectory files (`z`, `R`, `E`, `F`) and build a neighbor graph per configuration (nodes = atoms, edges = atom pairs within a cutoff radius, edge feature = RBF-expanded distance — see §7's Gilmer-style MPNN note). Originally landed as `notebooks/rajcleaning.ipynb`, migrated to package form | Shijin, with Ruturaj on graph feature design |
+| `ml/data/preprocessing.py` | **Implemented.** Bronze → silver → gold promotion: trajectory-aware splitting (contiguous time blocks, **not** random — see §5), unit validation, literature-split preservation. `python -m ml.data.preprocessing` runs it | Shijin |
+| `ml/data/datasets.py` | **Implemented.** PyTorch Geometric `Dataset` wrapper producing `Data(x, pos, edge_index, edge_attr, y=energy, force=forces)`, reads gold only | Shijin |
 | `ml/models/mpnn.py` | **Shared backbone + Phase 1** — a simple custom MPNN (Gilmer-style message passing with RBF/Gaussian-expanded distance edge features, not SchNet/PaiNN/DimeNet++) predicting total energy; forces via autograd (`F = -∂E/∂R`). Phases 2 and 3 both extend this same backbone rather than introducing a different architecture, so any difference in results is attributable to *where* stochasticity lives, not to three unrelated models | Ruturaj |
 | `ml/models/blip.py` | **Phase 2** — the Phase 1 backbone with BLIP-style input-dependent Gaussian stochasticity added to the message/update weights, evaluated via multiple stochastic forward passes | Ruturaj, with Dongxiao on calibration analysis |
 | `ml/models/graph_stochastic.py` | **Phase 3** — the Phase 1 backbone with stochasticity moved into node and/or edge representations instead of weights (dropout, Gaussian perturbation, or learnable perturbation strength — approach to be settled by the literature review, see `docs/literature_review.md`), compared against Phases 1 and 2 | Whole team; Ruturaj implements, Dongxiao evaluates |
@@ -220,6 +220,13 @@ Two things this inventory makes concrete for the silver step:
 `scripts/download_bronze_data.sh` — fetches MD17/MD22 from their public
 sources into `data/bronze/`. The only sanctioned way bronze data gets onto
 a machine; see the `data/` section above.
+
+### `notebooks/` — owner: whoever's exploring
+
+Dev/exploration notebooks — not where the real pipeline lives once it's
+graduated into `ml/`. `notebooks/rajcleaning.ipynb` is kept as the
+original dev record of the `ml/data/` bronze→silver→gold work; the
+package modules are canonical from here on.
 
 ### `reports/` — owner: whoever generates the figure
 
