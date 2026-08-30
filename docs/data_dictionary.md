@@ -7,7 +7,10 @@ decision below is the way it is. Companion to
 implementation in `ml/data/`.
 
 **Status:** MD17 pipeline implemented and verified (9/9 bronze sources
-process cleanly end to end). MD22 is not yet covered — see §6.
+process cleanly end to end). MD22 is not yet covered — see §6. For
+exploratory analysis of the resulting gold-stage data (distributions,
+whether the cutoff radius default is reasonable, split-integrity checks),
+see [`docs/eda.md`](eda.md).
 
 ---
 

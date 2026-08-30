@@ -126,6 +126,7 @@ one way — never add a dependency in the reverse direction.
 |---|---|---|
 | `docs/literature_review.md` | Deliverable 1: literature review — Gilmer et al. 2017, Schütt et al. 2017 (SchNet), BLIP, GRAND, DropEdge, DropConn, Edge-Variational GCNs; used to settle the Phase 3 approach | Dongxiao |
 | `docs/data_dictionary.md` | MD17 schema + trajectory-splitting rationale (detail behind §5) | Shijin |
+| `docs/eda.md` | **Implemented.** Exploratory analysis write-up for gold-stage MD17 — distributions, cutoff-radius check, split-integrity check. Full charts in `notebooks/eda_md17.ipynb` | Dongxiao |
 | `docs/architecture.md` | Expanded version of §2, kept in sync as the system evolves | Alex |
 | `docs/api.md` | Expanded version of §4, kept in sync as endpoints are built | Alex |
 | `docs/technical_report.md` | Deliverable 5: final technical report, built around the Three-Phase Technical Summary table | Dongxiao, assembled with input from all |
