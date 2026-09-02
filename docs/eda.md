@@ -115,10 +115,13 @@ Requires `data/gold/md17/*.npz` to exist — run
 
 ## 5. Not yet covered
 
-- **MD22** — no gold-stage MD22 data exists yet (`ml/data/preprocessing.py`
-  only processes `md17/`), so none of this analysis extends there yet.
-  Same questions apply, especially the cutoff-radius one, and probably
-  matter more given the larger systems.
+- **MD22** — `ml/data/preprocessing.py` now processes `md22/` too, so
+  gold-stage MD22 data can be produced (`python -m ml.data.preprocessing
+  --dataset md22`). This analysis has **not** been re-run over it. Every
+  question below applies there and most matter more, given systems of
+  56–370 atoms rather than 9–24 — the cutoff-radius question especially:
+  the finding above that 5 Å "barely matters for small MD17 molecules"
+  is exactly the kind of result that must not be assumed to carry over.
 - **Confounder analysis across theory levels** (DFT functional variants,
   sampling temperature) — flagged in `ROADMAP.md` as data-foundation
   work, not attempted here.

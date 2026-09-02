@@ -28,6 +28,8 @@ who owns it.
 ```bash
 # ML pipeline (run from repo root, with .venv active)
 pytest tests/
+python -m ml.data.preprocessing                  # bronze -> silver -> gold, md17 + md22
+python -m ml.data.preprocessing --dataset md22   # one dataset only
 python -m ml.training.train --config experiments/configs/baseline.yaml
 python -m ml.training.evaluate --checkpoint experiments/checkpoints/baseline.pt
 python -m ml.training.benchmark

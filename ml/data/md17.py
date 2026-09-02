@@ -83,6 +83,23 @@ class MD17Sample:
         return int(self.R.shape[0])
 
 
+def _as_str(value) -> str:
+    """Decodes an npz metadata field to a plain str.
+
+    npz string fields come back as 0-d arrays whose contents may be
+    numpy.str_ *or* bytes depending on how the archive was written. A bare
+    str() on the bytes case yields "b'Ang'", not "Ang" - which silently
+    turns a correct unit into a validation failure ("unexpected r_unit
+    \"b'Ang'\"") and turns a correct molecule name into "b'DHA'". Several
+    MD22 sources are written the bytes way, so decode explicitly.
+    """
+    if isinstance(value, np.ndarray):
+        value = value.item() if value.ndim == 0 else value
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    return str(value)
+
+
 def _infer_theory(filename: str) -> str:
     name = filename.lower()
     if "ccsd_t" in name or "ccsd-t" in name:
@@ -94,7 +111,10 @@ def _infer_theory(filename: str) -> str:
 
 def _infer_molecule(filename: str) -> str:
     stem = Path(filename).stem
-    stem = re.sub(r"^md1[78]_", "", stem)
+    # md17_* and md22_* are both source-file prefixes, not part of the
+    # molecule name. Matching only md17/md18 left every MD22 molecule
+    # named "md22_AT-AT-CG-CG" instead of "AT-AT-CG-CG".
+    stem = re.sub(r"^md(?:17|22)_", "", stem)
     stem = re.sub(r"[_-]?(dft|ccsd_t|ccsd-t|ccsd|train|test)$", "", stem, flags=re.IGNORECASE)
     return stem
 
@@ -105,13 +125,13 @@ def load_npz(path: str | Path, molecule: Optional[str] = None, theory: Optional[
     missing = [k for k in REQUIRED_KEYS if k not in data]
     if missing:
         raise ValueError(f"{path.name}: missing required keys {missing}, has {list(data.keys())}")
-    inferred_molecule = str(data["name"]) if "name" in data.files else _infer_molecule(path.name)
+    inferred_molecule = _as_str(data["name"]) if "name" in data.files else _infer_molecule(path.name)
     return MD17Sample(
         molecule=molecule or inferred_molecule,
         theory=theory or _infer_theory(path.name),
         z=data["z"], R=data["R"], E=data["E"], F=data["F"],
-        r_unit=str(data["r_unit"]) if "r_unit" in data.files else "Ang",
-        e_unit=str(data["e_unit"]) if "e_unit" in data.files else "kcal/mol",
+        r_unit=_as_str(data["r_unit"]) if "r_unit" in data.files else "Ang",
+        e_unit=_as_str(data["e_unit"]) if "e_unit" in data.files else "kcal/mol",
     )
 
 
@@ -190,8 +210,8 @@ def load_split_zip(path: str | Path, molecule: Optional[str] = None, theory: Opt
                     result[split] = MD17Sample(
                         molecule=molecule, theory=theory,
                         z=data["z"], R=data["R"], E=data["E"], F=data["F"],
-                        r_unit=str(data["r_unit"]) if "r_unit" in data.files else "Ang",
-                        e_unit=str(data["e_unit"]) if "e_unit" in data.files else "kcal/mol",
+                        r_unit=_as_str(data["r_unit"]) if "r_unit" in data.files else "Ang",
+                        e_unit=_as_str(data["e_unit"]) if "e_unit" in data.files else "kcal/mol",
                     )
         elif xyz_members:
             for member in xyz_members:

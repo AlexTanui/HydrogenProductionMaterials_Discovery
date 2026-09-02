@@ -80,7 +80,7 @@ one way — never add a dependency in the reverse direction.
 | Path | What goes here | Suggested owner |
 |---|---|---|
 | `ml/data/md17.py` | **Implemented.** Load raw MD17 trajectory files (`z`, `R`, `E`, `F`) and build a neighbor graph per configuration (nodes = atoms, edges = atom pairs within a cutoff radius, edge feature = RBF-expanded distance — see §7's Gilmer-style MPNN note). Originally landed as `notebooks/rajcleaning.ipynb`, migrated to package form | Shijin, with Ruturaj on graph feature design |
-| `ml/data/preprocessing.py` | **Implemented.** Bronze → silver → gold promotion: trajectory-aware splitting (contiguous time blocks, **not** random — see §5), unit validation, literature-split preservation. `python -m ml.data.preprocessing` runs it | Shijin |
+| `ml/data/preprocessing.py` | **Implemented, MD17 + MD22.** Bronze → silver → gold promotion: trajectory-aware splitting (contiguous time blocks, **not** random — see §5), unit validation, literature-split preservation. `python -m ml.data.preprocessing` runs both datasets; `--dataset md17`/`--dataset md22` runs one | Shijin |
 | `ml/data/datasets.py` | **Implemented.** PyTorch Geometric `Dataset` wrapper producing `Data(x, pos, edge_index, edge_attr, y=energy, force=forces)`, reads gold only | Shijin |
 | `ml/models/mpnn.py` | **Shared backbone + Phase 1** — a simple custom MPNN (Gilmer-style message passing with RBF/Gaussian-expanded distance edge features, not SchNet/PaiNN/DimeNet++) predicting total energy; forces via autograd (`F = -∂E/∂R`). Phases 2 and 3 both extend this same backbone rather than introducing a different architecture, so any difference in results is attributable to *where* stochasticity lives, not to three unrelated models | Ruturaj |
 | `ml/models/blip.py` | **Phase 2** — the Phase 1 backbone with BLIP-style input-dependent Gaussian stochasticity added to the message/update weights, evaluated via multiple stochastic forward passes | Ruturaj, with Dongxiao on calibration analysis |
@@ -183,6 +183,17 @@ have different molecule scales (MD22 atoms counts run up to 370 vs. MD17's
 
 `ml/data/preprocessing.py` owns bronze → silver → gold; `ml/data/md17.py`
 owns silver/gold → PyG graph construction at train time.
+
+Both datasets run through the same code, into separate trees:
+
+```bash
+python -m ml.data.preprocessing                 # md17 + md22
+python -m ml.data.preprocessing --dataset md22  # one dataset only
+```
+
+MD22 adds no literature-split cases — those exist only in MD17's
+CCSD/CCSD(T) sources — so all four MD22 molecules take the
+trajectory-block path.
 
 **What's actually in bronze right now** (inspected 2026-08-27 — update this
 table as the roster changes):

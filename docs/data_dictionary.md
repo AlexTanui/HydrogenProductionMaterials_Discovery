@@ -7,7 +7,9 @@ decision below is the way it is. Companion to
 implementation in `ml/data/`.
 
 **Status:** MD17 pipeline implemented and verified (9/9 bronze sources
-process cleanly end to end). MD22 is not yet covered — see §6. For
+process cleanly end to end). MD22 is now implemented through the same
+code path but **has not yet been run against the real bronze files** —
+see §5. For
 exploratory analysis of the resulting gold-stage data (distributions,
 whether the cutoff radius default is reasonable, split-integrity checks),
 see [`docs/eda.md`](eda.md).
@@ -142,29 +144,74 @@ shapes.
 - **Unknown element symbols no longer silently become atomic number 0.**
   The xyz-parsing fallback path used to default unrecognized symbols to
   `0` (not a real element) instead of failing — now raises.
+- **Bytes-typed npz metadata failed the unit check.** npz string fields
+  come back as 0-d arrays holding either `numpy.str_` or `bytes`,
+  depending on how the archive was written. `str()` on the bytes case
+  yields `"b'Ang'"`, which `validate_sample` then rejects as an
+  unexpected unit — a correct file failing a correct check. Several MD22
+  sources are written the bytes way. Fixed in `ml/data/md17.py::_as_str`.
+- **`md22_`-prefixed filenames kept the prefix as the molecule name.**
+  `_infer_molecule` stripped `^md1[78]_` only, so `md22_DHA.npz` inferred
+  the molecule `md22_DHA`. Now strips `^md(17|22)_`.
+- **A clone made without `git-lfs` failed confusingly.** The bronze paths
+  get populated with ~130-byte pointer text files, which surfaced as an
+  opaque zip/pickle error from numpy. `check_bronze_file` now detects the
+  pointer and says what to do about it.
 
 ---
 
 ## 5. Verified state
 
-Running `python -m ml.data.preprocessing` against the current bronze
-roster: **9/9 sources process successfully.** One data point worth
+**MD17 — verified against real data.** Running
+`python -m ml.data.preprocessing --dataset md17` against the current
+bronze roster: **9/9 sources process successfully.** One data point worth
 recording so it isn't mistaken for a bug later: the four CCSD/CCSD(T)
 sources (aspirin, malonaldehyde, toluene, ccsd_t-ethanol) all report
 exactly **889 train configs** after splitting — confirmed real, not a
 bug: each ships exactly 1,000 literature-train configs (a standard
 convention for that benchmark family), and `round(1000 × 0.8/0.9) = 889`.
 
+**MD22 — implemented, not yet run against the real files.** All four
+sources are wired into `MD22_SOURCES` and take the same
+bronze → silver → gold path. What has been verified is behaviour, not
+output: `tests/test_preprocessing.py` (26 cases) exercises the MD22 path
+end to end on synthetic fixtures shaped like the real files —
+370-atom systems, bytes-typed metadata, block splitting, leakage
+checks — and passes. What has *not* happened is a run against the
+actual ~300MB of MD22 bronze data. **Whoever runs it first should
+record the result here**, the way the MD17 line above does:
+
+```bash
+python -m ml.data.preprocessing --dataset md22
+```
+
+Expect `4/4`, and expect the summary table to show the scale gap that
+motivates keeping the datasets separate (MD17: 9–24 atoms, energies
+~1e5 kcal/mol; MD22: 56–370 atoms, energies up to ~1e6).
+
+No MD22 source ships a literature-standard split — MD22 papers quote a
+train-set *size* per molecule rather than distributing fixed indices —
+so all four take the trajectory-block path, and `used_literature_split`
+is `False` for every one.
+
 ---
 
 ## 6. Not yet covered
 
-- **MD22** — `data/bronze/md22/` has 4 sources (AT-AT-CG-CG, DHA,
-  buckyball-catcher, double-walled nanotube) but `ml/data/preprocessing.py`
-  only processes `md17/` right now. Same pipeline shape should apply;
-  the 370-atom nanotube may need the cutoff-radius question flagged in
-  `glossary.md` §5 resolved first (a fixed 5 Å radius is much sparser,
-  relatively, on a 370-atom system than on a 9-atom one).
+- **Deduplication.** The silver stage is described as "dedupe, unify
+  format, validate" but currently only unifies and validates — no
+  duplicate-frame detection exists. Not known to be a problem on the
+  current roster; it has simply never been checked.
+- **Cutoff radius on large MD22 systems.** A fixed 5 Å radius produces a
+  much sparser relative graph on the 370-atom nanotube than on 9-atom
+  ethanol (`glossary.md` §5). This does **not** block cleaning — graphs
+  are built later, in `ml/data/datasets.py`, not at the silver/gold stage
+  — but it must be a deliberate choice before Phase 1 training touches
+  MD22, not a default inherited from MD17.
+- **Energy normalisation across datasets.** MD22 total energies are
+  larger than MD17's by roughly an order of magnitude, and the pipeline
+  stores raw energies at every stage. Whatever normalisation training
+  applies needs to be per-dataset.
 - **Confounder/bias audit across theory levels** — `ROADMAP.md` calls
   for this as part of the data-foundation work; not yet done beyond
   keeping theory levels structurally separate.
