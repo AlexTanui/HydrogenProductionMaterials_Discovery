@@ -1,0 +1,93 @@
+# PaiNN baseline for the Phase 1 bake-off (SCRUM-52, epic SCRUM-50).
+#
+# Schema: glossary.md section 6. The `data:` and `train:` blocks are the
+# fixed experimental parameters shared by all five bake-off models and must
+# be byte-identical across their configs - only `model:` differs. A
+# benchmark table comparing models scored under different conditions is
+# worse than no table.
+#
+# Runnable as-is once ml/training/train.py lands (SCRUM-51):
+#   python -m ml.training.train    --config experiments/configs/phase1_painn.yaml
+#   python -m ml.training.evaluate --checkpoint experiments/checkpoints/phase1_painn.pt
+name: phase1_painn
+
+data:
+  dataset: md17
+  molecule: ethanol
+  theory: dft
+  # Training reads gold only, never bronze/silver. If this file is missing,
+  # run `python -m ml.data.preprocessing` - do not invent stand-in data.
+  gold_path: data/gold/md17/ethanol_dft.npz
+  cutoff_radius: 5.0          # A; must match model.cutoff_radius below
+
+  # The split is already baked into the gold file as train_idx/val_idx/
+  # test_idx (444074/55509/55509 contiguous trajectory blocks, produced
+  # deterministically by trajectory_block_split with no RNG). These three
+  # ratios record what produced it; they must NOT be used to re-derive a
+  # split at train time. Any evaluation that re-splits gold data is a bug -
+  # adjacent MD frames are near-duplicates, so a fresh split leaks
+  # near-identical structures and inflates apparent accuracy.
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+  # ethanol_dft ships no literature-standard split (unlike aspirin,
+  # malonaldehyde, toluene and CCSD(T) ethanol), so the trajectory-block
+  # split above is the one in force.
+  use_literature_split: false
+
+  # Gaussian RBF bins for the dataset's `edge_attr`. Kept at the loader
+  # default so every bake-off model receives an identical graph. PaiNN
+  # itself does not read edge_attr - see model.num_rbf below.
+  num_rbf: 16
+  seed: 42
+
+model:
+  # Extends glossary.md section 6's `mpnn | blip | graph_stochastic` enum
+  # with the SCRUM-50 bake-off candidates; resolved via ml/models/registry.py.
+  phase: painn
+  hidden_channels: 128        # PaiNN's MD17 setting
+  num_layers: 3               # message+update blocks
+  cutoff_radius: 5.0          # must equal data.cutoff_radius
+  # PaiNN's own Bessel radial basis, recomputed from `pos` inside the
+  # forward pass. Deliberately separate from data.num_rbf: the dataset's
+  # edge_attr is detached from pos (built via pos.numpy()), so a model that
+  # read it would compute forces that are not the gradient of the energy it
+  # reports. See ml/models/painn.py::predict_energy.
+  num_rbf: 20
+  max_atomic_number: 100
+  eps: 1.0e-8                 # floor inside every vector norm
+  # Phase 1 is deterministic, so these two have no meaning here. Present so
+  # the config shape matches Phase 2/3 exactly.
+  num_mc_samples: null
+  perturbation_strength: null
+
+train:
+  epochs: 200
+  batch_size: 32
+  lr: 0.0005
+  energy_loss_weight: 1.0
+  force_loss_weight: 100.0    # forces weighted far above energy, per section 6
+  patience: 20
+  device: cpu                 # no CUDA on the current dev machines
+
+  # Compute budget. The full 444,074-config train split at 200 epochs is not
+  # reachable on CPU (data loading alone is ~0.8 min/epoch before any model
+  # compute, and force training needs a double-backward pass). This caps the
+  # number of TRAINING frames used; val and test are always used whole.
+  #
+  # The subset is a deterministic stride over train_idx at seed 42 - it must
+  # be applied identically by all five bake-off models, which is what keeps
+  # the comparison fair. It does not re-split anything: every frame drawn
+  # comes from train_idx and never from val_idx or test_idx.
+  #
+  # For reference, the MD17 literature convention (PaiNN's own paper
+  # included) trains on ~1,000 configurations, so this is not an unusually
+  # small budget - it is closer to the published protocol than the full
+  # split would be.
+  train_subset: 10000
+  train_subset_seed: 42
+
+# Both outputs are gitignored and must never be committed.
+output:
+  checkpoint: experiments/checkpoints/phase1_painn.pt
+  results: experiments/results/phase1_painn.json
