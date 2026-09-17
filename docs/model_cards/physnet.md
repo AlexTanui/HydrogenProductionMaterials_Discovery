@@ -17,7 +17,7 @@
 | | |
 |---|---|
 | Implementation | **Complete** |
-| Unit tests | **Complete** — `pytest tests/test_physnet.py` |
+| Unit tests | **Complete** — 22 checks, `pytest tests/test_physnet.py` |
 | Trained checkpoint | **Not produced yet** |
 | Results | **Not produced yet** — §5 below is blank on purpose |
 
@@ -163,7 +163,7 @@ it before then spends a little of its value as a held-out set.
 
 ```bash
 python -m ml.data.preprocessing --dataset md17      # produces the gold file
-pytest tests/test_physnet.py                        # 17 checks, no data needed
+pytest tests/test_physnet.py                        # 22 checks, no data needed
 python -m ml.training.train_physnet --config experiments/configs/phase1_physnet.yaml
 ```
 
@@ -185,10 +185,35 @@ pull them.
   five orders of magnitude. Whether every bake-off entry handles this the
   same way is worth checking — if some do and some don't, the comparison
   partly measures initialisation.
-- **Unvalidated interface.** `predict_energy` / `predict_energy_and_forces`
-  come from the ticket text; no MPNN prototype exists on `main` to check
-  against. If `train.py` lands calling something else, this needs an
-  adapter.
+- **Two `predict_energy` signatures are in circulation, and they
+  disagree.** The SCRUM-50 ticket specifies
+  `predict_energy(z, edge_index, edge_attr, batch)`; the docstring of
+  `ml/models/registry.py` (SCRUM-52, `fazin` branch) specifies
+  `predict_energy(z, pos, edge_index, edge_attr, batch)`. This model
+  accepts both, telling them apart by the second argument's dtype and
+  shape. **That shim is a symptom, not a solution** — the team should
+  pick one signature and it should then be deleted.
+  `predict_energy_and_forces` is not affected: both specs agree, and
+  `ml/training/evaluate.py` calls it positionally as
+  `(batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch)`,
+  which is what this model implements and what
+  `test_evaluate_harness_call_signature` pins.
+
+- **PhysNet is not yet in `MODEL_REGISTRY`.** `ml/models/registry.py`
+  lives on the `fazin` branch and hasn't merged. Once it does, add one
+  line — `"physnet": PhysNet` — or `evaluate.py` cannot score this
+  checkpoint, and `build_model` will raise `UnknownModel`. The class
+  already satisfies the registry's `REQUIRED_INTERFACE`
+  (`predict_energy`, `predict_energy_and_forces`, `config`) and exposes
+  `cutoff_radius`, which `evaluate.py` probes by `getattr` to confirm a
+  checkpoint is scored at the radius it was trained at — under the short
+  name alone that check finds nothing and passes vacuously.
+
+- **Test file location.** `tests/ml/test_painn.py` and
+  `tests/ml/test_evaluate.py` sit under `tests/ml/` on the `fazin`
+  branch; this one is at `tests/test_physnet.py`, matching what was on
+  `main` at the time. Worth aligning on one convention before four more
+  test files land in two places.
 - **Undocumented in the project spec.** `glossary.md` §6 enumerates
   `mpnn | blip | graph_stochastic` only, and neither it nor `ROADMAP.md`
   mentions a five-model bake-off. The config here sets `phase: physnet`,

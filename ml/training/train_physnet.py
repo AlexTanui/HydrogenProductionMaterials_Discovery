@@ -66,6 +66,46 @@ def make_loaders(cfg, limit_train=None, limit_val=None):
             DataLoader(val, batch_size=bs, shuffle=False))
 
 
+def save_checkpoint_compat(path, model, cfg, epoch, val_loss):
+    """Writes the checkpoint shape ml/models/registry.py defines.
+
+    That contract - phase / model_config / state_dict / data / train - is
+    what ml/training/evaluate.py reads, so a checkpoint in any other shape
+    cannot be scored by the shared harness, which is the only thing that
+    produces comparable bake-off numbers.
+
+    `registry.py` lives on the `fazin` branch (SCRUM-52) and has not
+    merged to main yet, so it is imported opportunistically: use
+    `save_checkpoint` when present, and otherwise write the identical
+    dict by hand. Once it merges, delete the fallback and always call it.
+    """
+    payload = {
+        "phase": "physnet",
+        "model_config": model.config(),
+        "state_dict": model.state_dict(),
+        "data": {
+            "gold_path": cfg["data"]["gold_path"],
+            "molecule": cfg["data"]["molecule"],
+            "theory": cfg["data"]["theory"],
+            "cutoff_radius": cfg["data"]["cutoff_radius"],
+            "num_rbf": cfg["model"].get("num_rbf", 16),
+        },
+        "train": {"epoch": epoch, "val_loss": val_loss, "config_name": cfg["name"],
+                  "trained_by": "ml/training/train_physnet.py (scaffolding, not train.py)"},
+    }
+    try:
+        from ml.models.registry import MODEL_REGISTRY, save_checkpoint
+        if "physnet" in MODEL_REGISTRY:
+            return save_checkpoint(path, model, "physnet", payload["data"], payload["train"])
+        print("NOTE: registry.py is present but PhysNet is not in MODEL_REGISTRY - "
+              "add `\"physnet\": PhysNet` there so evaluate.py can score this checkpoint.")
+    except ImportError:
+        pass
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    torch.save(payload, path)
+    return path
+
+
 def batch_forward(model, data, device):
     z = data.x.reshape(-1).long().to(device)
     pos = data.pos.to(device)
@@ -178,8 +218,7 @@ def main(argv=None):
         marker = ""
         if val_loss < best:
             best, bad_epochs, marker = val_loss, 0, "  *best"
-            torch.save({"model_state_dict": model.state_dict(), "config": cfg,
-                        "epoch": epoch, "val_loss": val_loss}, ckpt_path)
+            save_checkpoint_compat(ckpt_path, model, cfg, epoch, val_loss)
         else:
             bad_epochs += 1
         print(f"epoch {epoch:>4}  train {train_loss:>12.4f}  val {val_loss:>12.4f}{marker}")
@@ -189,7 +228,7 @@ def main(argv=None):
             break
     train_seconds = time.time() - t0
 
-    model.load_state_dict(torch.load(ckpt_path, map_location=device)["model_state_dict"])
+    model.load_state_dict(torch.load(ckpt_path, map_location=device, weights_only=False)["state_dict"])
 
     t1 = time.time()
     val_metrics = evaluate(model, val_loader, cfg, device)

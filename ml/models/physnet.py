@@ -229,6 +229,15 @@ class PhysNet(nn.Module):
         self.cutoff = cutoff
         self.max_z = max_z
 
+        # ml/training/evaluate.py probes `cutoff_radius` with getattr to
+        # confirm a checkpoint is being scored at the radius it was
+        # trained at. Expose that name as well as the short one, or the
+        # check silently finds nothing and passes vacuously.
+        self.cutoff_radius = cutoff
+        self.num_modules = num_modules
+        self.num_layers = num_layers
+        self.num_residual_output = num_residual_output
+
         self.embedding = nn.Embedding(max_z + 1, hidden_channels)
 
         self.modules_interaction = nn.ModuleList(
@@ -242,6 +251,24 @@ class PhysNet(nn.Module):
         self.atom_scale = nn.Parameter(torch.ones(max_z + 1))
         shift = torch.zeros(max_z + 1) if atom_energy_shift is None else atom_energy_shift.clone()
         self.atom_shift = nn.Parameter(shift)
+
+    def config(self) -> dict:
+        """Constructor kwargs, for ml/models/registry.py::save_checkpoint.
+
+        Part of the registry's REQUIRED_INTERFACE. A checkpoint carries
+        this so evaluation rebuilds the exact model that wrote it instead
+        of guessing hyperparameters from the config file that happens to
+        be lying around at scoring time.
+        """
+        return {
+            "hidden_channels": self.hidden_channels,
+            "num_modules": self.num_modules,
+            "num_layers": self.num_layers,
+            "num_rbf": self.num_rbf,
+            "cutoff": self.cutoff,
+            "max_z": self.max_z,
+            "num_residual_output": self.num_residual_output,
+        }
 
     @torch.no_grad()
     def init_shift_from_energies(self, z: torch.Tensor, energies: torch.Tensor) -> None:
@@ -278,16 +305,33 @@ class PhysNet(nn.Module):
         out.index_add_(0, batch, atomic)
         return out
 
-    def predict_energy(self, z: torch.Tensor, edge_index: torch.Tensor,
-                       edge_attr: torch.Tensor, batch: Optional[torch.Tensor] = None
-                       ) -> torch.Tensor:
+    def predict_energy(self, z: torch.Tensor, *args) -> torch.Tensor:
         """Energy only, from the precomputed edge features.
 
-        Use for evaluation and inference timing. It does **not** support
-        force extraction: ``edge_attr`` has no gradient path to
-        positions, so ``-dE/dpos`` computed from this output is exactly
-        zero. Use ``predict_energy_and_forces`` whenever forces matter.
+        Accepts **both** call shapes currently in circulation, because
+        the two specs disagree and this model has to satisfy whichever
+        the caller uses:
+
+            predict_energy(z, edge_index, edge_attr, batch)        # SCRUM-50 ticket
+            predict_energy(z, pos, edge_index, edge_attr, batch)   # registry docstring
+
+        They are told apart by the second argument: ``pos`` is floating
+        point of shape [N, 3], ``edge_index`` is integer of shape [2, E].
+        This is a compatibility shim, not a design - **the team should
+        settle on one signature** and it should be deleted. Raised in the
+        model card's known-risks section.
+
+        Force extraction is not supported from this path: ``edge_attr``
+        has no gradient path to positions, so ``-dE/dpos`` taken from
+        this output is exactly zero. Use ``predict_energy_and_forces``
+        whenever forces matter.
         """
+        if args and torch.is_floating_point(args[0]) and args[0].dim() == 2 and args[0].shape[1] == 3:
+            _pos, edge_index, edge_attr, *rest = args      # registry form
+        else:
+            edge_index, edge_attr, *rest = args            # ticket form
+        batch = rest[0] if rest else None
+
         z = z.reshape(-1).long()
         cut = torch.ones(edge_index.shape[1], device=edge_attr.device, dtype=edge_attr.dtype)
         atomic = self._atomic_energies(z, edge_attr, cut, edge_index)

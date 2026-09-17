@@ -86,8 +86,62 @@ def test_predict_energy_returns_one_value_per_graph():
     model = make_model()
     z, pos, edge_index = make_molecule()
     rbf, _ = rbf_from_positions(pos, edge_index)
-    energy = model.predict_energy(z, edge_index, rbf, batch=None)
+    energy = model.predict_energy(z, edge_index, rbf, None)
     assert energy.shape == (1,)
+
+
+def test_predict_energy_accepts_both_circulating_signatures():
+    """SCRUM-50's ticket says predict_energy(z, edge_index, edge_attr,
+    batch); ml/models/registry.py's docstring says
+    predict_energy(z, pos, edge_index, edge_attr, batch). Until the team
+    settles on one, this model answers to both and gives the same
+    number."""
+    model = make_model(seed=13)
+    z, pos, edge_index = make_molecule(seed=13)
+    rbf, _ = rbf_from_positions(pos, edge_index)
+
+    ticket_form = model.predict_energy(z, edge_index, rbf, None)
+    registry_form = model.predict_energy(z, pos, edge_index, rbf, None)
+    assert torch.allclose(ticket_form, registry_form, atol=1e-12)
+
+
+def test_exposes_the_registry_required_interface():
+    """ml/models/registry.py::build_model refuses to construct a model
+    missing any of these, so a mis-registered class fails where the cause
+    is obvious rather than deep inside an eval loop."""
+    for name in ("predict_energy", "predict_energy_and_forces", "config"):
+        assert hasattr(PhysNet, name), f"registry requires {name}()"
+
+
+def test_config_round_trips_through_the_constructor():
+    """A checkpoint stores config() and evaluation rebuilds from it, so it
+    must reconstruct the identical model rather than a similar one."""
+    model = make_model(seed=14, hidden_channels=48, num_modules=2, num_layers=3)
+    rebuilt = PhysNet(**model.config()).double()
+    assert rebuilt.config() == model.config()
+    assert sum(p.numel() for p in rebuilt.parameters()) == sum(p.numel() for p in model.parameters())
+
+
+def test_exposes_cutoff_radius_for_the_evaluate_harness():
+    """ml/training/evaluate.py probes getattr(model, 'cutoff_radius') to
+    confirm a checkpoint is scored at the radius it was trained at. Under
+    the short name alone that check finds nothing and passes vacuously."""
+    model = make_model(cutoff=4.5)
+    assert getattr(model, "cutoff_radius", None) == 4.5
+
+
+def test_evaluate_harness_call_signature():
+    """evaluate.py calls predict_energy_and_forces positionally with
+    (batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch),
+    where x is [N, 1]. Exercised exactly as written there."""
+    model = make_model(seed=15)
+    z, pos, edge_index = make_molecule(n_atoms=7, seed=15)
+    x = z.reshape(-1, 1)  # PyG carries atomic number as a column
+    edge_attr, _ = rbf_from_positions(pos, edge_index)
+    batch = torch.zeros(7, dtype=torch.long)
+
+    energy, forces = model.predict_energy_and_forces(x, pos, edge_index, edge_attr, batch)
+    assert energy.shape == (1,) and forces.shape == (7, 3)
 
 
 def test_predict_energy_and_forces_shapes():
