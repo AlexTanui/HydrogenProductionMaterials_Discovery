@@ -131,6 +131,8 @@ one way — never add a dependency in the reverse direction.
 | `docs/api.md` | Expanded version of §4, kept in sync as endpoints are built | Alex |
 | `docs/technical_report.md` | Deliverable 5: final technical report, built around the Three-Phase Technical Summary table | Dongxiao, assembled with input from all |
 | `docs/model_cards/` | One card per checkpoint (one per phase, minimum) | Ruturaj / Fazin |
+| `docs/sprint_process.md` | **Implemented.** Course-assessment doc: sprint calendar (5 fortnightly sprints mapped onto this roadmap), Jira/hours setup, sprint review + retro cadence | Alex |
+| `docs/retrospectives/` | **Implemented (template).** One retrospective per sprint, copied from `TEMPLATE.md` | Whole team, after each Sprint Review |
 
 ### `tests/` — owner: Fazin
 

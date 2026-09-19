@@ -22,6 +22,12 @@ contracts, data schema, experiment config schema, and terminology.
 sequencing, week-by-week ownership, integration checkpoints, per-phase
 definition of done, and the fallback order if a track falls behind.
 
+**Course assessment: [docs/sprint_process.md](docs/sprint_process.md)** —
+how the 10-week plan maps onto the unit's 5 fortnightly sprints, the Jira
+setup this requires (hour estimates, burnup charts, product/sprint
+backlogs), and the ceremony cadence (sprint review + retrospective) each
+sprint.
+
 [CLAUDE.md](CLAUDE.md) has the condensed command/convention reference used
 by Claude Code once implementation begins.
 
