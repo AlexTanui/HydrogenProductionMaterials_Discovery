@@ -133,20 +133,41 @@ model reads `edge_attr` on the force path has silently-zero forces.
 
 ## 5. Results
 
-**Not yet produced.** Fill from `experiments/results/phase1_physnet.json`.
+**Subset run — not a full-dataset result.** See the scope note below the table.
 
 | Metric | Value |
 |---|---|
-| Energy MAE (kcal/mol) | — |
-| Energy RMSE (kcal/mol) | — |
-| Force MAE (kcal/mol/Å) | — |
-| Force RMSE (kcal/mol/Å) | — |
-| Training time | — |
-| Inference time (ms/config) | — |
-| Parameters | — |
-| Epochs run | — |
-| Hardware | — |
-| Trained by | `train.py` / `train_physnet.py` — **state which** |
+| Energy MAE (kcal/mol) | 2.082 total · 0.231 per atom |
+| Energy RMSE (kcal/mol) | 2.104 total · 0.234 per atom |
+| Force MAE (kcal/mol/Å) | 0.711 per component · 1.430 per atom norm |
+| Force RMSE (kcal/mol/Å) | 1.094 per component · 1.895 per atom norm |
+| Training time | 3425 s |
+| Inference time (ms/config) | 2.9603 ms |
+| Parameters | 808,746 |
+| Epochs run | 20 |
+| Hardware | CPU (no CUDA device available) |
+| Trained by | `ml/training/train_physnet.py` (standalone script — the shared `ml/training/train.py` does not exist yet) |
+
+Scored on 2,000 validation configs. Both conventions are reported for each
+quantity because `ml/utils/metrics.py` produces both, and a bake-off table
+mixing per-atom with total energy — or per-component with atom-norm force —
+would compare different quantities under one column heading.
+
+**Scope of this result.** Trained on **20,000 of 444,074** train configs
+(4.5%) for 20 epochs, on CPU. A full-dataset run was not possible: at a
+measured 0.22 s/batch that is ~57 minutes per epoch, so roughly 8 days for
+the config's 200 epochs. `experiments/results/phase1_physnet.json` records
+the subset explicitly.
+
+These numbers are therefore **not comparable** with any bake-off entry
+trained on the full dataset. For the comparison to mean anything, every
+entry needs the same training budget — same configs, same epochs, and
+ideally the same machine, since training time is itself a reported metric.
+
+For context, the same model on a 2,000-config, 2-epoch smoke run gave
+Energy MAE 18.44 and Force MAE 6.81 — so 10× the data and 10× the epochs
+improved both by roughly 9×. The model is still far from converged, and a
+longer run should improve these numbers substantially.
 
 **Data (fixed across the bake-off):** `data/gold/md17/ethanol_dft.npz`,
 9 atoms, 555,092 configs, contiguous 80/10/10 trajectory-block split
@@ -156,7 +177,6 @@ model reads `edge_attr` on the force path has silently-zero forces.
 Report validation numbers until the bake-off's final evaluation. The test
 split stays untouched — it is 55,509 configs used once, and every look at
 it before then spends a little of its value as a held-out set.
-
 ---
 
 ## 6. Reproducing
