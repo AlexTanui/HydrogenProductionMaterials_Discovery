@@ -1,0 +1,29 @@
+data:
+  cutoff_radius: 5.0
+  dataset: md17
+  gold_path: data/gold/md17/ethanol_ccsd_t.npz
+  max_train_samples: 889
+  max_val_samples: 111
+  molecule: ethanol
+  seed: 42
+  theory: ccsd_t
+model:
+  basis_emb_size: 4
+  hidden_channels: 16
+  int_emb_size: 8
+  name: dimenetplusplus
+  num_blocks: 1
+  num_radial: 3
+  num_spherical: 3
+  out_channels: 1
+  out_emb_channels: 16
+name: dongxiao_dimenet_ethanol_lr1e4_200
+train:
+  batch_size: 4
+  device: cpu
+  energy_loss_weight: 1.0
+  epochs: 200
+  force_loss_weight: 100.0
+  lr: 0.0001
+  num_threads: 2
+  output_dir: experiments/results/dongxiao_dimenet_ethanol_lr1e4_200
