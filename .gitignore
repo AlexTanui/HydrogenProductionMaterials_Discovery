@@ -37,6 +37,9 @@ data/bronze/md22/md22_AT-AT-CG-CG.zip
 data/bronze/md22/md22_double-walled_nanotube.zip
 experiments/results/*
 !experiments/results/.gitkeep
+# TensorBoard event files only. experiments/runs/ itself stays tracked: it
+# will hold run records for SCRUM-48 provenance.
+experiments/runs/**/events.out.tfevents.*
 *.pt
 *.pth
 *.ckpt
