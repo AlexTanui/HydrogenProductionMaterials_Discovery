@@ -1,0 +1,40 @@
+# PhysNet - Phase 1 bake-off entry (SCRUM-50). Owner: Shijin Mathew.
+#
+# Schema: glossary.md section 6. The `data:` section and the two loss
+# weights are FIXED across all five bake-off models - do not edit them
+# here, or the comparison stops being a comparison.
+name: phase1_physnet
+
+data:
+  dataset: md17
+  molecule: ethanol
+  theory: dft
+  gold_path: data/gold/md17/ethanol_dft.npz
+  cutoff_radius: 5.0          # must match ml/data/md17.py::build_graph
+  train_split: 0.8            # contiguous trajectory blocks, never random
+  val_split: 0.1
+  test_split: 0.1
+  use_literature_split: false # ethanol_dft ships no literature split
+  seed: 42
+
+model:
+  # glossary.md section 6 currently enumerates `mpnn | blip |
+  # graph_stochastic`. The bake-off adds four more architectures and the
+  # schema has not caught up - raise it with Ruturaj rather than letting
+  # each model invent its own key.
+  phase: physnet
+  hidden_channels: 128        # feature width F
+  num_modules: 3              # stacked interaction+output modules
+  num_layers: 2               # interaction blocks per module
+  num_rbf: 16                 # must match ml/data/md17.py::build_graph
+  # PhysNet short-range term only. Electrostatic and dispersion terms are
+  # omitted deliberately - see docs/model_cards/physnet.md.
+
+train:
+  epochs: 200
+  batch_size: 32
+  lr: 0.0005
+  energy_loss_weight: 1.0     # FIXED across the bake-off
+  force_loss_weight: 100.0    # FIXED across the bake-off
+  patience: 20
+  device: cuda                # set to cpu only if you have no GPU - see the model card

@@ -21,6 +21,12 @@ Phase 3 is informed by findings from both — but data pipeline work,
 benchmarking-harness design, literature review, and platform work can all
 start in week 1 in parallel, against the contracts in `glossary.md`.
 
+**Course assessment:** the plan below is organized into this project's 7
+Jira sprints (Sprint 0 – Sprint 6, per the board's actual numbering) —
+see [docs/sprint_process.md](docs/sprint_process.md) for exact dates, the
+Jira setup this requires, and the sprint review/retro cadence graded
+separately from the technical deliverables.
+
 ---
 
 ## 1. Phase overview
@@ -39,29 +45,33 @@ literature review and Phase 1/2 results, not fixed in advance.
 
 ---
 
-## 2. Week-by-week plan
+## 2. Sprint-by-sprint plan
 
-| Week | Shijin — data | Ruturaj — model | Dongxiao — research/eval | Fazin — QA/benchmarking | Alex — platform |
+Dates for each sprint: [docs/sprint_process.md](docs/sprint_process.md) §1
+(kept there, not duplicated here, so the two docs can't drift apart).
+
+| Sprint | Shijin — data | Ruturaj — model | Dongxiao — research/eval | Fazin — QA/benchmarking | Alex — platform |
 |---|---|---|---|---|---|
-| 1–2 | Bronze → silver: dedupe (aspirin/malonaldehyde/toluene/ccsd_t-ethanol format duplicates, azobenzene/paracetamol/AT-AT-CG-CG npz-vs-zip redundancy), unify format, tag every file with molecule + theory level (see `glossary.md` §3 inventory) | Phase 1 Gilmer-style MPNN backbone (RBF-expanded distance edges) — shared by Phases 2 and 3, not rebuilt per phase | Literature review: Gilmer 2017, Schütt 2017 (SchNet) — Phase 1 grounding; start BLIP paper | Define eval protocol; energy/force MAE metric implementation | Scaffold backend/frontend against the MD17-based contracts in `glossary.md` §4–5 |
-| 3–4 | Silver → gold: apply trajectory-block splits (preserving the literature-standard splits that ship with aspirin/malonaldehyde/toluene/ccsd_t-ethanol, per §5); validate no train/test leakage | Train Phase 1 baseline; validate autograd forces (finite-difference check against `F = -∂E/∂R`) | Finish BLIP paper deep-dive; document the core mechanism to reproduce | Regression-test Phase 1 reproducibility; benchmark harness skeleton | Wire `POST /predictions` to the real Phase 1 checkpoint (replace stub) |
-| 5–6 | Extend gold pipeline to the larger MD22 molecules if scope allows (stretch — 370-atom nanotube needs the cutoff-radius question from `glossary.md` §5 resolved first) | Implement Phase 2 (BLIP-style stochastic weights); multiple MC forward passes for uncertainty | Implement/validate UQ metrics (ECE, uncertainty–error Spearman correlation); calibration analysis | Extend benchmark harness with UQ metrics; run Phase 1 vs Phase 2 comparison | Wire uncertainty into `/predictions` + `/benchmarks`; update Predict/Benchmarks pages |
-| 7–8 | — | Implement Phase 3 (graph-space stochasticity), per the team's chosen approach | Evaluate Phase 3 vs Phase 1/2; statistical analysis; start writing up findings | Run full three-phase benchmark suite; verify a fair comparison protocol (same splits, same MC sample counts) | Finalize dashboard's three-phase comparison view |
-| 9 | **Integration week — everyone.** Wire all three phases into `/benchmarks`; end-to-end test data → model → metrics → dashboard | | | | |
-| 10 | **Buffer + report/demo polish.** Assume integration week surfaces at least one real bug — this week absorbs it, not the deadline | | | | |
+| 0 — Setup | Bronze source inventory (see `glossary.md` §3) | — | — | — | Scaffold backend/frontend against the MD17-based contracts in `glossary.md` §4–5; draft `glossary.md`/`ROADMAP.md` |
+| 1 — Data pipeline | Bronze → silver → gold: dedupe (aspirin/malonaldehyde/toluene/ccsd_t-ethanol format duplicates, azobenzene/paracetamol/AT-AT-CG-CG npz-vs-zip redundancy), unify format, tag every file with molecule + theory level, apply trajectory-block + literature-standard splits (§5); gold-stage EDA | — | Literature review: Gilmer 2017, Schütt 2017 (SchNet) — Phase 1 grounding; start BLIP paper | Define eval protocol; energy/force MAE metric implementation | — |
+| 2 — Phase 1 bake-off | PhysNet baseline ([SCRUM-55](https://hydrogecapstone.atlassian.net/browse/SCRUM-55)) | MPNN baseline + shared `ml/config.py`/`ml/training/train.py` ([SCRUM-51](https://hydrogecapstone.atlassian.net/browse/SCRUM-51)) | DimeNet++ baseline ([SCRUM-54](https://hydrogecapstone.atlassian.net/browse/SCRUM-54)) | PaiNN baseline + shared `ml/utils/metrics.py`/`ml/training/evaluate.py` ([SCRUM-52](https://hydrogecapstone.atlassian.net/browse/SCRUM-52)) | SchNet baseline ([SCRUM-53](https://hydrogecapstone.atlassian.net/browse/SCRUM-53)) |
+| 3 — Phase 1 wrap-up | Support/data QA; review model cards | Start BLIP paper deep-dive; document the core mechanism to reproduce | Assemble the Phase 1 comparison table; statistical write-up of the winning architecture | Finalize `ml/training/benchmark.py`, combining all 5 `results/*.json` into one table | Wire `POST /predictions` to the real, winning Phase 1 checkpoint (replace stub) |
+| 4 — Phase 2 (BLIP) | Extend gold pipeline to the larger MD22 molecules if scope allows (stretch — 370-atom nanotube needs the cutoff-radius question from `glossary.md` §5 resolved first) | Implement Phase 2 (BLIP-style stochastic weights); multiple MC forward passes for uncertainty | Implement/validate UQ metrics (ECE, uncertainty–error Spearman correlation); calibration analysis | Extend benchmark harness with UQ metrics; run Phase 1 vs Phase 2 comparison | Wire uncertainty into `/predictions` + `/benchmarks`; update Predict/Benchmarks pages |
+| 5 — Phase 3 | — | Implement Phase 3 (graph-space stochasticity), per the team's chosen approach | Evaluate Phase 3 vs Phase 1/2; statistical analysis; start writing up findings | Run full three-phase benchmark suite; verify a fair comparison protocol (same splits, same MC sample counts) | Finalize dashboard's three-phase comparison view |
+| 6 — Integration + buffer | **Everyone.** Wire all three phases into `/benchmarks`; end-to-end test data → model → metrics → dashboard; absorb integration bugs; finalize `docs/technical_report.md` and demo polish | | | | |
 
 ---
 
 ## 3. Integration checkpoints
 
-- **End of week 2:** MD17 data pipeline + splitting strategy frozen. Every
-  other track builds against it from here.
-- **End of week 4:** Phase 1 produces real energy/force predictions.
-  Alex swaps the backend off the stub predictor here.
-- **End of week 6:** Phase 2 uncertainty is calibrated and validated by
+- **End of Sprint 1:** MD17 data pipeline + splitting strategy frozen.
+  Every other track builds against it from here.
+- **End of Sprint 3:** Phase 1 produces real energy/force predictions from
+  a picked winner. Alex swaps the backend off the stub predictor here.
+- **End of Sprint 4:** Phase 2 uncertainty is calibrated and validated by
   Fazin/Dongxiao. This is the credibility gate before Phase 3 comparisons
   mean anything.
-- **Week 9:** full three-phase integration, as above.
+- **Sprint 6:** full three-phase integration, as above.
 
 ---
 
@@ -83,7 +93,7 @@ literature review and Phase 1/2 results, not fixed in advance.
 
 ---
 
-## 5. Fallback order (decide now, not in week 8)
+## 5. Fallback order (decide now, not in Sprint 5)
 
 1. **Phase 3 scope first** — the proposal itself flags this as the most
    open-ended phase; fall back to the simplest variant (e.g. plain node

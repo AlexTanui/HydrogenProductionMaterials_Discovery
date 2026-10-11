@@ -1,0 +1,24 @@
+{
+  "checkpoint_loaded_strictly": true,
+  "selected_epoch": 200,
+  "recomputed_validation": {
+    "energy_mae": 1.815056636526778,
+    "energy_rmse": 1.880483582170917,
+    "force_mae": 1.1485051014148318,
+    "force_rmse": 1.5815834405172682
+  },
+  "absolute_differences_from_training_log": {
+    "energy_mae": 0.0,
+    "energy_rmse": 0.0,
+    "force_mae": 0.0,
+    "force_rmse": 0.0
+  },
+  "original_gold_and_source_hashes_unchanged": true,
+  "verified_source_hashes": {
+    "data/gold/md17/ethanol_ccsd_t.npz": "8e6571e1c0f0ac5a4fbab8a3236c26abff0095f54772866ad6ffa7f525deb441",
+    "ml/training/train_dimenet.py": "71776e9082252267557a71b8e7172c4993b9f9269a0ea7efd1ce8c5f0d5261c9",
+    "ml/models/dimenet.py": "ad9123f0019353f9c181e44926fb6eaa99eb721ffe5390d7043c6f9a381026e4",
+    "ml/data/datasets.py": "865b8fb8f52485cce9162144d0b79e76a81bc2223e6b8fd2ea4ee0b395794d8e"
+  },
+  "test_evaluated": false
+}

@@ -1,0 +1,28 @@
+name: phase1_baseline
+
+data:
+  dataset: md17
+  molecule: ethanol
+  theory: dft
+  gold_path: data/gold/md17/ethanol_dft.npz
+  cutoff_radius: 5.0
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+  use_literature_split: false
+  seed: 42
+
+model:
+  phase: mpnn
+  hidden_channels: 128
+  num_layers: 4
+  num_rbf: 50
+
+train:
+  epochs: 200
+  batch_size: 32
+  lr: 0.0005
+  energy_loss_weight: 1.0
+  force_loss_weight: 100.0
+  patience: 20
+  device: cpu

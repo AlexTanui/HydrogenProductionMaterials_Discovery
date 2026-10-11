@@ -1,0 +1,30 @@
+{
+  "scope": "Training-budget ablation; validation-only comparison",
+  "old_best_epoch": 100,
+  "new_best_epoch": 200,
+  "old_validation": {
+    "energy_mae": 1.634225703843005,
+    "energy_rmse": 1.7499916430196756,
+    "force_mae": 1.5637693169005005,
+    "force_rmse": 2.1782891980364436
+  },
+  "new_validation": {
+    "energy_mae": 1.815056636526778,
+    "energy_rmse": 1.880483582170917,
+    "force_mae": 1.1485051014148318,
+    "force_rmse": 1.5815834405172682
+  },
+  "relative_reduction_percent": {
+    "energy_mae": -11.065236108974137,
+    "energy_rmse": -7.456717846153406,
+    "force_mae": 26.555337222548353,
+    "force_rmse": 27.39332123838555
+  },
+  "selection_score_old": 477.55685377886397,
+  "selection_score_new": 253.67683643465827,
+  "first_100_epochs_max_absolute_metric_difference": 0.0,
+  "same_data_model_seed_optimizer": true,
+  "test_evaluated": false,
+  "gold_sha256": "8e6571e1c0f0ac5a4fbab8a3236c26abff0095f54772866ad6ffa7f525deb441",
+  "new_checkpoint_sha256": "861ce3d11d8cf24fe79feb2e393c3738a37f9bff5bb206c5180674f72c221ba0"
+}

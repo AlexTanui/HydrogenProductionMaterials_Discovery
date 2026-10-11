@@ -1,0 +1,39 @@
+name: phase1_schnet
+data:
+  dataset: md17
+  molecule: ethanol
+  theory: dft
+  gold_path: data/gold/md17/ethanol_dft.npz
+  cutoff_radius: 5.0
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+  use_literature_split: false
+  seed: 42
+model:
+  # NOTE: ml/config.py's ModelConfig (glossary.md §6) only has a `phase`
+  # field (mpnn | blip | graph_stochastic) for the Phase 1/2/3 UQ axis -
+  # there's no field yet for *which architecture* within Phase 1's
+  # bake-off (mpnn | schnet | painn | dimenet_pp | physnet). Added `name`
+  # here for that; ml/config.py will need it once someone wires the
+  # bake-off through the shared loader. Flagging in SCRUM-53 rather than
+  # changing ml/config.py myself - that's Ruturaj's file.
+  phase: mpnn
+  name: schnet
+  hidden_channels: 64
+  num_layers: 3
+  num_rbf: 16
+train:
+  epochs: 200
+  # 32 is the schema default (glossary.md §6) but is needlessly small for
+  # a 9-atom molecule on CPU - each batch is tiny either way, so a bigger
+  # batch just means fewer, more vectorized steps per epoch. Batch size
+  # isn't one of the fields the bake-off requires to match across
+  # architectures (only data/split/targets/eval are) so tuning it here is
+  # fair game.
+  batch_size: 256
+  lr: 0.0005
+  energy_loss_weight: 1.0
+  force_loss_weight: 100.0
+  patience: 20
+  device: cpu
