@@ -146,12 +146,13 @@ class _MessageBlock(nn.Module):
             nn.SiLU(),
             nn.Linear(hidden, 3 * hidden),
         )
-        # Maps the radial basis to per-channel filter weights. Biasless,
-        # following the reference implementation, so the filter is a pure
-        # function of the radial basis and carries no distance-independent
-        # floor. Note this is *not* what makes the potential continuous at
-        # the cutoff - `envelope` multiplies this product afterwards and
-        # would zero a bias too. Continuity is the envelope's job alone.
+        # Maps the radial basis to per-channel filter weights. Biasless by
+        # choice, so the filter is a pure function of the radial basis and
+        # carries no distance-independent floor. This departs from the
+        # schnetpack reference, whose filter_net is an `snn.Dense` with its
+        # default zero-initialised bias. The difference is harmless: in both,
+        # `envelope` multiplies this product afterwards and would zero a bias
+        # at the cutoff too. Continuity is the envelope's job alone.
         self.filter_net = nn.Linear(num_rbf, 3 * hidden, bias=False)
 
     def forward(
