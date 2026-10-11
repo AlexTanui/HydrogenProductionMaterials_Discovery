@@ -6,7 +6,8 @@
 # benchmark table comparing models scored under different conditions is
 # worse than no table.
 #
-# Runnable as-is once ml/training/train.py lands (SCRUM-51):
+# Not runnable yet: ml/training/train.py must first support PaiNN (see
+# docs/reviews/scrum-52-painn-review.md, H1). Once it does:
 #   python -m ml.training.train    experiments/configs/phase1_painn.yaml
 #   python -m ml.training.evaluate --checkpoint experiments/checkpoints/phase1_painn.pt
 name: phase1_painn
