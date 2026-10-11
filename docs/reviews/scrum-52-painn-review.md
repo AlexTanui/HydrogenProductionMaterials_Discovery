@@ -32,6 +32,7 @@ PaiNN has never been trained, so no benchmark number exists for it yet.
 | H4: `evaluate.py` re-enables grad around the model call | `abdcb17` |
 | `painn.py` filter-bias comment corrected (comment only) | `4d19ce7` |
 | H8: run instruction in `phase1_painn.yaml` corrected | `9047f8e` |
+| H8: `phase1_painn.yaml` header now says the config needs `train.py` support for PaiNN first (H1) | `7f81870` |
 | H9: two stray files removed; TensorBoard event files ignored under `experiments/runs/` | `8cff88f` |
 
 Full suite after these commits: 172 passed, 14 skipped, plus 3 errors in
@@ -225,10 +226,10 @@ decision (one shared `train.py` vs per-model trainers).
 - `train.py` sizes the dataset's `edge_attr` from `model.num_rbf` ([:65](../../ml/training/train.py#L65)), while `evaluate.py` uses the checkpoint's `data.num_rbf` ([:156](../../ml/training/evaluate.py#L156)): two sources for one value.
 - *Fix:* remove the key, or add `num_rbf` to `DataConfig` and use it at `train.py:65`.
 
-### H8. Wrong run instruction in the PaiNN config (fixed, `9047f8e`)
+### H8. Wrong run instruction in the PaiNN config (fixed, `9047f8e`, `7f81870`)
 
 - [phase1_painn.yaml:10](../../experiments/configs/phase1_painn.yaml#L10) showed `--config`, but `train.py` takes the config path positionally ([train.py:142](../../ml/training/train.py#L142)).
-- Still open: line 9 says the config is "Runnable as-is once ml/training/train.py lands". `train.py` has landed and still cannot load it (H1).
+- Line 9 said the config was "Runnable as-is once ml/training/train.py lands", but `train.py` has landed and still cannot load it (H1). It now says the config needs `train.py` support for PaiNN first and points here (`7f81870`).
 
 ### H9. Stray files in commit `526ab8f` (fixed, `8cff88f`)
 
@@ -268,7 +269,7 @@ will hold SCRUM-48 run records.
 |---|---|---|---|
 | 1 | `enable_grad` around the model call in `evaluate.py` (H4) | No | Done, `abdcb17` |
 | 2 | Correct the filter-bias comment in `painn.py` | No | Done, `4d19ce7` |
-| 3 | Correct the run instruction in the PaiNN config (H8) | No | Done, `9047f8e` (line 9 still open) |
+| 3 | Correct the run instruction in the PaiNN config (H8) | No | Done, `9047f8e` and `7f81870` |
 | 4 | Remove the stray files; ignore TensorBoard event files (H9) | No | Done, `8cff88f` |
 | 5 | Remove `data.num_rbf`, or add it to `DataConfig` and use it at `train.py:65` (H7) | No | Open |
 | 6 | Add `config()` to MPNN and SchNet; register all four models (H5) | No | Open, team decision |
