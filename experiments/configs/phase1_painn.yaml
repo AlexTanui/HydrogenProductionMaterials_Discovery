@@ -7,7 +7,7 @@
 # worse than no table.
 #
 # Runnable as-is once ml/training/train.py lands (SCRUM-51):
-#   python -m ml.training.train    --config experiments/configs/phase1_painn.yaml
+#   python -m ml.training.train    experiments/configs/phase1_painn.yaml
 #   python -m ml.training.evaluate --checkpoint experiments/checkpoints/phase1_painn.pt
 name: phase1_painn
 
