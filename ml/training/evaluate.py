@@ -185,16 +185,19 @@ def evaluate_checkpoint(
     n_batches = 0
     wall_start = time.perf_counter()
 
-    # no_grad for the loop; the model re-enables grad internally for the
-    # F = -dE/dR pass, which is the only place a graph is needed.
+    # no_grad for the loop, but grad back on around the model call: forces are
+    # F = -dE/dR, so that call is the one place a graph is needed. Not every
+    # model re-enables grad internally - MPNN and SchNet do not, and raise
+    # under no_grad - and evaluation must not depend on which ones do.
     with torch.no_grad():
         for batch in loader:
             batch = batch.to(torch_device)
 
             model_start = time.perf_counter()
-            energy, forces = model.predict_energy_and_forces(
-                batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch
-            )
+            with torch.enable_grad():
+                energy, forces = model.predict_energy_and_forces(
+                    batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch
+                )
             if torch_device.type == "cuda":
                 torch.cuda.synchronize()
             model_seconds += time.perf_counter() - model_start
