@@ -2,9 +2,19 @@
 
 Reads `ml.config.ExperimentConfig` from a YAML file (glossary.md §6) and
 dispatches to the model for `config.model.phase`, so no phase choice is ever
-hardcoded here - see CLAUDE.md's three-phase-plan note. Only "mpnn" (Phase 1,
-`ml/models/mpnn.py`) is implemented; "blip"/"graph_stochastic" raise until
-`ml/models/blip.py` / `ml/models/graph_stochastic.py` land.
+hardcoded here - see CLAUDE.md's three-phase-plan note. "mpnn" (Phase 1,
+`ml/models/mpnn.py`) and "blip" (Phase 2, `ml/models/blip.py`) are
+implemented; "graph_stochastic" raises until `ml/models/graph_stochastic.py`
+lands.
+
+Note for "blip": this loop trains/evaluates it with one stochastic weight
+sample per forward call, same as any deterministic model - it is a valid
+point-estimate run, but it is *not* yet how Phase 2's actual uncertainty
+deliverable gets produced. That needs multiple MC samples per input
+(`BLIP.predict_distribution`), which this shared loop does not call. See
+`ml/models/blip.py`'s module docstring for the full list of what's wired up
+and what's still a documented gap (the KL regularisation term, MC-aware
+evaluation, and the UQ metrics to score it with).
 
 The train/eval loop itself (energy+force MSE, early stopping on val loss,
 checkpoint-on-improvement, Fazin's `MetricAccumulator` for the held-out test
@@ -32,6 +42,7 @@ from torch_geometric.loader import DataLoader
 
 from ml.config import ExperimentConfig
 from ml.data.datasets import MD17Dataset
+from ml.models.blip import BLIP
 from ml.models.mpnn import MPNN
 from ml.utils.contract import ModelOutput, ReferenceData
 from ml.utils.metrics import MetricAccumulator
@@ -44,6 +55,13 @@ _MODEL_BUILDERS: dict[str, Callable[[ExperimentConfig], torch.nn.Module]] = {
         num_layers=cfg.model.num_layers,
         num_rbf=cfg.model.num_rbf,
         cutoff=cfg.data.cutoff_radius,
+    ),
+    "blip": lambda cfg: BLIP(
+        hidden_channels=cfg.model.hidden_channels,
+        num_layers=cfg.model.num_layers,
+        num_rbf=cfg.model.num_rbf,
+        cutoff=cfg.data.cutoff_radius,
+        num_mc_samples=cfg.model.num_mc_samples,
     ),
 }
 
