@@ -29,18 +29,26 @@ write and read that shape. The training loop (SCRUM-51) should call
 `save_checkpoint`; nothing else needs to know the layout.
 
 Adding a model: import it and add one line to `MODEL_REGISTRY`. The class
-must expose `predict_energy(z, pos, edge_index, edge_attr, batch)`,
-`predict_energy_and_forces(...)` returning `(E, F)`, and `config()`.
+must expose `predict_energy`, `predict_energy_and_forces(z, pos,
+edge_index, edge_attr, batch)` returning `(E, F)`, and `config()`. The
+harness only ever calls `predict_energy_and_forces`; `predict_energy`'s
+signature still differs between models (PaiNN and DimeNet++ need `pos`).
 """
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import Any, Optional
 
 import torch
 from torch import nn
 
+from ml.models.blip import BLIP
+from ml.models.dimenet import GoldDimeNetPlusPlus
+from ml.models.mpnn import MPNN
 from ml.models.painn import PaiNN
+from ml.models.physnet import PhysNet
+from ml.models.schnet import SchNet
 
 __all__ = [
     "MODEL_REGISTRY",
@@ -51,15 +59,16 @@ __all__ = [
     "load_model",
 ]
 
-# Keyed by `model.phase` in the experiment YAML (glossary.md section 6).
-#
-# Note that glossary.md's documented enum is `mpnn | blip | graph_stochastic`
-# - the three *research* phases. The SCRUM-50 bake-off adds candidate Phase 1
-# backbones alongside those, so `painn` is an extension of that enum and
-# glossary.md section 6 needs updating to match once the bake-off is agreed.
-# The other four bake-off entries register themselves here as they land.
+# Keyed by `model.phase` in the experiment YAML (glossary.md section 6): the
+# five Phase 1 bake-off backbones plus Phase 2's BLIP. Phase 3
+# (`graph_stochastic`) registers here when ml/models/graph_stochastic.py lands.
 MODEL_REGISTRY: dict[str, type[nn.Module]] = {
+    "mpnn": MPNN,
+    "schnet": SchNet,
     "painn": PaiNN,
+    "physnet": PhysNet,
+    "dimenet": GoldDimeNetPlusPlus,
+    "blip": BLIP,
 }
 
 # Every registered model must expose these. Checked at build time rather
@@ -84,7 +93,12 @@ def _resolve(phase: str) -> type[nn.Module]:
 
 
 def build_model(phase: str, **model_config: Any) -> nn.Module:
-    """Construct a registered model from its config kwargs."""
+    """Construct a registered model from its config kwargs.
+
+    Unknown kwargs raise rather than being dropped: a misspelt config key
+    that silently falls back to a constructor default trains a different
+    model from the one the config describes.
+    """
     cls = _resolve(phase)
     missing = [name for name in REQUIRED_INTERFACE if not hasattr(cls, name)]
     if missing:
@@ -93,6 +107,17 @@ def build_model(phase: str, **model_config: Any) -> nn.Module:
             f"{missing}. Every bake-off model needs the same interface or the "
             "comparison is not like-for-like."
         )
+    parameters = inspect.signature(cls.__init__).parameters
+    takes_var_kwargs = any(p.kind is p.VAR_KEYWORD for p in parameters.values())
+    if not takes_var_kwargs:
+        # A class whose __init__ takes **kwargs (DimeNet++) checks its own.
+        accepted = [name for name in parameters if name != "self"]
+        unknown = sorted(set(model_config) - set(accepted))
+        if unknown:
+            raise TypeError(
+                f"model.phase={phase!r} ({cls.__name__}) does not accept "
+                f"{unknown}; accepted model keys: {accepted}"
+            )
     return cls(**model_config)
 
 
