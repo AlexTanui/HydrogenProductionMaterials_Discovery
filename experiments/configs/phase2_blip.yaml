@@ -1,0 +1,32 @@
+name: phase2_blip
+data:
+  dataset: md17
+  molecule: ethanol
+  theory: dft
+  gold_path: data/gold/md17/ethanol_dft.npz
+  cutoff_radius: 5.0
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+  use_literature_split: false
+  seed: 42
+model:
+  phase: blip
+  hidden_channels: 128
+  num_layers: 4
+  num_rbf: 50
+  # MC samples used by BLIP.predict_distribution at evaluation time - not
+  # used by the shared train.py loop yet, which only runs one stochastic
+  # sample per batch. See ml/models/blip.py's module docstring.
+  num_mc_samples: 20
+train:
+  # Same architecture, same loss weighting, same data as phase1_baseline.yaml
+  # on purpose - Phase 1 vs Phase 2 must differ only in where stochasticity
+  # lives, not in training conditions (CLAUDE.md's three-phase-plan note).
+  epochs: 200
+  batch_size: 32
+  lr: 0.0005
+  energy_loss_weight: 1.0
+  force_loss_weight: 100.0
+  patience: 20
+  device: cpu
