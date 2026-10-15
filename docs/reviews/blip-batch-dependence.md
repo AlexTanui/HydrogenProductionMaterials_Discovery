@@ -102,11 +102,12 @@ point says nothing about batching and is omitted.
    difference could come from batch composition rather than from *where
    stochasticity lives*, which is the comparison the three-phase plan exists
    to make.
-5. **It fails the batching physics check by about 10⁵× its tolerance.**
+5. **It fails the batching physics check by 10⁴–10⁵× its tolerance.**
    `tests/ml/test_painn_physics.py` requires batched and single-frame
-   predictions to agree to 1e-9. For BLIP that check is
-   `xfail(strict=True)`, so it reports XPASS, and fails, once the coupling
-   is fixed.
+   predictions to agree to 1e-9 kcal/mol. BLIP misses by 1.6e-5 and 5.9e-5
+   kcal/mol at batch sizes 2 and 4 (that test's own initialisation, seed 0).
+   The check is `xfail(strict=True)`, so it reports XPASS, and fails, once
+   the coupling is fixed.
 
 ## Suggested fix
 
