@@ -181,8 +181,12 @@ class BLIP(nn.Module):
 
     def __init__(self, hidden_channels: int = 128, num_layers: int = 4,
                  num_rbf: int = 50, cutoff: float = 5.0,
-                 num_mc_samples: int = 20, **_ignored):
+                 num_mc_samples: int = 20):
         super().__init__()
+        self.hidden_channels = hidden_channels
+        self.num_layers = num_layers
+        self.num_rbf = num_rbf
+        self.cutoff = cutoff
         self.num_mc_samples = num_mc_samples
         self.embedding = nn.Embedding(MAX_ATOMIC_NUMBER + 1, hidden_channels)
         self.rbf = GaussianRBF(num_rbf=num_rbf, cutoff=cutoff)
@@ -192,6 +196,16 @@ class BLIP(nn.Module):
             nn.SiLU(),
             nn.Linear(hidden_channels, 1),
         )
+
+    def config(self) -> dict:
+        """Constructor kwargs, for embedding in a checkpoint. See ml/models/registry.py."""
+        return {
+            "hidden_channels": self.hidden_channels,
+            "num_layers": self.num_layers,
+            "num_rbf": self.num_rbf,
+            "cutoff": self.cutoff,
+            "num_mc_samples": self.num_mc_samples,
+        }
 
     def predict_energy(self, z: torch.Tensor, edge_index: torch.Tensor,
                         edge_attr: torch.Tensor, batch: Optional[torch.Tensor] = None) -> torch.Tensor:
