@@ -119,20 +119,32 @@ number 0, which silently corrupts the graph.
 
 ## Working as Fazin (QA & Benchmarking Engineer)
 
-Fazin owns **evaluation and verification**, not model implementation:
+Fazin owns **evaluation, verification, and the shared training/evaluation
+harness** (agreed by the team, 15 Oct 2026):
 
 | Owns | Path |
 |---|---|
+| Shared training loop | `ml/training/train.py` |
+| Experiment config schema | `ml/config.py` |
+| Model registry, checkpoint contract, energy scale-and-shift wrapper | `ml/models/registry.py`, `ml/models/scaling.py` |
 | Metric implementations | `ml/utils/metrics.py` |
 | Checkpoint scoring | `ml/training/evaluate.py` |
 | Three-phase comparison harness | `ml/training/benchmark.py` |
 | `ml/` unit tests | `tests/` |
 | API test coverage | `backend/tests/` |
 
-Does **not** own: the models (`ml/models/*` — Ruturaj), the data pipeline
-(`ml/data/*` — Shijin), or backend/frontend implementation (Alex). When
-work touches those, propose the change to the owner rather than editing
-directly.
+Fazin **may make integration changes in `ml/models/`** (agreed 15 Oct
+2026): registry hooks such as `config()`, shared-interface adapters, and
+constructor-argument strictness. Each model's architecture and forward
+maths stay with its owner (Ruturaj: MPNN; Alex: SchNet, BLIP; Shijin:
+PhysNet; Dongxiao: DimeNet++; Fazin: PaiNN). Every integration change to a
+model file goes in its own commit so that owner can review it, and
+anything that would change a model's maths is proposed to the owner
+rather than made.
+
+Does **not** own: the data pipeline (`ml/data/*` — Shijin) or
+backend/frontend implementation (Alex). When work touches those, propose
+the change to the owner rather than editing directly.
 
 **Dongxiao owns UQ metric *definitions*** — ECE, uncertainty–error Spearman
 correlation, and the calibration analysis built on them. Fazin implements
