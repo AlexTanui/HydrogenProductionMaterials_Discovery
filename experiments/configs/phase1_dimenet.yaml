@@ -26,18 +26,20 @@ data:
 
 model:
   phase: dimenet              # ml/models/registry.py key
-  # Dongxiao's model sizes from dimenet_ethanol_ccsd_t.yaml, kept for now -
-  # far smaller than the published DimeNet++ (hidden_channels 128). Any
-  # other DimeNetPlusPlus argument (cutoff, envelope_exponent, ...) takes
-  # PyG's default, recorded in the checkpoint via config().
-  hidden_channels: 16
+  # Mid size, chosen for a fair comparison: 278,982 parameters, inside the
+  # 62k-809k range of the other four Phase 1 models. Dongxiao's earlier size
+  # (7,491) was far below that range; the paper default (1.89M) would be over
+  # twice the largest (PhysNet, 809k). Any other DimeNetPlusPlus argument
+  # (cutoff, envelope_exponent, ...) takes PyG's default, recorded in the
+  # checkpoint via config().
+  hidden_channels: 64
   out_channels: 1
-  num_blocks: 1
-  int_emb_size: 8
-  basis_emb_size: 4
-  out_emb_channels: 16
-  num_spherical: 3
-  num_radial: 3
+  num_blocks: 2
+  int_emb_size: 32
+  basis_emb_size: 8
+  out_emb_channels: 128
+  num_spherical: 7
+  num_radial: 6
 
 train:
   epochs: 200
