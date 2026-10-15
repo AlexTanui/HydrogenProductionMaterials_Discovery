@@ -107,6 +107,9 @@ class SchNet(nn.Module):
     def __init__(self, hidden_channels: int = 128, num_layers: int = 4,
                  num_rbf: int = 16, cutoff: float = 5.0):
         super().__init__()
+        self.hidden_channels = hidden_channels
+        self.num_layers = num_layers
+        self.num_rbf = num_rbf
         self.cutoff = cutoff
         self.embedding = nn.Embedding(MAX_ATOMIC_NUMBER + 1, hidden_channels)
         self.rbf = GaussianRBF(num_rbf=num_rbf, cutoff=cutoff)
@@ -118,6 +121,15 @@ class SchNet(nn.Module):
             ShiftedSoftplus(),
             nn.Linear(hidden_channels // 2, 1),
         )
+
+    def config(self) -> dict:
+        """Constructor kwargs, for embedding in a checkpoint. See ml/models/registry.py."""
+        return {
+            "hidden_channels": self.hidden_channels,
+            "num_layers": self.num_layers,
+            "num_rbf": self.num_rbf,
+            "cutoff": self.cutoff,
+        }
 
     def predict_energy(self, z: torch.Tensor, edge_index: torch.Tensor,
                         edge_attr: torch.Tensor, batch: Optional[torch.Tensor] = None) -> torch.Tensor:
