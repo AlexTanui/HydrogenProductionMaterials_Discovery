@@ -30,6 +30,11 @@ Absolute energies need nothing here: `load_model` returns the model wrapped
 in the harness's one `ScaledEnergyModel` (ml/models/scaling.py), with the
 training subset's shift and scale restored from the checkpoint's buffers.
 
+The scoring pass runs under a fixed, recorded RNG seed (`seed`, default 0)
+in a forked RNG state, so a stochastic model such as BLIP scores the same
+every time, and the caller's RNG is untouched. Deterministic models draw
+no random numbers and are unaffected.
+
 Uncertainty metrics (ECE, uncertainty-error correlation) are deliberately
 absent. Those definitions are Dongxiao's; the fields appear in the output
 as `null` with a note rather than being invented here.
@@ -58,6 +63,9 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 RESULTS_DIR = ROOT_DIR / "experiments" / "results"
 
 SCHEMA_VERSION = 1
+
+# Seed for the scoring pass's RNG. Only stochastic models consume it.
+DEFAULT_SEED = 0
 
 # Which of the eight metric fields the single-number benchmark row uses.
 # Both are the MD17/SchNet/PaiNN reporting convention, and both are named
@@ -128,10 +136,17 @@ def evaluate_checkpoint(
     device: str = "cpu",
     num_workers: int = 0,
     units: Optional[Units] = None,
+    seed: int = DEFAULT_SEED,
 ) -> dict[str, Any]:
     """Score one checkpoint and return the full result record.
 
     Args:
+        seed: seeds torch's RNG for the scoring pass, inside a forked RNG
+            state so the caller's RNG is left exactly as it was. A
+            stochastic model (BLIP draws fresh weight noise on every
+            forward pass) therefore scores identically every time it is
+            scored with the same seed; a deterministic model draws nothing
+            and is unaffected. Recorded in the output.
         checkpoint_path: written by `ml.models.registry.save_checkpoint`.
         gold_path: overrides the path recorded in the checkpoint. The gold
             file carries its own train/val/test indices; they are used as-is.
@@ -189,11 +204,16 @@ def evaluate_checkpoint(
     n_batches = 0
     wall_start = time.perf_counter()
 
+    # Forked so the seed governs this pass alone and the caller's RNG state
+    # (e.g. train.py's) is restored afterwards.
+    rng_devices = [torch_device.index or 0] if torch_device.type == "cuda" else []
+
     # no_grad for the loop, but grad back on around the model call: forces are
     # F = -dE/dR, so that call is the one place a graph is needed. Not every
     # model re-enables grad internally - MPNN and SchNet do not, and raise
     # under no_grad - and evaluation must not depend on which ones do.
-    with torch.no_grad():
+    with torch.random.fork_rng(devices=rng_devices), torch.no_grad():
+        torch.manual_seed(seed)
         for batch in loader:
             batch = batch.to(torch_device)
 
@@ -233,6 +253,7 @@ def evaluate_checkpoint(
         "phase": checkpoint["phase"],
         "model_config": checkpoint["model_config"],
         "energy_scaling": model.energy_scaling(),
+        "seed": seed,
         "n_parameters": int(sum(p.numel() for p in model.parameters())),
         "data": {
             "gold_path": str(resolved_gold),
@@ -300,6 +321,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--device", default="cpu", choices=("cpu", "cuda", "auto"))
     parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED,
+                        help="RNG seed for the scoring pass (matters only for stochastic models)")
     parser.add_argument(
         "--output",
         default=None,
@@ -314,6 +337,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         batch_size=args.batch_size,
         device=args.device,
         num_workers=args.num_workers,
+        seed=args.seed,
     )
 
     default_output = RESULTS_DIR / f"{Path(args.checkpoint).stem}.json"

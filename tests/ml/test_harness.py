@@ -366,13 +366,12 @@ def test_config_trains_saves_and_is_scored_at_absolute_energy(name, tiny_gold, t
     assert result["energy_scaling"]["shift_per_atom"] == pytest.approx(float(model.shift))
 
     # train.py's own final scoring is that same call, saved in the run record:
-    # equal for a deterministic model up to multithreaded float32 summation
-    # order (~1e-10 relative). BLIP draws fresh, unseeded weight noise on
-    # every evaluation, so two scorings of one checkpoint differ (~0.4% here).
-    rel = 0.05 if phase == "blip" else 1e-6
+    # equal up to multithreaded float32 summation order (~1e-10 relative) -
+    # BLIP included, since evaluate_checkpoint scores under a fixed seed.
     saved = json.loads((run_dir / "test_metrics.json").read_text(encoding="utf-8"))
-    assert saved["benchmark_row"]["energy_mae"] == pytest.approx(row["energy_mae"], rel=rel)
-    assert saved["benchmark_row"]["force_mae"] == pytest.approx(row["force_mae"], rel=rel)
+    assert saved["seed"] == result["seed"]
+    assert saved["benchmark_row"]["energy_mae"] == pytest.approx(row["energy_mae"], rel=1e-6)
+    assert saved["benchmark_row"]["force_mae"] == pytest.approx(row["force_mae"], rel=1e-6)
 
 
 def test_run_record_carries_the_provenance(tiny_gold, tmp_path):

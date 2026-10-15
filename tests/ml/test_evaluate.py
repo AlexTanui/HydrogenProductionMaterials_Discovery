@@ -400,3 +400,58 @@ def test_checkpoint_write_is_atomic(checkpoint):
     """save_checkpoint renames a finished temporary file into place; none is left behind."""
     assert checkpoint.exists()
     assert not checkpoint.with_name(checkpoint.name + ".tmp").exists()
+
+
+# --------------------------------------------------------------------------
+# 6. A fixed, recorded seed: stochastic models score reproducibly
+# --------------------------------------------------------------------------
+
+class NoisyToyModel(ToyModel):
+    """ToyModel plus a fresh random energy offset on every call, like BLIP's weight noise."""
+
+    def predict_energy_and_forces(self, z, pos, edge_index, edge_attr, batch):
+        energy, forces = super().predict_energy_and_forces(z, pos, edge_index, edge_attr, batch)
+        return energy + torch.randn(energy.shape, dtype=energy.dtype), forces
+
+
+@pytest.fixture
+def noisy_checkpoint(tmp_path, gold_file):
+    MODEL_REGISTRY["noisy_toy"] = NoisyToyModel
+    try:
+        path = tmp_path / "noisy.pt"
+        save_checkpoint(
+            path, ScaledEnergyModel(NoisyToyModel()), "noisy_toy",
+            data={"gold_path": str(gold_file), "molecule": "toy", "theory": "dft",
+                  "cutoff_radius": 5.0, "num_rbf": 16},
+        )
+        yield path
+    finally:
+        MODEL_REGISTRY.pop("noisy_toy", None)
+
+
+def _energy_mae(result) -> float:
+    return result["metrics"]["per_key"][0]["energy_mae_total"]
+
+
+def test_stochastic_model_scores_identically_under_the_same_seed(noisy_checkpoint):
+    first = evaluate_checkpoint(noisy_checkpoint, batch_size=4)
+    second = evaluate_checkpoint(noisy_checkpoint, batch_size=4)
+    assert _energy_mae(first) == _energy_mae(second)
+    assert first["seed"] == second["seed"] == 0
+    # And the seed is what fixes it: another seed draws other noise.
+    other = evaluate_checkpoint(noisy_checkpoint, batch_size=4, seed=1)
+    assert other["seed"] == 1
+    assert _energy_mae(other) != _energy_mae(first)
+
+
+def test_deterministic_model_is_unaffected_by_the_seed(checkpoint):
+    results = [evaluate_checkpoint(checkpoint, batch_size=4, seed=seed) for seed in (0, 1, 12345)]
+    assert all(r["metrics"] == results[0]["metrics"] for r in results)
+
+
+def test_scoring_leaves_the_callers_rng_untouched(noisy_checkpoint):
+    torch.manual_seed(99)
+    expected = torch.rand(3)
+    torch.manual_seed(99)
+    evaluate_checkpoint(noisy_checkpoint, batch_size=4)
+    assert torch.equal(torch.rand(3), expected)
