@@ -1,4 +1,13 @@
-"""Provisional standalone PaiNN trainer for the Phase 1 bake-off (SCRUM-52).
+"""SUPERSEDED by ml/training/train.py (15 Oct 2026). Kept as the record of earlier results.
+
+Every model now trains through the shared loop under one locked protocol
+(experiments/configs/phase1_*.yaml and phase2_blip.yaml). Do not use this
+script for new runs, and do not quote its numbers beside the shared loop's.
+It no longer runs: it imports run_epoch from train.py, whose signature
+has changed, and writes bare (version 1) checkpoints the registry now
+refuses. To reproduce its earlier results, check out commit e09bf14.
+
+Provisional standalone PaiNN trainer for the Phase 1 bake-off (SCRUM-52).
 
     +---------------------------------------------------------------------+
     | PROVISIONAL. The shared loop in ml/training/train.py cannot train    |

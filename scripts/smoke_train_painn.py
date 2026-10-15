@@ -1,4 +1,12 @@
-"""THROWAWAY smoke-training script for PaiNN. NOT the bake-off training path.
+"""SUPERSEDED by ml/training/train.py (15 Oct 2026). Kept as the record of earlier results.
+
+Every model now trains through the shared loop under one locked protocol
+(experiments/configs/phase1_*.yaml and phase2_blip.yaml). Do not use this
+script for new runs, and do not quote its numbers beside the shared loop's.
+For a quick check of any model, use the shared loop instead:
+`python -m ml.training.train <config> --smoke-test`.
+
+THROWAWAY smoke-training script for PaiNN. NOT the bake-off training path.
 
     +---------------------------------------------------------------------+
     | This script exists for verification and compute profiling ONLY.      |
