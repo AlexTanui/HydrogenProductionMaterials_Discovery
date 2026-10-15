@@ -171,7 +171,7 @@ who owns it.
 # ML pipeline (run from repo root, with .venv active)
 pytest tests/
 python -m ml.data.preprocessing                   # bronze → silver → gold (implemented)
-python -m ml.training.train --config experiments/configs/phase1_baseline.yaml
+python -m ml.training.train experiments/configs/phase1_baseline.yaml   # --smoke-test for a quick check
 python -m ml.training.evaluate --checkpoint experiments/checkpoints/phase1_baseline.pt
 python -m ml.training.benchmark
 
