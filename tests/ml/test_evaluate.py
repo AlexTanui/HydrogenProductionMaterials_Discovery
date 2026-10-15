@@ -27,6 +27,7 @@ import torch
 from torch import nn
 
 from ml.models.registry import MODEL_REGISTRY, load_model, save_checkpoint
+from ml.models.scaling import ScaledEnergyModel
 from ml.training.evaluate import evaluate_checkpoint
 
 _Z = [6, 6, 8, 1, 1, 1, 1, 1, 1]
@@ -108,7 +109,8 @@ def checkpoint(tmp_path, gold_file, toy_registered):
     path = tmp_path / "toy.pt"
     save_checkpoint(
         path,
-        model=ToyModel(),
+        # Identity scaling, so the metrics below are ToyModel's own.
+        model=ScaledEnergyModel(ToyModel()),
         phase=toy_registered,
         data={
             "gold_path": str(gold_file),
@@ -140,7 +142,7 @@ def test_unregistered_phase_raises_with_a_useful_message(tmp_path, gold_file):
     from ml.models.registry import UnknownModel
 
     torch.save(
-        {"phase": "not_a_model", "model_config": {}, "state_dict": {}},
+        {"checkpoint_version": 2, "phase": "not_a_model", "model_config": {}, "state_dict": {}},
         tmp_path / "bad.pt",
     )
     with pytest.raises(UnknownModel, match="registered"):
@@ -336,5 +338,65 @@ def test_checkpoint_round_trips_through_the_registry(checkpoint):
     model, stored = load_model(checkpoint)
 
     assert stored["phase"] == "toy"
-    assert isinstance(model, ToyModel)
+    assert isinstance(model, ScaledEnergyModel) and isinstance(model.model, ToyModel)
     assert not model.training  # load_model returns an eval-mode model
+
+
+# --------------------------------------------------------------------------
+# 5. The checkpoint contract: one energy scale-and-shift, version 2
+# --------------------------------------------------------------------------
+
+def test_energy_scaling_is_applied_by_evaluate(tmp_path, gold_file, toy_registered):
+    """The wrapper's shift and scale travel in the checkpoint and reach the scored energies.
+
+    Expected numbers are computed by hand from the bare ToyModel, so a
+    shift lost on save/load, or applied twice, fails here.
+    """
+    from torch_geometric.loader import DataLoader
+
+    from ml.data.datasets import MD17Dataset
+
+    shift, scale = -3.25, 1.75
+    path = tmp_path / "scaled.pt"
+    save_checkpoint(
+        path, ScaledEnergyModel(ToyModel(), shift=shift, scale=scale), toy_registered,
+        data={"gold_path": str(gold_file), "molecule": "toy", "theory": "dft",
+              "cutoff_radius": 5.0, "num_rbf": 16},
+    )
+    record = evaluate_checkpoint(path, batch_size=4)["metrics"]["per_key"][0]
+
+    bare = ToyModel().eval()
+    energy_errors, force_errors = [], []
+    for batch in DataLoader(MD17Dataset(gold_file, split="test"), batch_size=4):
+        energy, forces = bare.predict_energy_and_forces(
+            batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch
+        )
+        expected_energy = scale * energy.detach() + len(_Z) * shift
+        energy_errors.append((expected_energy - batch.y).double().abs())
+        force_errors.append((scale * forces.detach() - batch.force).double().abs().reshape(-1))
+
+    assert record["energy_mae_total"] == pytest.approx(float(torch.cat(energy_errors).mean()), rel=1e-6)
+    assert record["force_mae_component"] == pytest.approx(float(torch.cat(force_errors).mean()), rel=1e-6)
+
+
+def test_bare_model_cannot_be_saved(tmp_path, toy_registered):
+    """A bare model has no energy scale-and-shift; saving one would score ~97,000 kcal/mol off."""
+    with pytest.raises(TypeError, match="ScaledEnergyModel"):
+        save_checkpoint(tmp_path / "bare.pt", ToyModel(), toy_registered, data={})
+
+
+def test_version_1_checkpoint_is_refused(tmp_path, toy_registered):
+    """Checkpoints from the superseded per-model trainers carry no version and a different energy convention."""
+    torch.save(
+        {"phase": toy_registered, "model_config": {"weight": 0.5},
+         "state_dict": ToyModel().state_dict()},
+        tmp_path / "v1.pt",
+    )
+    with pytest.raises(ValueError, match="checkpoint version 1"):
+        load_model(tmp_path / "v1.pt")
+
+
+def test_checkpoint_write_is_atomic(checkpoint):
+    """save_checkpoint renames a finished temporary file into place; none is left behind."""
+    assert checkpoint.exists()
+    assert not checkpoint.with_name(checkpoint.name + ".tmp").exists()

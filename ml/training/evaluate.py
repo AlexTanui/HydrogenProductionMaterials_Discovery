@@ -26,6 +26,10 @@ Three properties this module is responsible for:
    on.** A checkpoint trained on ethanol/dft scored against aspirin/ccsd
    gold would otherwise produce a complete, believable, meaningless table.
 
+Absolute energies need nothing here: `load_model` returns the model wrapped
+in the harness's one `ScaledEnergyModel` (ml/models/scaling.py), with the
+training subset's shift and scale restored from the checkpoint's buffers.
+
 Uncertainty metrics (ECE, uncertainty-error correlation) are deliberately
 absent. Those definitions are Dongxiao's; the fields appear in the output
 as `null` with a note rather than being invented here.
@@ -228,6 +232,7 @@ def evaluate_checkpoint(
         "checkpoint": str(checkpoint_path),
         "phase": checkpoint["phase"],
         "model_config": checkpoint["model_config"],
+        "energy_scaling": model.energy_scaling(),
         "n_parameters": int(sum(p.numel() for p in model.parameters())),
         "data": {
             "gold_path": str(resolved_gold),
@@ -265,7 +270,7 @@ def evaluate_checkpoint(
         # read experiments/results/*.json without reshaping.
         "benchmark_row": {
             "phase": checkpoint["phase"],
-            "model": type(model).__name__,
+            "model": type(model.model).__name__,  # the architecture, not the shared wrapper
             "energy_mae": record[BENCHMARK_ENERGY_FIELD],
             "energy_mae_field": BENCHMARK_ENERGY_FIELD,
             "energy_mae_unit": record["units"]["energy"],

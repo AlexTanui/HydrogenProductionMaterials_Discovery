@@ -44,6 +44,7 @@ from ml.config import ExperimentConfig
 from ml.data.datasets import MD17Dataset
 from ml.models.blip import BLIP
 from ml.models.mpnn import MPNN
+from ml.models.scaling import ScaledEnergyModel
 from ml.utils.contract import ModelOutput, ReferenceData
 from ml.utils.metrics import MetricAccumulator
 
@@ -88,19 +89,20 @@ def make_datasets(cfg: ExperimentConfig) -> tuple[MD17Dataset, MD17Dataset, MD17
     )
 
 
-def batch_loss(model: torch.nn.Module, batch, energy_shift: float, energy_w: float, force_w: float):
-    """Trains against *shifted* energy - see the comment in main() on why."""
+def batch_loss(model: torch.nn.Module, batch, energy_w: float, force_w: float):
+    """MSE on absolute energy (kcal/mol) and forces. The model is a
+    ScaledEnergyModel, which carries the energy shift itself."""
     pred_e, pred_f = model.predict_energy_and_forces(
         batch.x.view(-1), batch.pos, batch.edge_index, batch.edge_attr, batch=batch.batch,
     )
-    target_e = batch.y.view(-1) - energy_shift
+    target_e = batch.y.view(-1)
     energy_loss = F.mse_loss(pred_e, target_e)
     force_loss = F.mse_loss(pred_f, batch.force)
     loss = energy_w * energy_loss + force_w * force_loss
     return loss, float(energy_loss.detach()), float(force_loss.detach())
 
 
-def run_epoch(model, loader, energy_shift, energy_w, force_w, optimizer=None, max_batches=None):
+def run_epoch(model, loader, energy_w, force_w, optimizer=None, max_batches=None):
     """optimizer=None -> eval mode, no weight update (forces still need
     autograd internally - never wrap this in torch.no_grad())."""
     is_train = optimizer is not None
@@ -110,7 +112,7 @@ def run_epoch(model, loader, energy_shift, energy_w, force_w, optimizer=None, ma
     for batch in loader:
         if is_train:
             optimizer.zero_grad()
-        loss, e_loss, f_loss = batch_loss(model, batch, energy_shift, energy_w, force_w)
+        loss, e_loss, f_loss = batch_loss(model, batch, energy_w, force_w)
         if is_train:
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
@@ -124,11 +126,9 @@ def run_epoch(model, loader, energy_shift, energy_w, force_w, optimizer=None, ma
     return total_loss / n, total_e / n, total_f / n
 
 
-def evaluate_test_set(model, loader, dataset: MD17Dataset, energy_shift: float, max_batches=None) -> dict:
-    """Real, physical-unit metrics via Fazin's harness - energy_shift is added
-    back here so this number is comparable to every other bake-off
-    architecture, none of which need to know this model trains on a shifted
-    target internally."""
+def evaluate_test_set(model, loader, dataset: MD17Dataset, max_batches=None) -> dict:
+    """Real, physical-unit metrics via Fazin's harness. The wrapped model
+    already predicts absolute energy, so nothing is added back."""
     model.eval()
     acc = MetricAccumulator()
     n_frames = 0
@@ -138,7 +138,7 @@ def evaluate_test_set(model, loader, dataset: MD17Dataset, energy_shift: float, 
         pred_e, pred_f = model.predict_energy_and_forces(
             batch.x.view(-1), batch.pos, batch.edge_index, batch.edge_attr, batch=batch.batch,
         )
-        pred = ModelOutput(E=(pred_e + energy_shift).detach(), F=pred_f.detach())
+        pred = ModelOutput(E=pred_e.detach(), F=pred_f.detach())
         ref = ReferenceData(
             E=batch.y.view(-1), F=batch.force, batch=batch.batch,
             molecule=dataset.molecule, theory=dataset.theory, z=batch.x.view(-1),
@@ -173,16 +173,13 @@ def main() -> None:
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
 
-    # Energy centering: absolute energies sit on a huge constant with a tiny
-    # physically-meaningful wobble on top (see train_schnet.py's version of
-    # this comment for the actual numbers on ethanol). Training against
-    # (E - shift) instead of raw E converges far faster than making the
-    # readout bias climb to that constant on its own. energy_shift is saved
-    # in the checkpoint and added back at eval time so reported metrics stay
-    # in real kcal/mol, comparable across the bake-off.
-    energy_shift = float(train_ds.E.mean())
-
-    model = build_model(cfg).to(device)
+    # One energy scale-and-shift for every model (ml/models/scaling.py):
+    # per-atom statistics from the training data only, held in the model's
+    # own buffers, so the loss is on absolute energy and the checkpoint
+    # carries the shift - nothing is subtracted here or added back later.
+    n_atoms = int(train_ds.z.shape[0])
+    shift, scale = ScaledEnergyModel.statistics_from_energies(train_ds.E, n_atoms)
+    model = ScaledEnergyModel(build_model(cfg), shift=shift, scale=scale).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.train.lr, weight_decay=1e-6)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
@@ -205,7 +202,7 @@ def main() -> None:
 
     cfg_dict = dataclasses.asdict(cfg)
 
-    print(f"energy_shift = {energy_shift:.3f} kcal/mol", flush=True)
+    print(f"energy per atom: shift {shift:.4f}, scale {scale:.4f} kcal/mol", flush=True)
     print(f"{'epoch':>5} {'train_loss':>12} {'train_E':>10} {'train_F':>10} {'val_loss':>12} {'val_E':>10} {'val_F':>10} {'lr':>10} {'epoch_s':>8} {'elapsed_s':>10}",
           flush=True)
 
@@ -213,10 +210,10 @@ def main() -> None:
     for epoch in range(1, epochs + 1):
         epoch_start = time.perf_counter()
         train_loss, train_e, train_f = run_epoch(
-            model, train_loader, energy_shift, energy_w, force_w, optimizer=optimizer, max_batches=max_batches,
+            model, train_loader, energy_w, force_w, optimizer=optimizer, max_batches=max_batches,
         )
         val_loss, val_e, val_f = run_epoch(
-            model, val_loader, energy_shift, energy_w, force_w, optimizer=None, max_batches=max_batches,
+            model, val_loader, energy_w, force_w, optimizer=None, max_batches=max_batches,
         )
         scheduler.step(val_loss)
         lr = optimizer.param_groups[0]["lr"]
@@ -234,7 +231,7 @@ def main() -> None:
             # interrupted run still leaves a usable, non-stale checkpoint.
             torch.save({
                 "model_state_dict": best_state,
-                "energy_shift": energy_shift,
+                "energy_scaling": model.energy_scaling(),
                 "config": cfg_dict,
                 "epoch": epoch,
                 "val_loss": best_val_loss,
@@ -254,12 +251,12 @@ def main() -> None:
 
     torch.save({
         "model_state_dict": model.state_dict(),
-        "energy_shift": energy_shift,
+        "energy_scaling": model.energy_scaling(),
         "config": cfg_dict,
     }, checkpoint_path)
     print(f"Checkpoint saved: {checkpoint_path}")
 
-    test_results = evaluate_test_set(model, test_loader, test_ds, energy_shift, max_batches=max_batches)
+    test_results = evaluate_test_set(model, test_loader, test_ds, max_batches=max_batches)
     test_results["training_time_s"] = training_time_s
     test_results["best_val_loss"] = best_val_loss
     test_results["config"] = cfg_dict
