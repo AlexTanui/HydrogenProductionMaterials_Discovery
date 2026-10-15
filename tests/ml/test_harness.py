@@ -24,6 +24,8 @@ import csv
 import dataclasses
 import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -40,7 +42,9 @@ from ml.models.registry import MODEL_REGISTRY, UnknownModel, load_model
 from ml.models.scaling import ScaledEnergyModel
 from ml.models.schnet import SchNet
 from ml.training.evaluate import evaluate_checkpoint
-from ml.training.train import build_model, open_split, select_subsets, stride_subset, train
+from ml.training.train import (
+    build_model, git_state, open_split, select_subsets, stride_subset, train,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 GOLD = ROOT / "data" / "gold" / "md17" / "ethanol_dft.npz"
@@ -436,3 +440,52 @@ def test_model_cutoff_must_match_the_graph(tiny_gold, tmp_path):
     )
     with pytest.raises(ValueError, match="cutoff"):
         train(cfg, output_root=tmp_path)
+
+
+# --------------------------------------------------------------------------
+# 6. The dirty-tree flag ignores run records, and nothing else
+# --------------------------------------------------------------------------
+
+def test_dirty_check_ignores_run_records_and_nothing_else(tmp_path):
+    """Back-to-back runs: one run's record must not mark the next run as dirty.
+
+    Uses a scratch repository with nothing committed: untracked and staged
+    files are enough to exercise both kinds of uncommitted change.
+    """
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+
+    def write(relative: str, text: str = "uncommitted") -> None:
+        path = repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def stage(relative: str) -> None:
+        subprocess.run(["git", "add", relative], cwd=repo, check=True)
+
+    def dirty() -> bool:
+        return git_state(repo)["git_dirty"]
+
+    assert dirty() is False
+    assert git_state(repo)["git_dirty_ignores"] == ["experiments/runs/"]
+
+    # Run records - new (untracked) or rewritten (staged) - are ignored.
+    write("experiments/runs/phase1_schnet/run.json")
+    write("experiments/runs/phase1_painn/history.csv")
+    stage("experiments/runs/phase1_painn/history.csv")
+    assert dirty() is False
+
+    # Anything else uncommitted still counts, including near-miss paths.
+    for relative in ("ml/models/new_model.py", "experiments/configs/phase1_new.yaml",
+                     "experiments/runs_old/run.json", "experiments/runs.json"):
+        write(relative)
+        assert dirty() is True, f"{relative} should make the tree dirty"
+        (repo / relative).unlink()
+        assert dirty() is False
+    write("ml/config.py")
+    stage("ml/config.py")
+    assert dirty() is True
+

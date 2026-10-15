@@ -236,18 +236,30 @@ def run_epoch(model, loader, energy_w, force_w, device, optimizer=None, max_batc
 # Provenance
 # --------------------------------------------------------------------------
 
-def git_state() -> dict[str, Any]:
+# Run records are this loop's own output, not a change to what is being run.
+# Excluded from the dirty check so that, when configs run back to back, one
+# run's record does not mark the next run as dirty. Everything else
+# uncommitted - tracked or untracked - still counts.
+DIRTY_CHECK_EXCLUDES = ("experiments/runs/",)
+
+
+def git_state(root: Path = ROOT_DIR) -> dict[str, Any]:
     def git(*args: str) -> Optional[str]:
         try:
             result = subprocess.run(
-                ["git", *args], cwd=ROOT_DIR, capture_output=True, text=True, check=True
+                ["git", *args], cwd=root, capture_output=True, text=True, check=True
             )
         except (OSError, subprocess.CalledProcessError):
             return None
         return result.stdout.strip()
 
-    status = git("status", "--porcelain")
-    return {"git_commit": git("rev-parse", "HEAD"), "git_dirty": None if status is None else bool(status)}
+    pathspec = [".", *(f":(exclude){path}" for path in DIRTY_CHECK_EXCLUDES)]
+    status = git("status", "--porcelain", "--", *pathspec)
+    return {
+        "git_commit": git("rev-parse", "HEAD"),
+        "git_dirty": None if status is None else bool(status),
+        "git_dirty_ignores": list(DIRTY_CHECK_EXCLUDES),
+    }
 
 
 def environment(device: torch.device) -> dict[str, Any]:
