@@ -374,24 +374,30 @@ the silver → gold step.
 
 Every training run must be defined by a YAML file in `experiments/configs/`
 matching this shape — no hardcoded hyperparameters in training scripts.
+`ml/config.py` loads it, and unknown keys fail loudly: at the top level and
+in `data:` / `train:` when the file is loaded, and in `model:` when
+`ml/models/registry.py` builds the model.
 
 ```yaml
-name: phase1_baseline
+name: phase1_baseline         # also names the checkpoint and the run record, experiments/runs/<name>/
 data:
   dataset: md17               # md17 | md22 — which top-level folder under data/
   molecule: aspirin           # see §3 inventory for the current bronze roster
   theory: ccsd                 # dft | ccsd | ccsd_t — must match, never pool across levels
   gold_path: data/gold/md17/aspirin_ccsd.npz  # training reads gold only, never bronze/silver directly
-  cutoff_radius: 5.0         # Å, for neighbor graph construction
-  train_split: 0.8           # contiguous trajectory blocks, not random — see §5
-  val_split: 0.1
+  cutoff_radius: 5.0         # Å, for neighbor graph construction; each model's own cutoff must equal it
+  train_split: 0.8           # contiguous trajectory blocks, not random — see §5. A record of how the
+  val_split: 0.1             #   gold file's train/val/test_idx were made; never re-derived at train time
   test_split: 0.1
   use_literature_split: true # true for aspirin/malonaldehyde/toluene/ccsd_t-ethanol — see §3
-  seed: 42
+  num_rbf: 16                # width of the dataset's RBF edge_attr; no model reads it (each recomputes
+                             #   distances from pos with its own basis), so it is the same everywhere
+  seed: 42                   # torch seed: initialisation and shuffle order
 model:
-  phase: mpnn               # mpnn | blip | graph_stochastic
-  hidden_channels: 128
-  num_layers: 4
+  phase: mpnn                # registry key: mpnn | schnet | painn | physnet | dimenet (Phase 1),
+                             #   blip (Phase 2), graph_stochastic (Phase 3, not yet registered)
+  hidden_channels: 128       # every other key goes to that model's constructor unchanged,
+  num_layers: 4              #   so the accepted keys differ per model
   num_mc_samples: 20         # stochastic forward passes for UQ (blip / graph_stochastic only)
   perturbation_strength: 0.1 # graph_stochastic only
 train:
@@ -402,7 +408,14 @@ train:
   force_loss_weight: 100.0   # forces conventionally weighted much higher than energy
   patience: 20
   device: cpu                # cpu | cuda
+  train_subset: 10000        # optional: frames from train_idx, a fixed stride with a seeded offset;
+                             #   omit for the whole split. Never re-splits anything
+  train_subset_seed: 42      # required when either subset is set
+  val_subset: 5000           # optional: same method over val_idx; early stopping, checkpoint selection
 ```
+
+The test split is never subset or read during training; it is scored once,
+afterwards, by `ml/training/evaluate.py`.
 
 ---
 

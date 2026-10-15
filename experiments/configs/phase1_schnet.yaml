@@ -11,15 +11,7 @@ data:
   use_literature_split: false
   seed: 42
 model:
-  # NOTE: ml/config.py's ModelConfig (glossary.md §6) only has a `phase`
-  # field (mpnn | blip | graph_stochastic) for the Phase 1/2/3 UQ axis -
-  # there's no field yet for *which architecture* within Phase 1's
-  # bake-off (mpnn | schnet | painn | dimenet_pp | physnet). Added `name`
-  # here for that; ml/config.py will need it once someone wires the
-  # bake-off through the shared loader. Flagging in SCRUM-53 rather than
-  # changing ml/config.py myself - that's Ruturaj's file.
-  phase: mpnn
-  name: schnet
+  phase: schnet               # ml/models/registry.py key
   hidden_channels: 64
   num_layers: 3
   num_rbf: 16

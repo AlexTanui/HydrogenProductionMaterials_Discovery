@@ -30,11 +30,9 @@ Run:
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import json
 import time
 from pathlib import Path
-from typing import Callable
 
 import torch
 import torch.nn.functional as F
@@ -42,46 +40,21 @@ from torch_geometric.loader import DataLoader
 
 from ml.config import ExperimentConfig
 from ml.data.datasets import MD17Dataset
-from ml.models.blip import BLIP
-from ml.models.mpnn import MPNN
+from ml.models import registry
 from ml.models.scaling import ScaledEnergyModel
 from ml.utils.contract import ModelOutput, ReferenceData
 from ml.utils.metrics import MetricAccumulator
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 
-_MODEL_BUILDERS: dict[str, Callable[[ExperimentConfig], torch.nn.Module]] = {
-    "mpnn": lambda cfg: MPNN(
-        hidden_channels=cfg.model.hidden_channels,
-        num_layers=cfg.model.num_layers,
-        num_rbf=cfg.model.num_rbf,
-        cutoff=cfg.data.cutoff_radius,
-    ),
-    "blip": lambda cfg: BLIP(
-        hidden_channels=cfg.model.hidden_channels,
-        num_layers=cfg.model.num_layers,
-        num_rbf=cfg.model.num_rbf,
-        cutoff=cfg.data.cutoff_radius,
-        num_mc_samples=cfg.model.num_mc_samples,
-    ),
-}
-
-
 def build_model(cfg: ExperimentConfig) -> torch.nn.Module:
-    try:
-        builder = _MODEL_BUILDERS[cfg.model.phase]
-    except KeyError:
-        raise NotImplementedError(
-            f"model.phase={cfg.model.phase!r} has no trainer yet - only "
-            f"{sorted(_MODEL_BUILDERS)} are implemented so far. Phase 2/3 need "
-            "ml/models/blip.py / ml/models/graph_stochastic.py first."
-        )
-    return builder(cfg)
+    """The registered model for `model.phase`, built from the other `model:` keys."""
+    return registry.build_model(cfg.model.phase, **cfg.model.kwargs)
 
 
 def make_datasets(cfg: ExperimentConfig) -> tuple[MD17Dataset, MD17Dataset, MD17Dataset]:
     gold_path = ROOT_DIR / cfg.data.gold_path
-    kwargs = dict(cutoff_radius=cfg.data.cutoff_radius, num_rbf=cfg.model.num_rbf)
+    kwargs = dict(cutoff_radius=cfg.data.cutoff_radius, num_rbf=cfg.data.num_rbf)
     return (
         MD17Dataset(gold_path, split="train", **kwargs),
         MD17Dataset(gold_path, split="val", **kwargs),
@@ -200,7 +173,7 @@ def main() -> None:
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     results_path.parent.mkdir(parents=True, exist_ok=True)
 
-    cfg_dict = dataclasses.asdict(cfg)
+    cfg_dict = cfg.to_dict()
 
     print(f"energy per atom: shift {shift:.4f}, scale {scale:.4f} kcal/mol", flush=True)
     print(f"{'epoch':>5} {'train_loss':>12} {'train_E':>10} {'train_F':>10} {'val_loss':>12} {'val_E':>10} {'val_F':>10} {'lr':>10} {'epoch_s':>8} {'elapsed_s':>10}",

@@ -57,10 +57,6 @@ model:
   num_rbf: 20
   max_atomic_number: 100
   eps: 1.0e-8                 # floor inside every vector norm
-  # Phase 1 is deterministic, so these two have no meaning here. Present so
-  # the config shape matches Phase 2/3 exactly.
-  num_mc_samples: null
-  perturbation_strength: null
 
 train:
   epochs: 200
@@ -87,8 +83,3 @@ train:
   # split would be.
   train_subset: 10000
   train_subset_seed: 42
-
-# Both outputs are gitignored and must never be committed.
-output:
-  checkpoint: experiments/checkpoints/phase1_painn.pt
-  results: experiments/results/phase1_painn.json
