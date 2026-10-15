@@ -1,0 +1,56 @@
+# DimeNet++ - Phase 1 bake-off entry (SCRUM-50). Owner: Dongxiao.
+#
+# Schema: glossary.md section 6. Trained on ethanol DFT like the other four
+# Phase 1 models. Dongxiao's dimenet_*.yaml configs stay as the record of his
+# earlier CCSD(T) experiments (ml/training/train_dimenet.py).
+name: phase1_dimenet
+
+# ---------------------------------------------------------------------------
+# Locked protocol. The data: and train: blocks are byte-identical in all six
+# Phase 1/2 configs (phase1_baseline, phase1_schnet, phase1_painn,
+# phase1_physnet, phase1_dimenet, phase2_blip) and tests/ml/test_harness.py
+# fails if they drift. Only model: differs. Change them in all six or none.
+# ---------------------------------------------------------------------------
+data:
+  dataset: md17
+  molecule: ethanol
+  theory: dft
+  gold_path: data/gold/md17/ethanol_dft.npz   # gold only; if missing, run `python -m ml.data.preprocessing`
+  cutoff_radius: 5.0          # A; each model's own cutoff must equal it (train.py checks)
+  train_split: 0.8            # how the gold file's contiguous trajectory blocks were made;
+  val_split: 0.1              #   the split is baked in as train/val/test_idx and never re-derived
+  test_split: 0.1
+  use_literature_split: false # ethanol_dft ships no literature-standard split
+  num_rbf: 16                 # width of the dataset's edge_attr; no model reads it
+  seed: 42                    # torch seed: initialisation and shuffle order
+
+model:
+  phase: dimenet              # ml/models/registry.py key
+  # Dongxiao's model sizes from dimenet_ethanol_ccsd_t.yaml, kept for now -
+  # far smaller than the published DimeNet++ (hidden_channels 128). Any
+  # other DimeNetPlusPlus argument (cutoff, envelope_exponent, ...) takes
+  # PyG's default, recorded in the checkpoint via config().
+  hidden_channels: 16
+  out_channels: 1
+  num_blocks: 1
+  int_emb_size: 8
+  basis_emb_size: 4
+  out_emb_channels: 16
+  num_spherical: 3
+  num_radial: 3
+
+train:
+  epochs: 200
+  batch_size: 32
+  lr: 0.0005
+  energy_loss_weight: 1.0
+  force_loss_weight: 100.0    # forces weighted far above energy (glossary.md section 6)
+  patience: 20
+  device: cpu
+  # Compute budget: 10,000 of 444,074 train frames and 5,000 of 55,509 val
+  # frames, each a fixed stride over its block with a seeded offset, so every
+  # model sees exactly the same frames. Nothing is re-split; the test split is
+  # never read in training and is scored whole by ml/training/evaluate.py.
+  train_subset: 10000
+  train_subset_seed: 42
+  val_subset: 5000
