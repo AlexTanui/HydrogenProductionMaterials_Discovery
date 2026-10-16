@@ -175,6 +175,25 @@ def test_markdown_reports_the_fingerprint_and_any_rescore(tmp_path):
     assert md_text.count("not re-scored") == 1 and "| 2.2e-08 |" in md_text
 
 
+@pytest.mark.parametrize("train_subset, val_subset, seed, expected", [
+    # Whole splits: subset sizes (and the seed) are None in the config.
+    (None, None, None, "Budget: all train and val frames; batch 32"),
+    (10000, None, 42, "Budget: 10,000 train frames (stride subset, seed 42) and all val frames; batch 32"),
+    (None, 5000, 42, "Budget: all train frames and 5,000 val frames (stride subset, seed 42); batch 32"),
+    (10000, 5000, 42, "Budget: 10,000 train and 5,000 val frames (stride subsets, seed 42); batch 32"),
+])
+def test_whole_split_runs_are_reported_as_all(tmp_path, train_subset, val_subset, seed, expected):
+    changes = {"config.train.train_subset": train_subset, "config.train.val_subset": val_subset,
+               "config.train.train_subset_seed": seed}
+    _write_run(tmp_path, "a", run_changes=changes)
+    _write_run(tmp_path, "b", run_changes=changes)
+    csv_text, md_text, _ = build(tmp_path)
+    assert expected in md_text
+    if train_subset is None and val_subset is None:
+        assert "stride" not in md_text
+    assert _assert_csv_reproduces_records(csv_text, tmp_path) == 2
+
+
 def test_unscored_run_and_empty_directory_are_refused(tmp_path):
     with pytest.raises(FileNotFoundError, match="no run records"):
         load_runs(tmp_path)

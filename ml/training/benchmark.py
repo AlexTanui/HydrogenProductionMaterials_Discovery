@@ -228,6 +228,20 @@ def _md_value(column: str, value: Any) -> str:
     return str(value)
 
 
+def _budget_text(train: dict[str, Any]) -> str:
+    """Train/val frame budget. A subset size of None means the whole split: "all", no stride."""
+    train_size, val_size, seed = train["train_subset"], train["val_subset"], train["train_subset_seed"]
+    if train_size is not None and val_size is not None:
+        return f"{train_size:,} train and {val_size:,} val frames (stride subsets, seed {seed})"
+    if train_size is None and val_size is None:
+        return "all train and val frames"
+
+    def part(size: Optional[int], split: str) -> str:
+        return f"all {split} frames" if size is None else f"{size:,} {split} frames (stride subset, seed {seed})"
+
+    return f"{part(train_size, 'train')} and {part(val_size, 'val')}"
+
+
 def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared: dict[str, Any],
                     title: str = "Phase 1 benchmark") -> str:
     data, train = shared["data"], shared["train"]
@@ -265,8 +279,7 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
         "## Shared protocol",
         "",
         f"- Data: `{data['gold_path']}`, cutoff {data['cutoff_radius']} Å, seed {data['seed']}.",
-        f"- Budget: {train['train_subset']:,} train and {train['val_subset']:,} val frames (stride "
-        f"subsets, seed {train['train_subset_seed']}); batch {train['batch_size']}; up to "
+        f"- Budget: {_budget_text(train)}; batch {train['batch_size']}; up to "
         f"{train['epochs']} epochs, early-stopping patience {train['patience']}; "
         f"device {train['device']}.",
         f"- Loss: {loop['loss']}; weights {loop['energy_loss_weight']} / "
