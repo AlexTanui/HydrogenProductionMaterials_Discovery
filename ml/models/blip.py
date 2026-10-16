@@ -73,19 +73,29 @@ class GaussianRBF(nn.Module):
 class StochasticLinear(nn.Module):
     """A linear layer whose weight is input-dependent Gaussian.
 
-    For one forward call:
+    For one forward call, per row r (r is one edge for the message MLPs,
+    one atom for the update MLPs):
 
-        scale  = softplus(noise_gate(x.mean(dim=0)))   # scalar, input-dependent
-        W      = W_mu + softplus(W_rho) * scale * eps  # eps ~ N(0, I), fresh each call
-        y      = x @ W.T + b
+        scale_r = softplus(noise_gate(x_r))                    # own row, not the batch mean
+        y_r     = x_r @ W_mu.T + b + scale_r * (x_r @ (softplus(W_rho) * eps).T)
 
     `W_mu`/`W_rho` are learned, per-weight parameters (standard
-    Bayes-by-backprop); `noise_gate` is a small learned function of the
-    batch's pooled input that scales how much weight-noise this call
-    injects, which is what makes the stochasticity *input-dependent*
-    rather than a fixed per-weight prior applied identically regardless
-    of what's being processed. `softplus` keeps both the weight's noise
-    magnitude and the input-dependent scale positive without a hard clamp.
+    Bayes-by-backprop); `noise_gate` is a small learned function of each
+    row's own input that scales how much weight-noise that row picks up,
+    which is what makes the stochasticity *input-dependent* rather than a
+    fixed per-weight prior applied identically regardless of what's being
+    processed. `softplus` keeps both the weight's noise magnitude and the
+    input-dependent scale positive without a hard clamp.
+
+    Gating per row rather than per batch-mean is deliberate (see
+    docs/reviews/blip-batch-dependence.md): gating on `x.mean(dim=0)`
+    made one molecule's energy/forces depend on whichever other molecules
+    shared its batch, which changed test results with `--batch-size` and
+    confounded the Phase 1 vs Phase 2 comparison. Gating per row removes
+    that - a molecule's prediction no longer depends on its batch-mates
+    (verified to float64 roundoff; see the review doc's repro script).
+    One `eps` draw is still shared across all rows in a call, which only
+    correlates their noise samples, not their inputs, so it's unaffected.
 
     A fresh `eps` is sampled on every forward call, train or eval - BLIP's
     uncertainty comes from explicitly repeated sampling
@@ -120,12 +130,10 @@ class StochasticLinear(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         weight_sigma = F.softplus(self.weight_rho)
-        input_scale = F.softplus(self.noise_gate(x.mean(dim=0, keepdim=True))).view(())
-
         eps = torch.randn_like(self.weight_mu)
-        weight = self.weight_mu + weight_sigma * input_scale * eps
 
-        return F.linear(x, weight, self.bias)
+        row_scale = F.softplus(self.noise_gate(x))  # (rows, 1): each row's own input
+        return F.linear(x, self.weight_mu, self.bias) + row_scale * F.linear(x, weight_sigma * eps)
 
     def kl_divergence(self) -> torch.Tensor:
         """KL(q(W) || N(0, PRIOR_SIGMA^2)), summed over all weight entries.
