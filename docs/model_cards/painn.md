@@ -2,17 +2,14 @@
 
 **Jira:** SCRUM-52, under the Phase 1 bake-off epic SCRUM-50
 **Owner:** Fazin Faizal (QA & Benchmarking Engineer)
-**Status:** implemented and symmetry-verified; **not yet trained**
+**Status:** trained and scored under the Phase 1 protocol v1 (§7)
 **Code:** [`ml/models/painn.py`](../../ml/models/painn.py)
 **Config:** [`experiments/configs/phase1_painn.yaml`](../../experiments/configs/phase1_painn.yaml)
 **Tests:** [`tests/ml/test_painn.py`](../../tests/ml/test_painn.py)
 
-> **Results are deliberately blank.** No checkpoint has been trained by the
-> shared bake-off training loop, because that loop (`ml/training/train.py`,
-> SCRUM-51) does not exist yet. Numbers produced by any other loop are not
-> comparable with the other four bake-off candidates, which is the entire
-> point of the bake-off. This card is filled in once SCRUM-51 lands and
-> `ml/training/evaluate.py` has scored the checkpoint on the test split.
+> **Results:** §7 holds the Phase 1 protocol v1 result, trained by the
+> shared `ml/training/train.py` and scored once on the test split by
+> `ml/training/evaluate.py`. The smoke-run numbers in §6 are not results.
 
 ---
 
@@ -260,38 +257,50 @@ comparable with the other bake-off models.
 
 ---
 
-## 7. Results
+## 7. Phase 1 protocol v1 result
 
-**Not yet available.** Populated from
-`experiments/results/phase1_painn.json` once `ml/training/train.py`
-(SCRUM-51) has produced `experiments/checkpoints/phase1_painn.pt` and
-`ml/training/evaluate.py` has scored it on the **test** split.
+Trained by the shared `ml/training/train.py` under the [Phase 1 protocol v1](../phase1_protocol.md)
+and scored once on the full test split by `ml/training/evaluate.py`. This is
+this model's row in the [Phase 1 benchmark](../../reports/phase1_benchmark.md);
+the run record is [`experiments/runs/phase1_painn/`](../../experiments/runs/phase1_painn/).
 
-| Metric | Value | Unit |
-|---|---|---|
-| Energy MAE (total) | — | kcal/mol |
-| Energy MAE (per atom) | — | kcal/mol/atom |
-| Energy RMSE (total) | — | kcal/mol |
-| Force MAE (component) | — | kcal/mol/Å |
-| Force RMSE (component) | — | kcal/mol/Å |
-| Force MAE (atom norm) | — | kcal/mol/Å |
-| Training wall-clock | — | s |
-| Inference time | — | s/config |
+| | |
+|---|---|
+| Config | [`experiments/configs/phase1_painn.yaml`](../../experiments/configs/phase1_painn.yaml) - hidden_channels 128, num_layers 3, cutoff_radius 5.0, num_rbf 20, max_atomic_number 100, eps 1e-08 |
+| Parameters | 588,033 |
+| Trained at | `d9f3814`, clean tree |
+| Data | ethanol DFT: 10,000 train / 5,000 val frames (stride subsets, seed 42); test: all 55,509 frames, seed 0, batch 32 |
+| Epochs | 200 run, best epoch 200; stopped by the 200-epoch cap, still improving (7 val improvements in the last 20 epochs, final lr 7.81e-06) |
+| Val / train loss at the best epoch | 3.45x |
+| Training time | 4,106 s (1.14 h), cpu, 24 threads |
+| Physics checks on the trained checkpoint | 14 of 14 pass (`tests/ml/test_painn_physics.py`: rotation, reflection, translation, permutation, finite-difference forces, zero net force, batching, gradient path from `pos`) |
+
+| Test metric | Value |
+|---|---|
+| **Energy MAE** (total) | **0.0531** kcal/mol |
+| Energy RMSE (total) | 0.0678 kcal/mol |
+| Energy MAE (per atom) | 0.00590 kcal/mol/atom |
+| **Force MAE** (component) | **0.1196** kcal/mol/Å |
+| Force RMSE (component) | 0.2040 kcal/mol/Å |
+| Force MAE (atom norm) | 0.2394 kcal/mol/Å |
+| Inference | 0.520 ms/frame (forward + force backward, batch 32) |
+
+One seed, at the epoch cap; see the protocol's limitations before comparing
+close rows.
 
 Both energy conventions (`total`, `per_atom`) and both force conventions
-(`component`, `atom_norm`) are always computed and always labelled — a bare
-MAE is not interpretable without them. The bake-off table uses
-`energy_mae_total` and `force_mae_component`, the MD17/SchNet/PaiNN
-reporting convention.
+(`component`, `atom_norm`) are always computed and labelled - a bare MAE is
+not interpretable without them. The benchmark table uses `energy_mae_total`
+and `force_mae_component`, the MD17/SchNet/PaiNN reporting convention.
 
 Reproduce with:
 
 ```bash
-python -m ml.training.train    --config experiments/configs/phase1_painn.yaml
+python -m ml.training.train    experiments/configs/phase1_painn.yaml
 python -m ml.training.evaluate --checkpoint experiments/checkpoints/phase1_painn.pt
 ```
 
-Neither output is committed; both are gitignored.
+The checkpoint is gitignored; the run record is committed.
 
 ---
 
@@ -307,9 +316,9 @@ implemented against those definitions when Phase 2/3 land.
 
 ## 9. Limitations and known risks
 
-- **Untrained.** Every accuracy claim above is absent for that reason. The
-  symmetry properties are structural and hold at any weights, which is why
-  they are testable now.
+- **One seed, at the 200-epoch cap.** The §7 result is a single run that was
+  still improving when the cap stopped it; see the
+  [protocol's limitations](../phase1_protocol.md#limitations).
 - **Single molecule, single theory level.** Scored on ethanol/DFT only.
   Absolute energies are not comparable across molecules or theory levels —
   `ethanol` also exists at CCSD(T) — so results must stay keyed on
@@ -318,10 +327,9 @@ implemented against those definitions when Phase 2/3 land.
 - **Reduced training budget.** `train_subset: 10000` is a CPU concession,
   not a modelling choice. It is fair across the bake-off but means absolute
   MAEs will not match published MD17 numbers trained to convergence.
-- **`model.phase: painn` extends glossary.md §6's enum**, which currently
-  documents only `mpnn | blip | graph_stochastic`, and glossary.md §3/§7
-  explicitly scope Phase 1 away from PaiNN. That predates the SCRUM-50
-  bake-off; §6's enum needs updating once the bake-off outcome is agreed.
+- **glossary.md §3/§7 still scope Phase 1 away from PaiNN.** §6 now lists
+  `painn` as a registry key; the narrative sections predate the SCRUM-50
+  bake-off.
 - **`predict_energy` takes `pos`**, which the original SCRUM-52 signature
   omitted. PaiNN cannot compute an energy without positions, and no
   conservative model can compute correct forces without them. Flagged on
