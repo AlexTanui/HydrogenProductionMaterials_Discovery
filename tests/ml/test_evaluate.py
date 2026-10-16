@@ -571,3 +571,60 @@ def test_rescore_comparison_is_relative():
     assert differences["metrics.a"] == pytest.approx(3e-6, rel=1e-6)
     assert differences["metrics.n"] == differences["benchmark_row.b"] == 0.0
 
+
+
+# --------------------------------------------------------------------------
+# 9. The caller's RNG survives scoring, model reconstruction included
+# --------------------------------------------------------------------------
+
+def _schnet_checkpoint(tmp_path, gold_file):
+    """A real registry model, whose layers initialise randomly when it is rebuilt."""
+    from ml.models.registry import build_model
+
+    torch.manual_seed(0)
+    model = ScaledEnergyModel(build_model("schnet", hidden_channels=8, num_layers=1, num_rbf=8))
+    path = tmp_path / "schnet.pt"
+    save_checkpoint(
+        path, model, "schnet",
+        data={"gold_path": str(gold_file), "molecule": "toy", "theory": "dft",
+              "cutoff_radius": 5.0, "num_rbf": 16},
+    )
+    return path
+
+
+def test_scoring_a_randomly_initialised_model_leaves_the_callers_rng_untouched(tmp_path, gold_file):
+    from ml.models.registry import build_model
+
+    path = _schnet_checkpoint(tmp_path, gold_file)
+    torch.manual_seed(99)
+    expected = torch.rand(3)
+
+    # The premise: rebuilding this model draws from the global RNG.
+    torch.manual_seed(99)
+    build_model("schnet", hidden_channels=8, num_layers=1, num_rbf=8)
+    assert not torch.equal(torch.rand(3), expected)
+
+    torch.manual_seed(99)
+    evaluate_checkpoint(path, batch_size=4)
+    assert torch.equal(torch.rand(3), expected)
+
+
+def test_rng_fork_covers_every_cuda_device(tmp_path, gold_file, monkeypatch):
+    """torch.manual_seed reseeds all CUDA devices, so all of them must be forked, not one."""
+    import contextlib
+
+    path = _schnet_checkpoint(tmp_path, gold_file)
+    forked = []
+    real_fork_rng = torch.random.fork_rng
+
+    @contextlib.contextmanager
+    def spy(devices=None, **kwargs):
+        forked.append(list(devices))
+        with real_fork_rng(devices=[], **kwargs):  # no real GPU here
+            yield
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 3)
+    monkeypatch.setattr(torch.random, "fork_rng", spy)
+    evaluate_checkpoint(path, batch_size=4, device="cpu")
+    assert forked == [[0, 1, 2]]

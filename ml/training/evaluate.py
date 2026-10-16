@@ -201,6 +201,30 @@ def evaluate_checkpoint(
             wrong unit is wrong by a silent constant factor rather than
             visibly broken (CLAUDE.md).
     """
+    # Everything that can draw from torch's RNG runs inside one forked state,
+    # restored on exit: rebuilding the model (its layers initialise randomly
+    # before the checkpoint's weights load), iterating the DataLoader (it
+    # draws a base seed) and a stochastic forward pass. torch.manual_seed
+    # reseeds the CPU generator and every CUDA device's, so all of them are
+    # forked - not only the device being scored on.
+    cuda_devices = list(range(torch.cuda.device_count())) if torch.cuda.is_available() else []
+    with torch.random.fork_rng(devices=cuda_devices):
+        return _score_checkpoint(
+            checkpoint_path, gold_path, split, batch_size, device, num_workers, units, seed
+        )
+
+
+def _score_checkpoint(
+    checkpoint_path: str | Path,
+    gold_path: Optional[str | Path],
+    split: str,
+    batch_size: int,
+    device: str,
+    num_workers: int,
+    units: Optional[Units],
+    seed: int,
+) -> dict[str, Any]:
+    """evaluate_checkpoint's body; always called inside its forked RNG state."""
     checkpoint_path = Path(checkpoint_path)
     torch_device = _resolve_device(device)
 
@@ -245,16 +269,16 @@ def evaluate_checkpoint(
     n_batches = 0
     wall_start = time.perf_counter()
 
-    # Forked so the seed governs this pass alone and the caller's RNG state
-    # (e.g. train.py's) is restored afterwards.
-    rng_devices = [torch_device.index or 0] if torch_device.type == "cuda" else []
+    # Seeded after the model is rebuilt, so the scoring pass's random draws do
+    # not depend on how much RNG reconstruction consumed. (The caller's state
+    # is preserved by evaluate_checkpoint's fork.)
+    torch.manual_seed(seed)
 
     # no_grad for the loop, but grad back on around the model call: forces are
     # F = -dE/dR, so that call is the one place a graph is needed. Not every
     # model re-enables grad internally - MPNN and SchNet do not, and raise
     # under no_grad - and evaluation must not depend on which ones do.
-    with torch.random.fork_rng(devices=rng_devices), torch.no_grad():
-        torch.manual_seed(seed)
+    with torch.no_grad():
         for batch in loader:
             batch = batch.to(torch_device)
 
