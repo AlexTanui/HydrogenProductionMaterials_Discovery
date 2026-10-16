@@ -1,4 +1,13 @@
-"""Standalone SchNet train + eval script for SCRUM-53 (Phase 1 bake-off).
+"""SUPERSEDED by ml/training/train.py (15 Oct 2026). Kept as the record of earlier results.
+
+Every model now trains through the shared loop under one locked protocol
+(experiments/configs/phase1_*.yaml and phase2_blip.yaml). Do not use this
+script for new runs, and do not quote its numbers beside the shared loop's.
+It still runs, but reads phase1_schnet.yaml, whose values have since
+changed (batch 256 -> 32) and whose train/val subsets it ignores. Its
+results came from that config as of commit e09bf14.
+
+Standalone SchNet train + eval script for SCRUM-53 (Phase 1 bake-off).
 
 Temporary stand-in for `ml/training/train.py` (Ruturaj) and
 `ml/training/evaluate.py` (Fazin) - both still empty placeholders. Retire

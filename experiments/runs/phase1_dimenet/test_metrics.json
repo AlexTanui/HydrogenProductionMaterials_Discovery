@@ -1,0 +1,311 @@
+{
+  "schema_version": 1,
+  "checkpoint": "C:\\work\\capstone\\HydrogenProductionMaterials_Discovery\\experiments\\checkpoints\\phase1_dimenet.pt",
+  "phase": "dimenet",
+  "model_config": {
+    "hidden_channels": 64,
+    "out_channels": 1,
+    "num_blocks": 2,
+    "int_emb_size": 32,
+    "basis_emb_size": 8,
+    "out_emb_channels": 128,
+    "num_spherical": 7,
+    "num_radial": 6,
+    "cutoff": 5.0,
+    "max_num_neighbors": 32,
+    "envelope_exponent": 5,
+    "num_before_skip": 1,
+    "num_after_skip": 2,
+    "num_output_layers": 3,
+    "act": "swish",
+    "output_initializer": "zeros"
+  },
+  "energy_scaling": {
+    "shift_per_atom": -10799.53515625,
+    "scale_per_atom": 0.46550825238227844,
+    "unit": "kcal/mol",
+    "formula": "E = scale * E_model + n_atoms * shift; F = scale * F_model"
+  },
+  "seed": 0,
+  "n_parameters": 278982,
+  "data": {
+    "gold_path": "C:\\work\\capstone\\HydrogenProductionMaterials_Discovery\\data\\gold\\md17\\ethanol_dft.npz",
+    "split": "test",
+    "molecule": "ethanol",
+    "theory": "dft",
+    "cutoff_radius": 5.0,
+    "num_rbf": 16,
+    "n_configs": 55509,
+    "n_atoms_per_config": 9,
+    "fingerprint": {
+      "algorithm": "sha256",
+      "sha256": "518af6e3d57bdb884dcd51e785b7330469395da40990764d4771ff099a198839",
+      "parts": {
+        "indices": "44ea226fe2e90fef7ed715064c4ede195505acf333f057e0275dba2b697c87a2",
+        "z": "ebff5f2055015a1a66fd07870566c96fd188082f96307d44406870cc55975a68",
+        "R": "5b902376a65b695184e09ced4d02ecf63150ffe2aecf013357379d4099c8a31e",
+        "E": "a02f7fb7ed62dba736e1683a3c9f8579488710daaa06ba37f02131e59ef7b424",
+        "F": "351696c300405940e591a6326d52f1632e93b56fea4d5b04e1af4f2f5e0c36b7"
+      },
+      "dtypes": {
+        "indices": "int64",
+        "z": "int64",
+        "R": "float32",
+        "E": "float32",
+        "F": "float32"
+      },
+      "shapes": {
+        "indices": [
+          55509
+        ],
+        "z": [
+          9
+        ],
+        "R": [
+          55509,
+          9,
+          3
+        ],
+        "E": [
+          55509
+        ],
+        "F": [
+          55509,
+          9,
+          3
+        ]
+      }
+    }
+  },
+  "metrics": {
+    "schema_version": 1,
+    "conventions": {
+      "energy_normalisation": [
+        "total",
+        "per_atom"
+      ],
+      "force_mode": [
+        "component",
+        "atom_norm"
+      ]
+    },
+    "per_key": [
+      {
+        "molecule": "ethanol",
+        "theory": "dft",
+        "n_frames": 55509,
+        "n_atoms": 499581,
+        "stochastic": false,
+        "units": {
+          "energy": "kcal/mol",
+          "length": "Ang",
+          "force": "kcal/mol/Ang"
+        },
+        "energy_mae_total": 0.05672742820983984,
+        "energy_rmse_total": 0.0721209957550564,
+        "energy_mae_per_atom": 0.006303047578871092,
+        "energy_rmse_per_atom": 0.008013443972784048,
+        "force_mae_component": 0.1253616162620671,
+        "force_rmse_component": 0.2045148583321013,
+        "force_mae_atom_norm": 0.25081790476364,
+        "force_rmse_atom_norm": 0.3542301255339506,
+        "fields": {
+          "energy_mae_total": {
+            "quantity": "energy",
+            "statistic": "mae",
+            "normalisation": "total",
+            "unit": "kcal/mol"
+          },
+          "energy_rmse_total": {
+            "quantity": "energy",
+            "statistic": "rmse",
+            "normalisation": "total",
+            "unit": "kcal/mol"
+          },
+          "energy_mae_per_atom": {
+            "quantity": "energy",
+            "statistic": "mae",
+            "normalisation": "per_atom",
+            "unit": "kcal/mol/atom"
+          },
+          "energy_rmse_per_atom": {
+            "quantity": "energy",
+            "statistic": "rmse",
+            "normalisation": "per_atom",
+            "unit": "kcal/mol/atom"
+          },
+          "force_mae_component": {
+            "quantity": "force",
+            "statistic": "mae",
+            "mode": "component",
+            "unit": "kcal/mol/Ang"
+          },
+          "force_rmse_component": {
+            "quantity": "force",
+            "statistic": "rmse",
+            "mode": "component",
+            "unit": "kcal/mol/Ang"
+          },
+          "force_mae_atom_norm": {
+            "quantity": "force",
+            "statistic": "mae",
+            "mode": "atom_norm",
+            "unit": "kcal/mol/Ang"
+          },
+          "force_rmse_atom_norm": {
+            "quantity": "force",
+            "statistic": "rmse",
+            "mode": "atom_norm",
+            "unit": "kcal/mol/Ang"
+          }
+        }
+      }
+    ],
+    "overall": {
+      "n_keys": 1,
+      "n_frames": 55509,
+      "n_atoms": 499581,
+      "keys": [
+        {
+          "molecule": "ethanol",
+          "theory": "dft"
+        }
+      ],
+      "units": {
+        "energy": "kcal/mol",
+        "length": "Ang",
+        "force": "kcal/mol/Ang"
+      },
+      "excluded": {},
+      "force_mae_component": 0.1253616162620671,
+      "force_rmse_component": 0.2045148583321013,
+      "force_mae_atom_norm": 0.25081790476364,
+      "force_rmse_atom_norm": 0.3542301255339506,
+      "energy_mae_total": 0.05672742820983984,
+      "energy_rmse_total": 0.0721209957550564,
+      "energy_mae_per_atom": 0.006303047578871092,
+      "energy_rmse_per_atom": 0.008013443972784048,
+      "fields": {
+        "energy_mae_total": {
+          "quantity": "energy",
+          "statistic": "mae",
+          "normalisation": "total",
+          "unit": "kcal/mol"
+        },
+        "energy_rmse_total": {
+          "quantity": "energy",
+          "statistic": "rmse",
+          "normalisation": "total",
+          "unit": "kcal/mol"
+        },
+        "energy_mae_per_atom": {
+          "quantity": "energy",
+          "statistic": "mae",
+          "normalisation": "per_atom",
+          "unit": "kcal/mol/atom"
+        },
+        "energy_rmse_per_atom": {
+          "quantity": "energy",
+          "statistic": "rmse",
+          "normalisation": "per_atom",
+          "unit": "kcal/mol/atom"
+        },
+        "force_mae_component": {
+          "quantity": "force",
+          "statistic": "mae",
+          "mode": "component",
+          "unit": "kcal/mol/Ang"
+        },
+        "force_rmse_component": {
+          "quantity": "force",
+          "statistic": "rmse",
+          "mode": "component",
+          "unit": "kcal/mol/Ang"
+        },
+        "force_mae_atom_norm": {
+          "quantity": "force",
+          "statistic": "mae",
+          "mode": "atom_norm",
+          "unit": "kcal/mol/Ang"
+        },
+        "force_rmse_atom_norm": {
+          "quantity": "force",
+          "statistic": "rmse",
+          "mode": "atom_norm",
+          "unit": "kcal/mol/Ang"
+        }
+      },
+      "stochastic": false
+    }
+  },
+  "timing": {
+    "eval_wall_clock_s": 65.27571539999917,
+    "model_inference_s": 56.058800699480344,
+    "inference_s_per_config": 0.0010099047127399223,
+    "wall_clock_s_per_config": 0.001175948321893732,
+    "batch_size": 32,
+    "n_batches": 1735,
+    "train_wall_clock_s": 8021.479586200003
+  },
+  "environment": {
+    "device": "cpu",
+    "torch": "2.13.0+cpu",
+    "torch_num_threads": 24,
+    "python": "3.11.9",
+    "platform": "Windows-10-10.0.26200-SP0"
+  },
+  "benchmark_row": {
+    "phase": "dimenet",
+    "model": "GoldDimeNetPlusPlus",
+    "energy_mae": 0.05672742820983984,
+    "energy_mae_field": "energy_mae_total",
+    "energy_mae_unit": "kcal/mol",
+    "force_mae": 0.1253616162620671,
+    "force_mae_field": "force_mae_component",
+    "force_mae_unit": "kcal/mol/Ang",
+    "ece": null,
+    "uncertainty_correlation": null,
+    "uncertainty_note": "ECE and uncertainty-error correlation are defined by Dongxiao and are not computed here; a deterministic Phase 1 model has no uncertainty by construction. Populated for Phase 2/3 once those definitions land."
+  },
+  "warnings": [],
+  "rescore": {
+    "purpose": "add data.fingerprint; reproduces the stored metrics and tunes nothing",
+    "date": "2026-10-16",
+    "git_commit": "549e6dd1c1827c3164b9bb2895841584f92dd6f5",
+    "git_dirty": false,
+    "evaluate_py_sha256": "f35bf8348378428d39586efdc02061497d906acf7d8068ebb2d50acdc09b4400",
+    "script": "scripts/fingerprint_run_records.py",
+    "torch_num_threads": 24,
+    "seed": 0,
+    "batch_size": 32,
+    "tolerance_relative": 1e-05,
+    "max_relative_difference": 4.895807901677164e-10,
+    "relative_differences": {
+      "metrics.schema_version": 0.0,
+      "metrics.per_key.0.n_frames": 0.0,
+      "metrics.per_key.0.n_atoms": 0.0,
+      "metrics.per_key.0.energy_mae_total": 0.0,
+      "metrics.per_key.0.energy_rmse_total": 0.0,
+      "metrics.per_key.0.energy_mae_per_atom": 0.0,
+      "metrics.per_key.0.energy_rmse_per_atom": 0.0,
+      "metrics.per_key.0.force_mae_component": 7.715866406108774e-11,
+      "metrics.per_key.0.force_rmse_component": 4.895807901677164e-10,
+      "metrics.per_key.0.force_mae_atom_norm": 3.9152132655068873e-10,
+      "metrics.per_key.0.force_rmse_atom_norm": 4.895806621984827e-10,
+      "metrics.overall.n_keys": 0.0,
+      "metrics.overall.n_frames": 0.0,
+      "metrics.overall.n_atoms": 0.0,
+      "metrics.overall.force_mae_component": 7.715866406108774e-11,
+      "metrics.overall.force_rmse_component": 4.895807901677164e-10,
+      "metrics.overall.force_mae_atom_norm": 3.9152132655068873e-10,
+      "metrics.overall.force_rmse_atom_norm": 4.895806621984827e-10,
+      "metrics.overall.energy_mae_total": 0.0,
+      "metrics.overall.energy_rmse_total": 0.0,
+      "metrics.overall.energy_mae_per_atom": 0.0,
+      "metrics.overall.energy_rmse_per_atom": 0.0,
+      "benchmark_row.energy_mae": 0.0,
+      "benchmark_row.force_mae": 7.715866406108774e-11
+    },
+    "stored_metrics_unchanged": true
+  }
+}

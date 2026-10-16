@@ -218,7 +218,7 @@ decision (one shared `train.py` vs per-model trainers).
 - SchNet trained with batch 256 ([phase1_schnet.yaml:34](../../experiments/configs/phase1_schnet.yaml#L34)).
 - PhysNet used a 20k-frame contiguous prefix ([train_physnet.py:60](../../ml/training/train_physnet.py#L60)) and an **L1** loss ([:130](../../ml/training/train_physnet.py#L130)); everything else uses MSE ([train.py:79-80](../../ml/training/train.py#L79-L80)).
 - DimeNet++ trained on CCSD(T) ethanol with 889 frames.
-- *Fix:* one contiguous-prefix subset, one batch size and MSE everywhere, all in the shared loop. The config comment describes the subset as a "deterministic stride at seed 42"; a contiguous prefix needs no seed and matches what PhysNet and DimeNet++ already do.
+- *Fix:* one subset, one batch size and MSE everywhere, all in the shared loop. The subset is the deterministic stride over `train_idx` defined in `phase1_painn.yaml` ([:79-89](../../experiments/configs/phase1_painn.yaml#L79-L89), current lines): `train_subset: 10000` frames at `train_subset_seed: 42`. Until `train.py` implements it, the reference is `stride_subset` in [scripts/train_painn.py:106](../../scripts/train_painn.py#L106) (added in `29a17a8`). It uses stride 444,074 // 10,000 = 44 and a seed-42 offset within the first stride (3), giving positions 3, 47, …, 439,959, spread evenly over the train block. It records those positions in the checkpoint so every model can reuse exactly the same frames. PhysNet's 20k contiguous prefix and DimeNet++'s 889 CCSD(T) frames do not match it, so both need re-running on ethanol/DFT with this subset.
 
 ### H7. `data.num_rbf` exists only in PaiNN's config (open)
 

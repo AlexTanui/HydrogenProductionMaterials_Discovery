@@ -1,32 +1,33 @@
 # PhysNet - Phase 1 bake-off entry (SCRUM-50). Owner: Shijin Mathew.
 #
-# Schema: glossary.md section 6. The `data:` section and the two loss
-# weights are FIXED across all five bake-off models - do not edit them
-# here, or the comparison stops being a comparison.
+# Schema: glossary.md section 6.
 name: phase1_physnet
 
+# ---------------------------------------------------------------------------
+# Locked protocol. The data: and train: blocks are byte-identical in all six
+# Phase 1/2 configs (phase1_baseline, phase1_schnet, phase1_painn,
+# phase1_physnet, phase1_dimenet, phase2_blip) and tests/ml/test_harness.py
+# fails if they drift. Only model: differs. Change them in all six or none.
+# ---------------------------------------------------------------------------
 data:
   dataset: md17
   molecule: ethanol
   theory: dft
-  gold_path: data/gold/md17/ethanol_dft.npz
-  cutoff_radius: 5.0          # must match ml/data/md17.py::build_graph
-  train_split: 0.8            # contiguous trajectory blocks, never random
-  val_split: 0.1
+  gold_path: data/gold/md17/ethanol_dft.npz   # gold only; if missing, run `python -m ml.data.preprocessing`
+  cutoff_radius: 5.0          # A; each model's own cutoff must equal it (train.py checks)
+  train_split: 0.8            # how the gold file's contiguous trajectory blocks were made;
+  val_split: 0.1              #   the split is baked in as train/val/test_idx and never re-derived
   test_split: 0.1
-  use_literature_split: false # ethanol_dft ships no literature split
-  seed: 42
+  use_literature_split: false # ethanol_dft ships no literature-standard split
+  num_rbf: 16                 # width of the dataset's edge_attr; no model reads it
+  seed: 42                    # torch seed: initialisation and shuffle order
 
 model:
-  # glossary.md section 6 currently enumerates `mpnn | blip |
-  # graph_stochastic`. The bake-off adds four more architectures and the
-  # schema has not caught up - raise it with Ruturaj rather than letting
-  # each model invent its own key.
-  phase: physnet
+  phase: physnet              # ml/models/registry.py key
   hidden_channels: 128        # feature width F
   num_modules: 3              # stacked interaction+output modules
   num_layers: 2               # interaction blocks per module
-  num_rbf: 16                 # must match ml/data/md17.py::build_graph
+  num_rbf: 16                 # PhysNet's own Gaussian basis, rebuilt from pos
   # PhysNet short-range term only. Electrostatic and dispersion terms are
   # omitted deliberately - see docs/model_cards/physnet.md.
 
@@ -34,7 +35,14 @@ train:
   epochs: 200
   batch_size: 32
   lr: 0.0005
-  energy_loss_weight: 1.0     # FIXED across the bake-off
-  force_loss_weight: 100.0    # FIXED across the bake-off
+  energy_loss_weight: 1.0
+  force_loss_weight: 100.0    # forces weighted far above energy (glossary.md section 6)
   patience: 20
-  device: cuda                # set to cpu only if you have no GPU - see the model card
+  device: cpu
+  # Compute budget: 10,000 of 444,074 train frames and 5,000 of 55,509 val
+  # frames, each a fixed stride over its block with a seeded offset, so every
+  # model sees exactly the same frames. Nothing is re-split; the test split is
+  # never read in training and is scored whole by ml/training/evaluate.py.
+  train_subset: 10000
+  train_subset_seed: 42
+  val_subset: 5000

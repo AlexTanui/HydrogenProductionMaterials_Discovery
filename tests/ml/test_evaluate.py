@@ -27,6 +27,7 @@ import torch
 from torch import nn
 
 from ml.models.registry import MODEL_REGISTRY, load_model, save_checkpoint
+from ml.models.scaling import ScaledEnergyModel
 from ml.training.evaluate import evaluate_checkpoint
 
 _Z = [6, 6, 8, 1, 1, 1, 1, 1, 1]
@@ -108,7 +109,8 @@ def checkpoint(tmp_path, gold_file, toy_registered):
     path = tmp_path / "toy.pt"
     save_checkpoint(
         path,
-        model=ToyModel(),
+        # Identity scaling, so the metrics below are ToyModel's own.
+        model=ScaledEnergyModel(ToyModel()),
         phase=toy_registered,
         data={
             "gold_path": str(gold_file),
@@ -140,7 +142,7 @@ def test_unregistered_phase_raises_with_a_useful_message(tmp_path, gold_file):
     from ml.models.registry import UnknownModel
 
     torch.save(
-        {"phase": "not_a_model", "model_config": {}, "state_dict": {}},
+        {"checkpoint_version": 2, "phase": "not_a_model", "model_config": {}, "state_dict": {}},
         tmp_path / "bad.pt",
     )
     with pytest.raises(UnknownModel, match="registered"):
@@ -336,5 +338,293 @@ def test_checkpoint_round_trips_through_the_registry(checkpoint):
     model, stored = load_model(checkpoint)
 
     assert stored["phase"] == "toy"
-    assert isinstance(model, ToyModel)
+    assert isinstance(model, ScaledEnergyModel) and isinstance(model.model, ToyModel)
     assert not model.training  # load_model returns an eval-mode model
+
+
+# --------------------------------------------------------------------------
+# 5. The checkpoint contract: one energy scale-and-shift, version 2
+# --------------------------------------------------------------------------
+
+def test_energy_scaling_is_applied_by_evaluate(tmp_path, gold_file, toy_registered):
+    """The wrapper's shift and scale travel in the checkpoint and reach the scored energies.
+
+    Expected numbers are computed by hand from the bare ToyModel, so a
+    shift lost on save/load, or applied twice, fails here.
+    """
+    from torch_geometric.loader import DataLoader
+
+    from ml.data.datasets import MD17Dataset
+
+    shift, scale = -3.25, 1.75
+    path = tmp_path / "scaled.pt"
+    save_checkpoint(
+        path, ScaledEnergyModel(ToyModel(), shift=shift, scale=scale), toy_registered,
+        data={"gold_path": str(gold_file), "molecule": "toy", "theory": "dft",
+              "cutoff_radius": 5.0, "num_rbf": 16},
+    )
+    record = evaluate_checkpoint(path, batch_size=4)["metrics"]["per_key"][0]
+
+    bare = ToyModel().eval()
+    energy_errors, force_errors = [], []
+    for batch in DataLoader(MD17Dataset(gold_file, split="test"), batch_size=4):
+        energy, forces = bare.predict_energy_and_forces(
+            batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch
+        )
+        expected_energy = scale * energy.detach() + len(_Z) * shift
+        energy_errors.append((expected_energy - batch.y).double().abs())
+        force_errors.append((scale * forces.detach() - batch.force).double().abs().reshape(-1))
+
+    assert record["energy_mae_total"] == pytest.approx(float(torch.cat(energy_errors).mean()), rel=1e-6)
+    assert record["force_mae_component"] == pytest.approx(float(torch.cat(force_errors).mean()), rel=1e-6)
+
+
+def test_bare_model_cannot_be_saved(tmp_path, toy_registered):
+    """A bare model has no energy scale-and-shift; saving one would score ~97,000 kcal/mol off."""
+    with pytest.raises(TypeError, match="ScaledEnergyModel"):
+        save_checkpoint(tmp_path / "bare.pt", ToyModel(), toy_registered, data={})
+
+
+def test_version_1_checkpoint_is_refused(tmp_path, toy_registered):
+    """Checkpoints from the superseded per-model trainers carry no version and a different energy convention."""
+    torch.save(
+        {"phase": toy_registered, "model_config": {"weight": 0.5},
+         "state_dict": ToyModel().state_dict()},
+        tmp_path / "v1.pt",
+    )
+    with pytest.raises(ValueError, match="checkpoint version 1"):
+        load_model(tmp_path / "v1.pt")
+
+
+def test_checkpoint_write_is_atomic(checkpoint):
+    """save_checkpoint renames a finished temporary file into place; none is left behind."""
+    assert checkpoint.exists()
+    assert not checkpoint.with_name(checkpoint.name + ".tmp").exists()
+
+
+# --------------------------------------------------------------------------
+# 6. A fixed, recorded seed: stochastic models score reproducibly
+# --------------------------------------------------------------------------
+
+class NoisyToyModel(ToyModel):
+    """ToyModel plus a fresh random energy offset on every call, like BLIP's weight noise."""
+
+    def predict_energy_and_forces(self, z, pos, edge_index, edge_attr, batch):
+        energy, forces = super().predict_energy_and_forces(z, pos, edge_index, edge_attr, batch)
+        return energy + torch.randn(energy.shape, dtype=energy.dtype), forces
+
+
+@pytest.fixture
+def noisy_checkpoint(tmp_path, gold_file):
+    MODEL_REGISTRY["noisy_toy"] = NoisyToyModel
+    try:
+        path = tmp_path / "noisy.pt"
+        save_checkpoint(
+            path, ScaledEnergyModel(NoisyToyModel()), "noisy_toy",
+            data={"gold_path": str(gold_file), "molecule": "toy", "theory": "dft",
+                  "cutoff_radius": 5.0, "num_rbf": 16},
+        )
+        yield path
+    finally:
+        MODEL_REGISTRY.pop("noisy_toy", None)
+
+
+def _energy_mae(result) -> float:
+    return result["metrics"]["per_key"][0]["energy_mae_total"]
+
+
+def test_stochastic_model_scores_identically_under_the_same_seed(noisy_checkpoint):
+    first = evaluate_checkpoint(noisy_checkpoint, batch_size=4)
+    second = evaluate_checkpoint(noisy_checkpoint, batch_size=4)
+    assert _energy_mae(first) == _energy_mae(second)
+    assert first["seed"] == second["seed"] == 0
+    # And the seed is what fixes it: another seed draws other noise.
+    other = evaluate_checkpoint(noisy_checkpoint, batch_size=4, seed=1)
+    assert other["seed"] == 1
+    assert _energy_mae(other) != _energy_mae(first)
+
+
+def test_deterministic_model_is_unaffected_by_the_seed(checkpoint):
+    results = [evaluate_checkpoint(checkpoint, batch_size=4, seed=seed) for seed in (0, 1, 12345)]
+    assert all(r["metrics"] == results[0]["metrics"] for r in results)
+
+
+def test_scoring_leaves_the_callers_rng_untouched(noisy_checkpoint):
+    torch.manual_seed(99)
+    expected = torch.rand(3)
+    torch.manual_seed(99)
+    evaluate_checkpoint(noisy_checkpoint, batch_size=4)
+    assert torch.equal(torch.rand(3), expected)
+
+
+# --------------------------------------------------------------------------
+# 7. The scoring-data fingerprint
+# --------------------------------------------------------------------------
+
+def test_fingerprint_identifies_the_scored_data(checkpoint, gold_file):
+    first = evaluate_checkpoint(checkpoint, batch_size=4)["data"]["fingerprint"]
+    second = evaluate_checkpoint(checkpoint, batch_size=4)["data"]["fingerprint"]
+    assert first == second
+    assert set(first["parts"]) == {"indices", "z", "R", "E", "F"}
+    assert first["dtypes"] == {"indices": "int64", "z": "int64", "R": "float32", "E": "float32", "F": "float32"}
+    assert first["shapes"]["R"] == [N_TEST_CONFIGS, len(_Z), 3]
+
+
+def _rewrite_gold(source, destination, **changes):
+    with np.load(source, allow_pickle=True) as gold:
+        arrays = {key: gold[key] for key in gold.files}
+    arrays.update(changes)
+    np.savez_compressed(destination, **arrays)
+    return destination
+
+
+def test_same_size_different_data_changes_the_fingerprint(checkpoint, gold_file, tmp_path):
+    """Molecule, theory and frame count all match - only the fingerprint can tell these apart."""
+    reference = evaluate_checkpoint(checkpoint, batch_size=4)
+    with np.load(gold_file) as gold:
+        shifted_R = gold["R"].copy()
+    shifted_R[-1, 0, 0] += 1e-3  # one coordinate of one test frame
+    other = _rewrite_gold(gold_file, tmp_path / "other_dft.npz", R=shifted_R)
+    result = evaluate_checkpoint(checkpoint, gold_path=other, batch_size=4)
+
+    assert result["data"]["n_configs"] == reference["data"]["n_configs"]
+    assert result["data"]["molecule"] == reference["data"]["molecule"]
+    old, new = reference["data"]["fingerprint"], result["data"]["fingerprint"]
+    assert new["sha256"] != old["sha256"]
+    assert [part for part in old["parts"] if old["parts"][part] != new["parts"][part]] == ["R"]
+
+
+def test_different_test_indices_change_the_fingerprint(checkpoint, gold_file, tmp_path):
+    """Same frame count, different frames: the indices hash catches it."""
+    reference = evaluate_checkpoint(checkpoint, batch_size=4)["data"]["fingerprint"]
+    with np.load(gold_file) as gold:
+        n = len(gold["R"])
+    shifted = _rewrite_gold(
+        gold_file, tmp_path / "shifted_dft.npz",
+        train_idx=np.arange(1, 16), val_idx=np.arange(16, n - N_TEST_CONFIGS + 1),
+        test_idx=np.concatenate([[0], np.arange(n - N_TEST_CONFIGS + 1, n)]),
+    )
+    result = evaluate_checkpoint(checkpoint, gold_path=shifted, batch_size=4)["data"]["fingerprint"]
+    assert result["parts"]["indices"] != reference["parts"]["indices"]
+    assert result["sha256"] != reference["sha256"]
+
+
+# --------------------------------------------------------------------------
+# 8. scripts/fingerprint_run_records.py: re-score within tolerance, or write nothing
+# --------------------------------------------------------------------------
+
+def _load_script():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "fingerprint_run_records.py"
+    spec = importlib.util.spec_from_file_location("fingerprint_run_records", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _legacy_run(tmp_path, checkpoint, relative_error=0.0):
+    """A run record as it looked before fingerprints: scored, then the fingerprint removed."""
+    import shutil
+
+    runs, checkpoints = tmp_path / "runs", tmp_path / "checkpoints"
+    (runs / "toy_run").mkdir(parents=True)
+    checkpoints.mkdir()
+    shutil.copy(checkpoint, checkpoints / "toy_run.pt")
+    stored = evaluate_checkpoint(checkpoint, batch_size=4)
+    del stored["data"]["fingerprint"]
+    stored["metrics"]["per_key"][0]["force_mae_component"] *= 1 + relative_error
+    path = runs / "toy_run" / "test_metrics.json"
+    path.write_text(json.dumps(stored), encoding="utf-8")
+    return runs, checkpoints, path
+
+
+def test_rescoring_adds_a_fingerprint_and_leaves_stored_metrics_unchanged(tmp_path, checkpoint):
+    script = _load_script()
+    runs, checkpoints, path = _legacy_run(tmp_path, checkpoint)
+    before = json.loads(path.read_text(encoding="utf-8"))
+
+    assert script.main(["--runs-dir", str(runs), "--checkpoints-dir", str(checkpoints), "--write"]) == 0
+    after = json.loads(path.read_text(encoding="utf-8"))
+    assert after["metrics"] == before["metrics"]
+    assert after["benchmark_row"] == before["benchmark_row"]
+    assert after["data"]["fingerprint"]["sha256"]
+    assert after["rescore"]["max_relative_difference"] <= after["rescore"]["tolerance_relative"] == 1e-5
+    assert after["rescore"]["stored_metrics_unchanged"] is True
+
+
+def test_rescoring_outside_tolerance_writes_nothing(tmp_path, checkpoint):
+    script = _load_script()
+    runs, checkpoints, path = _legacy_run(tmp_path, checkpoint, relative_error=1e-3)
+    before = path.read_text(encoding="utf-8")
+
+    assert script.main(["--runs-dir", str(runs), "--checkpoints-dir", str(checkpoints), "--write"]) == 1
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_rescore_comparison_is_relative():
+    script = _load_script()
+    stored = {"metrics": {"a": 0.25, "n": 7}, "benchmark_row": {"b": 2.0}}
+    fresh = {"metrics": {"a": 0.25 * (1 + 3e-6), "n": 7}, "benchmark_row": {"b": 2.0}}
+    differences = script.compare(stored, fresh)
+    assert differences["metrics.a"] == pytest.approx(3e-6, rel=1e-6)
+    assert differences["metrics.n"] == differences["benchmark_row.b"] == 0.0
+
+
+
+# --------------------------------------------------------------------------
+# 9. The caller's RNG survives scoring, model reconstruction included
+# --------------------------------------------------------------------------
+
+def _schnet_checkpoint(tmp_path, gold_file):
+    """A real registry model, whose layers initialise randomly when it is rebuilt."""
+    from ml.models.registry import build_model
+
+    torch.manual_seed(0)
+    model = ScaledEnergyModel(build_model("schnet", hidden_channels=8, num_layers=1, num_rbf=8))
+    path = tmp_path / "schnet.pt"
+    save_checkpoint(
+        path, model, "schnet",
+        data={"gold_path": str(gold_file), "molecule": "toy", "theory": "dft",
+              "cutoff_radius": 5.0, "num_rbf": 16},
+    )
+    return path
+
+
+def test_scoring_a_randomly_initialised_model_leaves_the_callers_rng_untouched(tmp_path, gold_file):
+    from ml.models.registry import build_model
+
+    path = _schnet_checkpoint(tmp_path, gold_file)
+    torch.manual_seed(99)
+    expected = torch.rand(3)
+
+    # The premise: rebuilding this model draws from the global RNG.
+    torch.manual_seed(99)
+    build_model("schnet", hidden_channels=8, num_layers=1, num_rbf=8)
+    assert not torch.equal(torch.rand(3), expected)
+
+    torch.manual_seed(99)
+    evaluate_checkpoint(path, batch_size=4)
+    assert torch.equal(torch.rand(3), expected)
+
+
+def test_rng_fork_covers_every_cuda_device(tmp_path, gold_file, monkeypatch):
+    """torch.manual_seed reseeds all CUDA devices, so all of them must be forked, not one."""
+    import contextlib
+
+    path = _schnet_checkpoint(tmp_path, gold_file)
+    forked = []
+    real_fork_rng = torch.random.fork_rng
+
+    @contextlib.contextmanager
+    def spy(devices=None, **kwargs):
+        forked.append(list(devices))
+        with real_fork_rng(devices=[], **kwargs):  # no real GPU here
+            yield
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 3)
+    monkeypatch.setattr(torch.random, "fork_rng", spy)
+    evaluate_checkpoint(path, batch_size=4, device="cpu")
+    assert forked == [[0, 1, 2]]

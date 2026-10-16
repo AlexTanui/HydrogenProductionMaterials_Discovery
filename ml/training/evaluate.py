@@ -26,6 +26,19 @@ Three properties this module is responsible for:
    on.** A checkpoint trained on ethanol/dft scored against aspirin/ccsd
    gold would otherwise produce a complete, believable, meaningless table.
 
+Absolute energies need nothing here: `load_model` returns the model wrapped
+in the harness's one `ScaledEnergyModel` (ml/models/scaling.py), with the
+training subset's shift and scale restored from the checkpoint's buffers.
+
+The output records a fingerprint of the scored data (`data.fingerprint`:
+sha256 of the split's indices and of z, R, E, F at them), so a benchmark
+can tell scorings on different data apart even when their size matches.
+
+The scoring pass runs under a fixed, recorded RNG seed (`seed`, default 0)
+in a forked RNG state, so a stochastic model such as BLIP scores the same
+every time, and the caller's RNG is untouched. Deterministic models draw
+no random numbers and are unaffected.
+
 Uncertainty metrics (ECE, uncertainty-error correlation) are deliberately
 absent. Those definitions are Dongxiao's; the fields appear in the output
 as `null` with a note rather than being invented here.
@@ -33,6 +46,7 @@ as `null` with a note rather than being invented here.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import platform
 import sys
@@ -40,6 +54,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+import numpy as np
 import torch
 from torch_geometric.loader import DataLoader
 
@@ -54,6 +69,16 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 RESULTS_DIR = ROOT_DIR / "experiments" / "results"
 
 SCHEMA_VERSION = 1
+
+# Seed for the scoring pass's RNG. Only stochastic models consume it.
+DEFAULT_SEED = 0
+
+# How closely a re-score must reproduce a stored metric, relative. Scoring on
+# a multithreaded CPU is not bit-reproducible: the force backward pass sums in
+# a thread-dependent order (measured up to ~7e-9 relative between scorings at
+# one thread count, ~1.2e-6 when the thread count changes). 1e-5 leaves room
+# for another machine and is ~100x below the 4 decimals the benchmark reports.
+REPRODUCIBILITY_RTOL = 1e-5
 
 # Which of the eight metric fields the single-number benchmark row uses.
 # Both are the MD17/SchNet/PaiNN reporting convention, and both are named
@@ -116,6 +141,34 @@ def _check_cutoff(model: torch.nn.Module, cutoff_radius: float) -> Optional[str]
     )
 
 
+def _sha256(array: np.ndarray) -> str:
+    return hashlib.sha256(np.ascontiguousarray(array).tobytes()).hexdigest()
+
+
+def scoring_data_fingerprint(dataset: MD17Dataset, gold_path: Path, split: str) -> dict[str, Any]:
+    """sha256 of exactly what was scored: the split's indices, and z, R, E, F at them.
+
+    Hashed as the dataset holds them for scoring (z int64; R, E, F float32),
+    so two scorings share a fingerprint only if they saw the same frames with
+    the same values. Molecule, theory and frame count alone cannot tell a
+    different gold file of the same size apart; this can.
+    """
+    with np.load(gold_path, allow_pickle=False) as gold:
+        indices = np.asarray(gold[f"{split}_idx"], dtype=np.int64)
+    if len(indices) != len(dataset):
+        raise ValueError(f"{split}_idx has {len(indices)} entries but the dataset holds {len(dataset)} frames")
+    arrays = {"indices": indices, "z": dataset.z.numpy(), "R": dataset.R.numpy(),
+              "E": dataset.E.numpy(), "F": dataset.F.numpy()}
+    parts = {name: _sha256(array) for name, array in arrays.items()}
+    return {
+        "algorithm": "sha256",
+        "sha256": hashlib.sha256(json.dumps(parts, sort_keys=True).encode("utf-8")).hexdigest(),
+        "parts": parts,
+        "dtypes": {name: str(array.dtype) for name, array in arrays.items()},
+        "shapes": {name: list(array.shape) for name, array in arrays.items()},
+    }
+
+
 def evaluate_checkpoint(
     checkpoint_path: str | Path,
     gold_path: Optional[str | Path] = None,
@@ -124,10 +177,17 @@ def evaluate_checkpoint(
     device: str = "cpu",
     num_workers: int = 0,
     units: Optional[Units] = None,
+    seed: int = DEFAULT_SEED,
 ) -> dict[str, Any]:
     """Score one checkpoint and return the full result record.
 
     Args:
+        seed: seeds torch's RNG for the scoring pass, inside a forked RNG
+            state so the caller's RNG is left exactly as it was. A
+            stochastic model (BLIP draws fresh weight noise on every
+            forward pass) therefore scores identically every time it is
+            scored with the same seed; a deterministic model draws nothing
+            and is unaffected. Recorded in the output.
         checkpoint_path: written by `ml.models.registry.save_checkpoint`.
         gold_path: overrides the path recorded in the checkpoint. The gold
             file carries its own train/val/test indices; they are used as-is.
@@ -141,6 +201,30 @@ def evaluate_checkpoint(
             wrong unit is wrong by a silent constant factor rather than
             visibly broken (CLAUDE.md).
     """
+    # Everything that can draw from torch's RNG runs inside one forked state,
+    # restored on exit: rebuilding the model (its layers initialise randomly
+    # before the checkpoint's weights load), iterating the DataLoader (it
+    # draws a base seed) and a stochastic forward pass. torch.manual_seed
+    # reseeds the CPU generator and every CUDA device's, so all of them are
+    # forked - not only the device being scored on.
+    cuda_devices = list(range(torch.cuda.device_count())) if torch.cuda.is_available() else []
+    with torch.random.fork_rng(devices=cuda_devices):
+        return _score_checkpoint(
+            checkpoint_path, gold_path, split, batch_size, device, num_workers, units, seed
+        )
+
+
+def _score_checkpoint(
+    checkpoint_path: str | Path,
+    gold_path: Optional[str | Path],
+    split: str,
+    batch_size: int,
+    device: str,
+    num_workers: int,
+    units: Optional[Units],
+    seed: int,
+) -> dict[str, Any]:
+    """evaluate_checkpoint's body; always called inside its forked RNG state."""
     checkpoint_path = Path(checkpoint_path)
     torch_device = _resolve_device(device)
 
@@ -185,6 +269,11 @@ def evaluate_checkpoint(
     n_batches = 0
     wall_start = time.perf_counter()
 
+    # Seeded after the model is rebuilt, so the scoring pass's random draws do
+    # not depend on how much RNG reconstruction consumed. (The caller's state
+    # is preserved by evaluate_checkpoint's fork.)
+    torch.manual_seed(seed)
+
     # no_grad for the loop, but grad back on around the model call: forces are
     # F = -dE/dR, so that call is the one place a graph is needed. Not every
     # model re-enables grad internally - MPNN and SchNet do not, and raise
@@ -228,12 +317,15 @@ def evaluate_checkpoint(
         "checkpoint": str(checkpoint_path),
         "phase": checkpoint["phase"],
         "model_config": checkpoint["model_config"],
+        "energy_scaling": model.energy_scaling(),
+        "seed": seed,
         "n_parameters": int(sum(p.numel() for p in model.parameters())),
         "data": {
             "gold_path": str(resolved_gold),
             "split": split,
             "molecule": dataset.molecule,
             "theory": dataset.theory,
+            "fingerprint": scoring_data_fingerprint(dataset, resolved_gold, split),
             "cutoff_radius": cutoff_radius,
             "num_rbf": num_rbf,
             "n_configs": n_configs,
@@ -265,7 +357,7 @@ def evaluate_checkpoint(
         # read experiments/results/*.json without reshaping.
         "benchmark_row": {
             "phase": checkpoint["phase"],
-            "model": type(model).__name__,
+            "model": type(model.model).__name__,  # the architecture, not the shared wrapper
             "energy_mae": record[BENCHMARK_ENERGY_FIELD],
             "energy_mae_field": BENCHMARK_ENERGY_FIELD,
             "energy_mae_unit": record["units"]["energy"],
@@ -295,6 +387,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--device", default="cpu", choices=("cpu", "cuda", "auto"))
     parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED,
+                        help="RNG seed for the scoring pass (matters only for stochastic models)")
     parser.add_argument(
         "--output",
         default=None,
@@ -309,6 +403,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         batch_size=args.batch_size,
         device=args.device,
         num_workers=args.num_workers,
+        seed=args.seed,
     )
 
     default_output = RESULTS_DIR / f"{Path(args.checkpoint).stem}.json"

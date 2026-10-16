@@ -1,16 +1,35 @@
-"""Physics and symmetry tests for PaiNN on real ethanol frames (SCRUM-52 review).
+"""Physics and symmetry tests for every harness model on real ethanol frames.
+
+Written for PaiNN in the SCRUM-52 review; now run on all six models the
+shared harness trains - mpnn, schnet, painn, physnet, dimenet and blip -
+each built from its own experiment config through ml/models/registry.py and
+wrapped in the harness's `ScaledEnergyModel`, exactly as train.py builds
+it, so energies sit at ethanol's real ~-97,196 kcal/mol.
 
 `tests/ml/test_painn.py` pins PaiNN's symmetries on random synthetic
-molecules. This file asks the same questions of the inputs the model is
+molecules. This file asks the same questions of the inputs the models are
 actually trained on: real MD17 ethanol geometries from the TRAIN split,
 graphs from the production `build_graph`, and batches collated by the real
 PyG loader.
 
+Two models need a test-only accommodation, neither of which touches the model:
+
+- **DimeNet++** is built with `output_initializer="glorot_orthogonal"`.
+  PyG's default zero-initialises the output layers, so an untrained model
+  returns E = 0 and F = 0 exactly and every force check would pass
+  vacuously (tests/test_dimenet.py does the same).
+- **BLIP** draws fresh weight noise on every forward pass, so the global
+  RNG is reseeded before each one and every pass draws the same weights.
+  Its noise scale used to average over the whole batch, so a molecule's
+  prediction depended on its batch-mates and the batching check below was
+  `xfail(strict=True)` (docs/reviews/blip-batch-dependence.md). Fixed by
+  gating the noise scale on each row's own input instead - the marker is
+  gone and the check runs for real now, same as every other model.
+
 Three things make a pass here evidence rather than a rubber stamp:
 
-1. **Positive controls.** Every check runs on PaiNN *and* on SchNet, MPNN
-   and PhysNet, built from their own experiment configs. A check that
-   failed on all four would point at the check, not at the models.
+1. **Positive controls.** Every check runs on all six models. A check that
+   failed on all of them would point at the check, not at the models.
 2. **Negative controls.** Each check is also run against a deliberately
    broken mutant and must *fail* there by at least `MARGIN` times its
    tolerance. A check that cannot fail proves nothing.
@@ -23,16 +42,17 @@ Three things make a pass here evidence rather than a rubber stamp:
    (`test_stale_edge_attr_mutant_passes_every_symmetry_check` shows this).
 
 Everything runs in float64. Each tolerance is defined once below with its
-reasoning. DimeNet++ is not a control here: it exposes `forward(data)`
-rather than the shared `predict_energy_and_forces` interface.
+reasoning.
 
 Skipped if `data/gold/md17/ethanol_dft.npz` is absent - run
-`python -m ml.data.preprocessing`. The trained-PaiNN variant is skipped
-until `experiments/checkpoints/phase1_painn.pt` exists.
+`python -m ml.data.preprocessing`. Each trained variant (`<phase>_trained`)
+runs once `experiments/checkpoints/<config name>.pt` exists in the current
+checkpoint format, and is skipped until then.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Callable, NamedTuple
@@ -43,17 +63,32 @@ import torch
 import yaml
 from torch import Tensor, nn
 
+from ml.config import ExperimentConfig
 from ml.data.md17 import _gaussian_rbf, build_graph
-from ml.models.mpnn import MPNN
 from ml.models.painn import PaiNN
-from ml.models.physnet import PhysNet
+from ml.models.registry import build_model
+from ml.models.scaling import ScaledEnergyModel
 from ml.models.schnet import SchNet
 
 ROOT = Path(__file__).resolve().parents[2]
 GOLD = ROOT / "data" / "gold" / "md17" / "ethanol_dft.npz"
 CONFIGS = ROOT / "experiments" / "configs"
-PAINN_CHECKPOINT = ROOT / "experiments" / "checkpoints" / "phase1_painn.pt"
+CHECKPOINTS = ROOT / "experiments" / "checkpoints"
 CUTOFF = 5.0
+
+# registry phase -> the experiment config that trains it.
+HARNESS_CONFIGS = {
+    "mpnn": "phase1_baseline",
+    "schnet": "phase1_schnet",
+    "painn": "phase1_painn",
+    "physnet": "phase1_physnet",
+    "dimenet": "phase1_dimenet",
+    "blip": "phase2_blip",
+}
+# Test-only constructor overrides; see the module docstring.
+TEST_OVERRIDES = {"dimenet": {"output_initializer": "glorot_orthogonal"}}
+STOCHASTIC = {"blip"}
+NOISE_SEED = 1234
 DATASET_NUM_RBF = 16  # MD17Dataset's default edge_attr width
 
 # Positions *within* train_idx: both ends of the block and two interior
@@ -193,50 +228,66 @@ def build_painn(ethanol, **overrides) -> PaiNN:
     return model.double().eval()
 
 
-def _build_schnet(ethanol) -> SchNet:
+def _bare_schnet() -> SchNet:
+    """SchNet without the harness wrapper, for the energy-only mutant below."""
     cfg = _model_config("phase1_schnet")
     torch.manual_seed(0)
     model = SchNet(cfg["hidden_channels"], cfg["num_layers"], cfg["num_rbf"], cutoff=CUTOFF)
     return model.double().eval()
 
 
-def _build_mpnn(ethanol) -> MPNN:
-    cfg = _model_config("phase1_baseline")
-    torch.manual_seed(0)
-    model = MPNN(cfg["hidden_channels"], cfg["num_layers"], cfg["num_rbf"], cutoff=CUTOFF)
-    return model.double().eval()
+class _ReseededNoise(nn.Module):
+    """Reseeds the global RNG before every forward pass of a stochastic model.
+
+    BLIP samples fresh weights on each call. With the seed fixed, every call
+    draws the same weights, so its energy is one deterministic function of
+    the geometry and each check compares like with like.
+    """
+
+    def __init__(self, model: nn.Module) -> None:
+        super().__init__()
+        self.model = model
+
+    def predict_energy_and_forces(self, z, pos, edge_index, edge_attr, batch):
+        torch.manual_seed(NOISE_SEED)
+        return self.model.predict_energy_and_forces(z, pos, edge_index, edge_attr, batch)
 
 
-def _build_physnet(ethanol) -> PhysNet:
-    cfg = _model_config("phase1_physnet")
+def _for_testing(phase: str, model: nn.Module) -> nn.Module:
+    model = model.double().eval()
+    return _ReseededNoise(model).eval() if phase in STOCHASTIC else model
+
+
+def _harness_model(phase: str, ethanol) -> nn.Module:
+    """Built the way train.py builds it: the registered model from its own
+    config, wrapped in ScaledEnergyModel with per-atom train-split statistics."""
+    cfg = ExperimentConfig.from_yaml(CONFIGS / f"{HARNESS_CONFIGS[phase]}.yaml")
     torch.manual_seed(0)
-    model = PhysNet(
-        hidden_channels=cfg["hidden_channels"],
-        num_modules=cfg["num_modules"],
-        num_layers=cfg["num_layers"],
-        num_rbf=cfg["num_rbf"],
-        cutoff=CUTOFF,
+    inner = build_model(phase, **{**cfg.model.kwargs, **TEST_OVERRIDES.get(phase, {})})
+    n_atoms = ethanol.z.numel()
+    wrapped = ScaledEnergyModel(
+        inner, shift=ethanol.energy_mean / n_atoms, scale=ethanol.energy_std / n_atoms
     )
-    model.init_shift_from_energies(ethanol.z, torch.tensor([ethanol.energy_mean]))
-    return model.double().eval()
+    return _for_testing(phase, wrapped)
 
 
-def _load_trained_painn(ethanol) -> nn.Module:
-    if not PAINN_CHECKPOINT.exists():
-        pytest.skip(f"no trained checkpoint at {PAINN_CHECKPOINT}")
-    from ml.models.registry import load_model
+def _trained_model(phase: str, ethanol) -> nn.Module:
+    from ml.models.registry import CHECKPOINT_VERSION, load_model
 
-    model, _ = load_model(PAINN_CHECKPOINT)
-    return model.double().eval()
+    path = CHECKPOINTS / f"{HARNESS_CONFIGS[phase]}.pt"
+    if not path.exists():
+        pytest.skip(f"no trained checkpoint at {path}")
+    version = torch.load(path, map_location="cpu", weights_only=False).get("checkpoint_version", 1)
+    if version != CHECKPOINT_VERSION:
+        pytest.skip(f"{path.name} is checkpoint version {version}, from a superseded trainer")
+    model, _ = load_model(path)
+    return _for_testing(phase, model)
 
 
-BUILDERS: dict[str, Callable[[SimpleNamespace], nn.Module]] = {
-    "painn": build_painn,
-    "painn_trained": _load_trained_painn,
-    "schnet_control": _build_schnet,
-    "mpnn_control": _build_mpnn,
-    "physnet_control": _build_physnet,
-}
+BUILDERS: dict[str, Callable[[SimpleNamespace], nn.Module]] = {}
+for _phase in HARNESS_CONFIGS:
+    BUILDERS[_phase] = partial(_harness_model, _phase)
+    BUILDERS[f"{_phase}_trained"] = partial(_trained_model, _phase)
 
 
 @pytest.fixture(scope="module", params=list(BUILDERS))
@@ -344,7 +395,7 @@ def _stale_radial_mutant(ethanol) -> PaiNN:
 
 def _stale_energy_only_mutant(ethanol) -> nn.Module:
     """The MPNN-prototype bug: energy from the precomputed `edge_attr`, forces by autograd -> zeros."""
-    schnet = _build_schnet(ethanol)
+    schnet = _bare_schnet()
 
     def energy(z, pos, edge_index, edge_attr, batch):
         return schnet.predict_energy(z, edge_index, edge_attr, batch)

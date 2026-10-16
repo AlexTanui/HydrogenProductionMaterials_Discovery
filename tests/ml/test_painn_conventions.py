@@ -174,11 +174,17 @@ def test_energy_scale_multiplies_forces_and_shift_does_not_touch_them():
 
 
 def test_energy_statistics_survive_registry_and_evaluate(tmp_path):
-    """Buffers travel in the checkpoint; `evaluate.py` scores the shifted model, not an unshifted one."""
+    """The harness's shift/scale travel in the checkpoint; `evaluate.py` scores the shifted model.
+
+    The harness wraps every model in `ScaledEnergyModel` and leaves PaiNN's
+    own `energy_shift`/`energy_scale` at identity, so the shift is applied
+    exactly once. Both facts must survive the registry round trip.
+    """
     from torch_geometric.loader import DataLoader
 
     from ml.data.datasets import MD17Dataset
     from ml.models.registry import load_model, save_checkpoint
+    from ml.models.scaling import ScaledEnergyModel
     from ml.training.evaluate import evaluate_checkpoint
 
     rng = np.random.default_rng(0)
@@ -195,8 +201,9 @@ def test_energy_statistics_survive_registry_and_evaluate(tmp_path):
     )
 
     torch.manual_seed(0)
-    model = PaiNN(hidden_channels=16, num_layers=2, num_rbf=8)
-    model.set_energy_statistics(ETHANOL_MEAN / len(_Z), 0.5)
+    model = ScaledEnergyModel(
+        PaiNN(hidden_channels=16, num_layers=2, num_rbf=8), shift=ETHANOL_MEAN / len(_Z), scale=0.5
+    )
     checkpoint = save_checkpoint(
         tmp_path / "painn.pt", model, "painn",
         data={"gold_path": str(gold), "molecule": "toy", "theory": "dft",
@@ -204,8 +211,11 @@ def test_energy_statistics_survive_registry_and_evaluate(tmp_path):
     )
 
     restored, _ = load_model(checkpoint)
-    assert torch.equal(restored.energy_shift, model.energy_shift)
-    assert torch.equal(restored.energy_scale, model.energy_scale)
+    assert torch.equal(restored.shift, model.shift)
+    assert torch.equal(restored.scale, model.scale)
+    # PaiNN's own normalisation stays at identity, so nothing is applied twice.
+    assert restored.model.energy_shift.item() == 0.0
+    assert restored.model.energy_scale.item() == 1.0
 
     result = evaluate_checkpoint(checkpoint, split="test", batch_size=1)
     record = result["metrics"]["per_key"][0]

@@ -10,6 +10,47 @@ MD17 ethanol at the DFT level, as one of five architectures in the Phase 1
 bake-off (MPNN, SchNet, PaiNN, DimeNet++, PhysNet), compared head-to-head
 on identical data, split, targets, and evaluation.
 
+## Phase 1 protocol v1 result
+
+Trained by the shared `ml/training/train.py` under the [Phase 1 protocol v1](../phase1_protocol.md)
+and scored once on the full test split by `ml/training/evaluate.py`. This is
+this model's row in the [Phase 1 benchmark](../../reports/phase1_benchmark.md);
+the run record is [`experiments/runs/phase1_schnet/`](../../experiments/runs/phase1_schnet/).
+
+| | |
+|---|---|
+| Config | [`experiments/configs/phase1_schnet.yaml`](../../experiments/configs/phase1_schnet.yaml) - hidden_channels 64, num_layers 3, num_rbf 16 |
+| Parameters | 61,569 |
+| Trained at | `d9f3814`, clean tree |
+| Data | ethanol DFT: 10,000 train / 5,000 val frames (stride subsets, seed 42); test: all 55,509 frames, seed 0, batch 32 |
+| Epochs | 200 run, best epoch 198; stopped by the 200-epoch cap, still improving (5 val improvements in the last 20 epochs, final lr 7.81e-06) |
+| Val / train loss at the best epoch | 1.27x |
+| Training time | 1,293 s (0.36 h), cpu, 24 threads |
+| Physics checks on the trained checkpoint | 14 of 14 pass (`tests/ml/test_painn_physics.py`: rotation, reflection, translation, permutation, finite-difference forces, zero net force, batching, gradient path from `pos`) |
+
+| Test metric | Value |
+|---|---|
+| **Energy MAE** (total) | **0.1173** kcal/mol |
+| Energy RMSE (total) | 0.1496 kcal/mol |
+| Energy MAE (per atom) | 0.01304 kcal/mol/atom |
+| **Force MAE** (component) | **0.3806** kcal/mol/Å |
+| Force RMSE (component) | 0.5451 kcal/mol/Å |
+| Force MAE (atom norm) | 0.7617 kcal/mol/Å |
+| Inference | 0.114 ms/frame (forward + force backward, batch 32) |
+
+One seed, at the epoch cap; see the protocol's limitations before comparing
+close rows.
+
+## Earlier result (September 2026, different protocol)
+
+> **Everything from here to *Known limitations* describes the earlier run**,
+> made with the standalone `ml/training/train_schnet.py` before the shared
+> protocol existed: all 444,074 train frames (not 10,000), batch 256 (not
+> 32), the energy mean subtracted outside the model, about 8.3 h of
+> training. It is **not comparable** with the Phase 1 protocol v1 result
+> above or with the other models' v1 results. It saw 44 times as many
+> training frames, which is why its errors are lower.
+
 ## Setup
 
 - **Data:** `data/gold/md17/ethanol_dft.npz` — 9 atoms, 555,092 configs.
@@ -67,7 +108,7 @@ Full training curves, LR schedule, and parity plots:
   3.4201), not epoch 200 — epochs 199–200 were both slightly worse, so the
   best checkpoint was kept rather than the last one.
 
-## Final metrics (held-out test split, 55,509 frames / 499,581 atoms — untouched until this evaluation)
+## Earlier result: test metrics, different protocol (held-out test split, 55,509 frames / 499,581 atoms)
 
 | Metric | Value |
 |---|---|
