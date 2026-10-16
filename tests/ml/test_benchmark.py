@@ -63,7 +63,8 @@ _RUN = {
     "checkpoint_sha256": "c" * 64,
 }
 _TEST = {
-    "data": {"split": "test", "molecule": "ethanol", "theory": "dft", "n_configs": 55509},
+    "data": {"split": "test", "molecule": "ethanol", "theory": "dft", "n_configs": 55509,
+             "fingerprint": {"algorithm": "sha256", "sha256": "e" * 64}},
     "seed": 0,
     "n_parameters": 10,
     "timing": {"batch_size": 32, "inference_s_per_config": 0.000512},
@@ -110,6 +111,8 @@ def _write_run(runs_dir: Path, name: str, run_changes=None, test_changes=None) -
     ("run", "subsets.train.gold_indices_sha256", "d" * 64, "train frames.sha256"),
     ("test", "seed", 1, "test scoring.seed"),
     ("test", "timing.batch_size", 1, "test scoring.batch_size"),
+    # Same molecule, theory and frame count - different data.
+    ("test", "data.fingerprint.sha256", "f" * 64, "test scoring.data_fingerprint"),
 ])
 def test_runs_under_different_protocols_are_refused(tmp_path, record, dotted, value, reported):
     _write_run(tmp_path, "a_reference")
@@ -153,6 +156,23 @@ def test_records_that_are_not_comparable_results_are_refused(tmp_path, run_chang
         _write_run(tmp_path, "a", run_changes=run_changes, test_changes=test_changes)
     with pytest.raises(ValueError, match=match):
         load_runs(tmp_path)
+
+
+def test_run_without_a_scoring_data_fingerprint_is_refused(tmp_path):
+    path = _write_run(tmp_path, "a")
+    test = json.loads((path / "test_metrics.json").read_text(encoding="utf-8"))
+    del test["data"]["fingerprint"]
+    (path / "test_metrics.json").write_text(json.dumps(test), encoding="utf-8")
+    with pytest.raises(ValueError, match="no scoring-data fingerprint"):
+        load_runs(tmp_path)
+
+
+def test_markdown_reports_the_fingerprint_and_any_rescore(tmp_path):
+    _write_run(tmp_path, "a")
+    _write_run(tmp_path, "b", test_changes={"rescore": {"max_relative_difference": 2.2e-08}})
+    _, md_text, _ = build(tmp_path)
+    assert "`" + "e" * 64 + "`" in md_text
+    assert md_text.count("not re-scored") == 1 and "| 2.2e-08 |" in md_text
 
 
 def test_unscored_run_and_empty_directory_are_refused(tmp_path):

@@ -13,7 +13,7 @@ All 5 runs were checked to share one protocol before being tabulated: identical 
 | phase1_schnet | SchNet | schnet | 61,569 | 0.1173 | 0.1496 | 0.3806 | 0.5451 | 200 | 198 | max_epochs | 0.36 h | 0.114 |  |  | `d9f3814` |
 
 - **Energy**: kcal/mol, error in total molecular energy (`energy_mae_total`, `energy_rmse_total`). **Forces**: kcal/mol/Å, per Cartesian component (`force_mae_component`, `force_rmse_component`).
-- **Test split**: 55,509 frames of ethanol (dft), scored once by `ml/training/evaluate.py` with seed 0 and batch size 32.
+- **Test split**: 55,509 frames of ethanol (dft), scored once by `ml/training/evaluate.py` with seed 0 and batch size 32. Scoring-data fingerprint (sha256 of the test indices and of z, R, E, F at them): `518af6e3d57bdb884dcd51e785b7330469395da40990764d4771ff099a198839`.
 - **Training time**: wall-clock of the training loop, excluding test scoring. **Inference**: forward pass plus force backward pass per frame, batch size 32, excluding graph construction.
 - **ECE / uncertainty-error Spearman**: empty for deterministic models. The definitions are Dongxiao's; Phase 2/3 rows fill these columns.
 
@@ -26,10 +26,12 @@ All 5 runs were checked to share one protocol before being tabulated: identical 
 
 ## Run records
 
-| Run | Record | Git commit | Dirty tree | Device | Threads | Checkpoint sha256 |
-|---|---|---|---|---|---|---|
-| phase1_baseline | [experiments/runs/phase1_baseline/](../experiments/runs/phase1_baseline/) | `d9f3814` | False | cpu | 24 | `24b83e6bcabe` |
-| phase1_dimenet | [experiments/runs/phase1_dimenet/](../experiments/runs/phase1_dimenet/) | `ff3e914` | False | cpu | 24 | `322a42c719a2` |
-| phase1_painn | [experiments/runs/phase1_painn/](../experiments/runs/phase1_painn/) | `d9f3814` | False | cpu | 24 | `0cc2c7205c36` |
-| phase1_physnet | [experiments/runs/phase1_physnet/](../experiments/runs/phase1_physnet/) | `d9f3814` | False | cpu | 24 | `f56aa40d7467` |
-| phase1_schnet | [experiments/runs/phase1_schnet/](../experiments/runs/phase1_schnet/) | `d9f3814` | False | cpu | 24 | `033a7323382a` |
+| Run | Record | Git commit | Dirty tree | Device | Threads | Checkpoint sha256 | Re-score max relative difference |
+|---|---|---|---|---|---|---|---|
+| phase1_baseline | [experiments/runs/phase1_baseline/](../experiments/runs/phase1_baseline/) | `d9f3814` | False | cpu | 24 | `24b83e6bcabe` | 2.2e-08 |
+| phase1_dimenet | [experiments/runs/phase1_dimenet/](../experiments/runs/phase1_dimenet/) | `ff3e914` | False | cpu | 24 | `322a42c719a2` | 3.7e-10 |
+| phase1_painn | [experiments/runs/phase1_painn/](../experiments/runs/phase1_painn/) | `d9f3814` | False | cpu | 24 | `0cc2c7205c36` | 2.6e-10 |
+| phase1_physnet | [experiments/runs/phase1_physnet/](../experiments/runs/phase1_physnet/) | `d9f3814` | False | cpu | 24 | `f56aa40d7467` | 1.2e-08 |
+| phase1_schnet | [experiments/runs/phase1_schnet/](../experiments/runs/phase1_schnet/) | `d9f3814` | False | cpu | 24 | `033a7323382a` | 8.4e-09 |
+
+Runs scored before evaluate.py recorded fingerprints were re-scored by `scripts/fingerprint_run_records.py` to add one. Their stored metrics are unchanged; the last column is the largest relative difference the re-score measured against them (tolerance 1e-5 relative, because multithreaded CPU scoring is not bit-reproducible).

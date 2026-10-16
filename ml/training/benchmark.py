@@ -18,7 +18,9 @@ every run must match the first on all of:
   share configs and still differ here;
 - the exact train and val frames (sha256 of their gold indices);
 - the test scoring: split, molecule, theory, frame count, seed and batch
-  size.
+  size, and the **scoring-data fingerprint** (sha256 of the test indices
+  and of z, R, E, F at them, recorded by evaluate.py), so a different gold
+  file of the same size cannot pass.
 
 Any difference raises `ProtocolMismatch` naming the run and the setting.
 Runs that are not complete, reportable test-split results are refused too.
@@ -118,6 +120,11 @@ def load_runs(runs_dir: Path = RUNS_DIR) -> list[RunResult]:
                 raise ValueError(f"{path.name}: {quantity} in {units[quantity]!r}, table expects {unit!r}")
         if run["n_parameters"] != test["n_parameters"]:
             raise ValueError(f"{path.name}: run.json and test_metrics.json disagree on the parameter count")
+        if "fingerprint" not in test["data"]:
+            raise ValueError(
+                f"{path.name}: test_metrics.json has no scoring-data fingerprint, so the data it was "
+                "scored on cannot be checked. Re-score it: python scripts/fingerprint_run_records.py"
+            )
         results.append(RunResult(path.name, path, run, test))
     return results
 
@@ -135,6 +142,7 @@ def protocol_signature(result: RunResult) -> dict[str, Any]:
             **{k: test["data"][k] for k in ("split", "molecule", "theory", "n_configs")},
             "seed": test.get("seed"),
             "batch_size": test["timing"]["batch_size"],
+            "data_fingerprint": test["data"]["fingerprint"]["sha256"],
         },
     }
 
@@ -246,7 +254,8 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
         "(`force_mae_component`, `force_rmse_component`).",
         f"- **Test split**: {scoring['n_configs']:,} frames of {scoring['molecule']} "
         f"({scoring['theory']}), scored once by `ml/training/evaluate.py` with seed "
-        f"{scoring['seed']} and batch size {scoring['batch_size']}.",
+        f"{scoring['seed']} and batch size {scoring['batch_size']}. Scoring-data fingerprint "
+        f"(sha256 of the test indices and of z, R, E, F at them): `{scoring['data_fingerprint']}`.",
         "- **Training time**: wall-clock of the training loop, excluding test scoring. "
         "**Inference**: forward pass plus force backward pass per frame, batch size "
         f"{scoring['batch_size']}, excluding graph construction.",
@@ -269,17 +278,28 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
         "",
         "## Run records",
         "",
-        "| Run | Record | Git commit | Dirty tree | Device | Threads | Checkpoint sha256 |",
-        "|---|---|---|---|---|---|---|",
+        "| Run | Record | Git commit | Dirty tree | Device | Threads | Checkpoint sha256 "
+        "| Re-score max relative difference |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for result in results:
         run = result.run
         env = run["environment"]
+        rescore = result.test.get("rescore")
+        reproduced = f"{rescore['max_relative_difference']:.1e}" if rescore else "not re-scored"
         lines.append(
             f"| {result.name} | [experiments/runs/{result.name}/](../experiments/runs/{result.name}/) "
             f"| `{run['git_commit'][:7]}` | {run['git_dirty']} | {env['device']} "
-            f"| {env['torch_num_threads']} | `{run.get('checkpoint_sha256', '')[:12]}` |"
+            f"| {env['torch_num_threads']} | `{run.get('checkpoint_sha256', '')[:12]}` | {reproduced} |"
         )
+    if any("rescore" in result.test for result in results):
+        lines += [
+            "",
+            "Runs scored before evaluate.py recorded fingerprints were re-scored by "
+            "`scripts/fingerprint_run_records.py` to add one. Their stored metrics are unchanged; "
+            "the last column is the largest relative difference the re-score measured against them "
+            "(tolerance 1e-5 relative, because multithreaded CPU scoring is not bit-reproducible).",
+        ]
     return "\n".join(lines) + "\n"
 
 

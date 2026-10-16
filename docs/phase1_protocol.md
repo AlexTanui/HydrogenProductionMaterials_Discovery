@@ -33,6 +33,7 @@ the six configs' `data:` and `train:` blocks drift apart.
 | Seeds and batch order | `torch.manual_seed(42)` before the model is built; training batches shuffled by their own `torch.Generator(42)` | Every model sees the same batches in the same order, however much of the global RNG its initialisation consumes. |
 | Hardware | CPU only: Intel64 Family 6 Model 198, 24 torch threads; torch 2.13.0+cpu, PyG 2.8.0.post1, Python 3.11.9, Windows 10.0.26200 | Recorded in every run record. Wall-clock times are comparable only on this machine, and its speed varied by about 2× between sessions on 15–16 Oct. |
 | Test scoring | Once per model, after training, by `ml/training/evaluate.py`: all 55,509 test frames, batch 32, RNG seed 0 | Training never opens the test split. The fixed seed makes a stochastic model's score reproducible; deterministic models are unaffected. |
+| Scoring-data fingerprint | Every score records sha256 of the test indices and of z, R, E, F at them; all five runs share `518af6e3…` | Molecule, theory and frame count cannot tell a different gold file of the same size apart; `benchmark.py` refuses runs whose fingerprints differ. |
 | Provenance | Each run records its git commit and a dirty-tree flag; every run was clean. SchNet, MPNN, PaiNN and PhysNet ran at `d9f3814`, DimeNet++ at `ff3e914` | The only change between those two commits is DimeNet++'s `model:` block. |
 
 **DimeNet++ size.** DimeNet++ uses hidden 64, out_emb 128, int_emb 32,
@@ -42,6 +43,22 @@ previously used for CCSD(T) ethanol (7,491 parameters) was far below that
 range, and the published default (1.89M) would be over twice the largest
 model (PhysNet, 809k) and ran at about 97 s per epoch, against about 40 s
 for the mid size.
+
+**Reproducibility of scoring.** Scoring on a multithreaded CPU is not
+bit-reproducible: the force backward pass sums in a thread-dependent order,
+so the same checkpoint scores slightly differently from run to run (energies
+were bit-identical here). The five runs were scored before evaluate.py
+recorded fingerprints, so each checkpoint was re-scored once
+(`scripts/fingerprint_run_records.py`, seed 0, batch 32) to add one. The
+re-score reproduced every stored metric to within the differences recorded
+in each run's `test_metrics.json` under `rescore`: at most 2.2 × 10⁻⁸
+relative (MPNN; PaiNN 2.6 × 10⁻¹⁰). The documented tolerance is
+**10⁻⁵ relative**, which leaves room for re-scoring on another machine or
+thread count (about 1.2 × 10⁻⁶ measured) and is about 100 times below the 4
+decimals reported. The stored metrics were kept unchanged. Re-scoring
+reproduces numbers already reported and tunes or selects nothing, so the
+"test scored once" rule still holds: no decision was made from the test
+split.
 
 ## Limitations
 

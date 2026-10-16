@@ -455,3 +455,119 @@ def test_scoring_leaves_the_callers_rng_untouched(noisy_checkpoint):
     torch.manual_seed(99)
     evaluate_checkpoint(noisy_checkpoint, batch_size=4)
     assert torch.equal(torch.rand(3), expected)
+
+
+# --------------------------------------------------------------------------
+# 7. The scoring-data fingerprint
+# --------------------------------------------------------------------------
+
+def test_fingerprint_identifies_the_scored_data(checkpoint, gold_file):
+    first = evaluate_checkpoint(checkpoint, batch_size=4)["data"]["fingerprint"]
+    second = evaluate_checkpoint(checkpoint, batch_size=4)["data"]["fingerprint"]
+    assert first == second
+    assert set(first["parts"]) == {"indices", "z", "R", "E", "F"}
+    assert first["dtypes"] == {"indices": "int64", "z": "int64", "R": "float32", "E": "float32", "F": "float32"}
+    assert first["shapes"]["R"] == [N_TEST_CONFIGS, len(_Z), 3]
+
+
+def _rewrite_gold(source, destination, **changes):
+    with np.load(source, allow_pickle=True) as gold:
+        arrays = {key: gold[key] for key in gold.files}
+    arrays.update(changes)
+    np.savez_compressed(destination, **arrays)
+    return destination
+
+
+def test_same_size_different_data_changes_the_fingerprint(checkpoint, gold_file, tmp_path):
+    """Molecule, theory and frame count all match - only the fingerprint can tell these apart."""
+    reference = evaluate_checkpoint(checkpoint, batch_size=4)
+    with np.load(gold_file) as gold:
+        shifted_R = gold["R"].copy()
+    shifted_R[-1, 0, 0] += 1e-3  # one coordinate of one test frame
+    other = _rewrite_gold(gold_file, tmp_path / "other_dft.npz", R=shifted_R)
+    result = evaluate_checkpoint(checkpoint, gold_path=other, batch_size=4)
+
+    assert result["data"]["n_configs"] == reference["data"]["n_configs"]
+    assert result["data"]["molecule"] == reference["data"]["molecule"]
+    old, new = reference["data"]["fingerprint"], result["data"]["fingerprint"]
+    assert new["sha256"] != old["sha256"]
+    assert [part for part in old["parts"] if old["parts"][part] != new["parts"][part]] == ["R"]
+
+
+def test_different_test_indices_change_the_fingerprint(checkpoint, gold_file, tmp_path):
+    """Same frame count, different frames: the indices hash catches it."""
+    reference = evaluate_checkpoint(checkpoint, batch_size=4)["data"]["fingerprint"]
+    with np.load(gold_file) as gold:
+        n = len(gold["R"])
+    shifted = _rewrite_gold(
+        gold_file, tmp_path / "shifted_dft.npz",
+        train_idx=np.arange(1, 16), val_idx=np.arange(16, n - N_TEST_CONFIGS + 1),
+        test_idx=np.concatenate([[0], np.arange(n - N_TEST_CONFIGS + 1, n)]),
+    )
+    result = evaluate_checkpoint(checkpoint, gold_path=shifted, batch_size=4)["data"]["fingerprint"]
+    assert result["parts"]["indices"] != reference["parts"]["indices"]
+    assert result["sha256"] != reference["sha256"]
+
+
+# --------------------------------------------------------------------------
+# 8. scripts/fingerprint_run_records.py: re-score within tolerance, or write nothing
+# --------------------------------------------------------------------------
+
+def _load_script():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "fingerprint_run_records.py"
+    spec = importlib.util.spec_from_file_location("fingerprint_run_records", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _legacy_run(tmp_path, checkpoint, relative_error=0.0):
+    """A run record as it looked before fingerprints: scored, then the fingerprint removed."""
+    import shutil
+
+    runs, checkpoints = tmp_path / "runs", tmp_path / "checkpoints"
+    (runs / "toy_run").mkdir(parents=True)
+    checkpoints.mkdir()
+    shutil.copy(checkpoint, checkpoints / "toy_run.pt")
+    stored = evaluate_checkpoint(checkpoint, batch_size=4)
+    del stored["data"]["fingerprint"]
+    stored["metrics"]["per_key"][0]["force_mae_component"] *= 1 + relative_error
+    path = runs / "toy_run" / "test_metrics.json"
+    path.write_text(json.dumps(stored), encoding="utf-8")
+    return runs, checkpoints, path
+
+
+def test_rescoring_adds_a_fingerprint_and_leaves_stored_metrics_unchanged(tmp_path, checkpoint):
+    script = _load_script()
+    runs, checkpoints, path = _legacy_run(tmp_path, checkpoint)
+    before = json.loads(path.read_text(encoding="utf-8"))
+
+    assert script.main(["--runs-dir", str(runs), "--checkpoints-dir", str(checkpoints), "--write"]) == 0
+    after = json.loads(path.read_text(encoding="utf-8"))
+    assert after["metrics"] == before["metrics"]
+    assert after["benchmark_row"] == before["benchmark_row"]
+    assert after["data"]["fingerprint"]["sha256"]
+    assert after["rescore"]["max_relative_difference"] <= after["rescore"]["tolerance_relative"] == 1e-5
+    assert after["rescore"]["stored_metrics_unchanged"] is True
+
+
+def test_rescoring_outside_tolerance_writes_nothing(tmp_path, checkpoint):
+    script = _load_script()
+    runs, checkpoints, path = _legacy_run(tmp_path, checkpoint, relative_error=1e-3)
+    before = path.read_text(encoding="utf-8")
+
+    assert script.main(["--runs-dir", str(runs), "--checkpoints-dir", str(checkpoints), "--write"]) == 1
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_rescore_comparison_is_relative():
+    script = _load_script()
+    stored = {"metrics": {"a": 0.25, "n": 7}, "benchmark_row": {"b": 2.0}}
+    fresh = {"metrics": {"a": 0.25 * (1 + 3e-6), "n": 7}, "benchmark_row": {"b": 2.0}}
+    differences = script.compare(stored, fresh)
+    assert differences["metrics.a"] == pytest.approx(3e-6, rel=1e-6)
+    assert differences["metrics.n"] == differences["benchmark_row.b"] == 0.0
+

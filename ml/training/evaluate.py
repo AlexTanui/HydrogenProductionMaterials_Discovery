@@ -30,6 +30,10 @@ Absolute energies need nothing here: `load_model` returns the model wrapped
 in the harness's one `ScaledEnergyModel` (ml/models/scaling.py), with the
 training subset's shift and scale restored from the checkpoint's buffers.
 
+The output records a fingerprint of the scored data (`data.fingerprint`:
+sha256 of the split's indices and of z, R, E, F at them), so a benchmark
+can tell scorings on different data apart even when their size matches.
+
 The scoring pass runs under a fixed, recorded RNG seed (`seed`, default 0)
 in a forked RNG state, so a stochastic model such as BLIP scores the same
 every time, and the caller's RNG is untouched. Deterministic models draw
@@ -42,6 +46,7 @@ as `null` with a note rather than being invented here.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import platform
 import sys
@@ -49,6 +54,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+import numpy as np
 import torch
 from torch_geometric.loader import DataLoader
 
@@ -66,6 +72,13 @@ SCHEMA_VERSION = 1
 
 # Seed for the scoring pass's RNG. Only stochastic models consume it.
 DEFAULT_SEED = 0
+
+# How closely a re-score must reproduce a stored metric, relative. Scoring on
+# a multithreaded CPU is not bit-reproducible: the force backward pass sums in
+# a thread-dependent order (measured up to ~7e-9 relative between scorings at
+# one thread count, ~1.2e-6 when the thread count changes). 1e-5 leaves room
+# for another machine and is ~100x below the 4 decimals the benchmark reports.
+REPRODUCIBILITY_RTOL = 1e-5
 
 # Which of the eight metric fields the single-number benchmark row uses.
 # Both are the MD17/SchNet/PaiNN reporting convention, and both are named
@@ -126,6 +139,34 @@ def _check_cutoff(model: torch.nn.Module, cutoff_radius: float) -> Optional[str]
         f"{float(expected)}; messages beyond the model's radius are dropped by "
         "its own cutoff, so this is not the architecture that was trained"
     )
+
+
+def _sha256(array: np.ndarray) -> str:
+    return hashlib.sha256(np.ascontiguousarray(array).tobytes()).hexdigest()
+
+
+def scoring_data_fingerprint(dataset: MD17Dataset, gold_path: Path, split: str) -> dict[str, Any]:
+    """sha256 of exactly what was scored: the split's indices, and z, R, E, F at them.
+
+    Hashed as the dataset holds them for scoring (z int64; R, E, F float32),
+    so two scorings share a fingerprint only if they saw the same frames with
+    the same values. Molecule, theory and frame count alone cannot tell a
+    different gold file of the same size apart; this can.
+    """
+    with np.load(gold_path, allow_pickle=False) as gold:
+        indices = np.asarray(gold[f"{split}_idx"], dtype=np.int64)
+    if len(indices) != len(dataset):
+        raise ValueError(f"{split}_idx has {len(indices)} entries but the dataset holds {len(dataset)} frames")
+    arrays = {"indices": indices, "z": dataset.z.numpy(), "R": dataset.R.numpy(),
+              "E": dataset.E.numpy(), "F": dataset.F.numpy()}
+    parts = {name: _sha256(array) for name, array in arrays.items()}
+    return {
+        "algorithm": "sha256",
+        "sha256": hashlib.sha256(json.dumps(parts, sort_keys=True).encode("utf-8")).hexdigest(),
+        "parts": parts,
+        "dtypes": {name: str(array.dtype) for name, array in arrays.items()},
+        "shapes": {name: list(array.shape) for name, array in arrays.items()},
+    }
 
 
 def evaluate_checkpoint(
@@ -260,6 +301,7 @@ def evaluate_checkpoint(
             "split": split,
             "molecule": dataset.molecule,
             "theory": dataset.theory,
+            "fingerprint": scoring_data_fingerprint(dataset, resolved_gold, split),
             "cutoff_radius": cutoff_radius,
             "num_rbf": num_rbf,
             "n_configs": n_configs,
