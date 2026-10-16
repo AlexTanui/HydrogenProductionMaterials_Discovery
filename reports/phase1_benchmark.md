@@ -28,10 +28,10 @@ All 5 runs were checked to share one protocol before being tabulated: identical 
 
 | Run | Record | Git commit | Dirty tree | Device | Threads | Checkpoint sha256 | Re-score max relative difference |
 |---|---|---|---|---|---|---|---|
-| phase1_baseline | [experiments/runs/phase1_baseline/](../experiments/runs/phase1_baseline/) | `d9f3814` | False | cpu | 24 | `24b83e6bcabe` | 2.2e-08 |
-| phase1_dimenet | [experiments/runs/phase1_dimenet/](../experiments/runs/phase1_dimenet/) | `ff3e914` | False | cpu | 24 | `322a42c719a2` | 3.7e-10 |
-| phase1_painn | [experiments/runs/phase1_painn/](../experiments/runs/phase1_painn/) | `d9f3814` | False | cpu | 24 | `0cc2c7205c36` | 2.6e-10 |
-| phase1_physnet | [experiments/runs/phase1_physnet/](../experiments/runs/phase1_physnet/) | `d9f3814` | False | cpu | 24 | `f56aa40d7467` | 1.2e-08 |
-| phase1_schnet | [experiments/runs/phase1_schnet/](../experiments/runs/phase1_schnet/) | `d9f3814` | False | cpu | 24 | `033a7323382a` | 8.4e-09 |
+| phase1_baseline | [experiments/runs/phase1_baseline/](../experiments/runs/phase1_baseline/) | `d9f3814` | False | cpu | 24 | `24b83e6bcabe` | 2.3e-08 |
+| phase1_dimenet | [experiments/runs/phase1_dimenet/](../experiments/runs/phase1_dimenet/) | `ff3e914` | False | cpu | 24 | `322a42c719a2` | 4.9e-10 |
+| phase1_painn | [experiments/runs/phase1_painn/](../experiments/runs/phase1_painn/) | `d9f3814` | False | cpu | 24 | `0cc2c7205c36` | 3.8e-11 |
+| phase1_physnet | [experiments/runs/phase1_physnet/](../experiments/runs/phase1_physnet/) | `d9f3814` | False | cpu | 24 | `f56aa40d7467` | 1.3e-08 |
+| phase1_schnet | [experiments/runs/phase1_schnet/](../experiments/runs/phase1_schnet/) | `d9f3814` | False | cpu | 24 | `033a7323382a` | 8.1e-10 |
 
 Runs scored before evaluate.py recorded fingerprints were re-scored by `scripts/fingerprint_run_records.py` to add one. Their stored metrics are unchanged; the last column is the largest relative difference the re-score measured against them (tolerance 1e-5 relative, because multithreaded CPU scoring is not bit-reproducible).

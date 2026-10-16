@@ -48,11 +48,13 @@ for the mid size.
 bit-reproducible: the force backward pass sums in a thread-dependent order,
 so the same checkpoint scores slightly differently from run to run (energies
 were bit-identical here). The five runs were scored before evaluate.py
-recorded fingerprints, so each checkpoint was re-scored once
-(`scripts/fingerprint_run_records.py`, seed 0, batch 32) to add one. The
-re-score reproduced every stored metric to within the differences recorded
-in each run's `test_metrics.json` under `rescore`: at most 2.2 × 10⁻⁸
-relative (MPNN; PaiNN 2.6 × 10⁻¹⁰). The documented tolerance is
+recorded fingerprints, so each checkpoint was re-scored
+(`scripts/fingerprint_run_records.py`, seed 0, batch 32) to add one, from
+the clean commit `549e6dd`. An earlier re-score from an uncommitted tree
+gave the same picture and was replaced. The re-score reproduced every stored
+metric to within the differences recorded in each run's `test_metrics.json`
+under `rescore`: at most 2.3 × 10⁻⁸ relative (MPNN; PaiNN 3.8 × 10⁻¹¹). The
+documented tolerance is
 **10⁻⁵ relative**, which leaves room for re-scoring on another machine or
 thread count (about 1.2 × 10⁻⁶ measured) and is about 100 times below the 4
 decimals reported. The stored metrics were kept unchanged. Re-scoring
