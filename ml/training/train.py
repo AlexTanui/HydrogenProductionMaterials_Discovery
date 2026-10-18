@@ -100,8 +100,8 @@ SMOKE_BATCHES = 3
 
 HISTORY_FIELDS = [
     "epoch", "lr",
-    "train_loss", "train_energy_mse", "train_force_mse",
-    "val_loss", "val_energy_mse", "val_force_mse",
+    "train_loss", "train_energy_mse", "train_force_mse", "train_kl",
+    "val_loss", "val_energy_mse", "val_force_mse", "val_kl",
     "train_s", "val_s", "epoch_s", "elapsed_s", "improved",
 ]
 
@@ -193,32 +193,53 @@ def select_subsets(cfg: ExperimentConfig) -> dict[str, dict[str, Any]]:
 # The loop
 # --------------------------------------------------------------------------
 
-def batch_loss(model: torch.nn.Module, batch, energy_w: float, force_w: float):
-    """MSE on absolute energy (kcal/mol) and forces (kcal/mol/A), weighted."""
+def batch_loss(model: torch.nn.Module, batch, energy_w: float, force_w: float, n_batches: int = 1):
+    """MSE on absolute energy (kcal/mol) and forces (kcal/mol/A), weighted,
+    plus BLIP's KL complexity cost when the wrapped model defines one.
+
+    `n_batches` is the loader's length for the epoch being run (not
+    `max_batches`'s dev-mode truncation): the minibatch-ELBO recipe
+    distributes one full-dataset KL term evenly across every batch in an
+    epoch (kl_weight * kl_divergence() / n_batches), so a shortened
+    smoke-test epoch should not change that scaling. A model with no
+    `kl_weight` (every Phase 1 model, and BLIP before this is set >0)
+    gets `getattr(..., 0.0)` and the branch is skipped - zero added cost
+    for models this was never meant to touch.
+    """
     pred_e, pred_f = model.predict_energy_and_forces(
         batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch,
     )
     energy_loss = F.mse_loss(pred_e, batch.y.view(-1))
     force_loss = F.mse_loss(pred_f, batch.force)
     loss = energy_w * energy_loss + force_w * force_loss
-    return loss, float(energy_loss.detach()), float(force_loss.detach())
+
+    inner = getattr(model, "model", model)
+    kl_weight = float(getattr(inner, "kl_weight", 0.0))
+    kl_term = 0.0
+    if kl_weight > 0 and hasattr(inner, "kl_divergence"):
+        kl = inner.kl_divergence()
+        loss = loss + (kl_weight * kl) / n_batches
+        kl_term = float(kl.detach()) * kl_weight / n_batches
+
+    return loss, float(energy_loss.detach()), float(force_loss.detach()), kl_term
 
 
 def run_epoch(model, loader, energy_w, force_w, device, optimizer=None, max_batches=None):
-    """One pass over `loader`; returns mean (loss, energy MSE, force MSE) over batches.
+    """One pass over `loader`; returns mean (loss, energy MSE, force MSE, KL term) over batches.
 
     optimizer=None -> eval mode, no weight update. Forces still need
     autograd, so this is never wrapped in torch.no_grad().
     """
     is_train = optimizer is not None
     model.train(is_train)
-    total_loss = total_e = total_f = 0.0
+    n_batches = len(loader)
+    total_loss = total_e = total_f = total_kl = 0.0
     n = 0
     for batch in loader:
         batch = batch.to(device)
         if is_train:
             optimizer.zero_grad()
-        loss, e_loss, f_loss = batch_loss(model, batch, energy_w, force_w)
+        loss, e_loss, f_loss, kl_term = batch_loss(model, batch, energy_w, force_w, n_batches)
         if is_train:
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=GRAD_CLIP)
@@ -226,10 +247,11 @@ def run_epoch(model, loader, energy_w, force_w, device, optimizer=None, max_batc
         total_loss += float(loss.detach())
         total_e += e_loss
         total_f += f_loss
+        total_kl += kl_term
         n += 1
         if max_batches is not None and n >= max_batches:
             break
-    return total_loss / n, total_e / n, total_f / n
+    return total_loss / n, total_e / n, total_f / n, total_kl / n
 
 
 # --------------------------------------------------------------------------
@@ -425,9 +447,14 @@ def train(
             **model.energy_scaling(),
         },
         "protocol": {
-            "loss": "energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E",
+            "loss": (
+                "energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E, "
+                "plus kl_weight * model.kl_divergence() / n_batches when the model defines "
+                "kl_weight (BLIP only; see ml/models/blip.py)"
+            ),
             "energy_loss_weight": energy_w,
             "force_loss_weight": force_w,
+            "kl_weight": float(getattr(inner, "kl_weight", 0.0)),
             "optimizer": {"name": "Adam", "lr": cfg.train.lr, "weight_decay": WEIGHT_DECAY},
             "scheduler": {"name": "ReduceLROnPlateau", "factor": LR_FACTOR, "patience": LR_PATIENCE},
             "grad_clip_norm": GRAD_CLIP,
@@ -466,8 +493,9 @@ def train(
           f"{len(val_positions)} of {len(val_ds)} (stride {subsets['val']['stride']}, offset "
           f"{subsets['val']['offset']}); test: not opened", flush=True)
     print(f"energy per atom: shift {shift:.4f}, scale {scale:.4f} kcal/mol", flush=True)
-    print(f"{'epoch':>5} {'train_loss':>12} {'train_E':>10} {'train_F':>10} {'val_loss':>12} "
-          f"{'val_E':>10} {'val_F':>10} {'lr':>10} {'train_s':>8} {'val_s':>8}", flush=True)
+    print(f"{'epoch':>5} {'train_loss':>12} {'train_E':>10} {'train_F':>10} {'train_KL':>10} "
+          f"{'val_loss':>12} {'val_E':>10} {'val_F':>10} {'val_KL':>10} {'lr':>10} "
+          f"{'train_s':>8} {'val_s':>8}", flush=True)
 
     best_val_loss = float("inf")
     best_state: Optional[dict[str, torch.Tensor]] = None
@@ -484,12 +512,12 @@ def train(
             for epoch in range(1, max_epochs + 1):
                 epoch_lr = optimizer.param_groups[0]["lr"]
                 epoch_start = time.perf_counter()
-                train_loss, train_e, train_f = run_epoch(
+                train_loss, train_e, train_f, train_kl = run_epoch(
                     model, train_loader, energy_w, force_w, device,
                     optimizer=optimizer, max_batches=max_batches,
                 )
                 train_s = time.perf_counter() - epoch_start
-                val_loss, val_e, val_f = run_epoch(
+                val_loss, val_e, val_f, val_kl = run_epoch(
                     model, val_loader, energy_w, force_w, device, max_batches=max_batches,
                 )
                 epoch_s = time.perf_counter() - epoch_start
@@ -500,8 +528,9 @@ def train(
                 record["epochs_run"] = epoch
                 record["wall_clock_s"] = elapsed
                 print(f"{epoch:>5} {train_loss:>12.4f} {train_e:>10.4f} {train_f:>10.4f} "
-                      f"{val_loss:>12.4f} {val_e:>10.4f} {val_f:>10.4f} {epoch_lr:>10.2e} "
-                      f"{train_s:>8.1f} {epoch_s - train_s:>8.1f}", flush=True)
+                      f"{train_kl:>10.4f} {val_loss:>12.4f} {val_e:>10.4f} {val_f:>10.4f} "
+                      f"{val_kl:>10.4f} {epoch_lr:>10.2e} {train_s:>8.1f} "
+                      f"{epoch_s - train_s:>8.1f}", flush=True)
                 if improved:
                     best_val_loss = val_loss
                     epochs_without_improvement = 0
@@ -517,7 +546,9 @@ def train(
                 history.writerow({
                     "epoch": epoch, "lr": epoch_lr,
                     "train_loss": train_loss, "train_energy_mse": train_e, "train_force_mse": train_f,
+                    "train_kl": train_kl,
                     "val_loss": val_loss, "val_energy_mse": val_e, "val_force_mse": val_f,
+                    "val_kl": val_kl,
                     "train_s": train_s, "val_s": epoch_s - train_s, "epoch_s": epoch_s,
                     "elapsed_s": elapsed, "improved": int(improved),
                 })

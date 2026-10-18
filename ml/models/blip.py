@@ -16,26 +16,23 @@ results is attributable to *where the randomness lives*, not to two
 unrelated models - this is the whole point of the three-phase comparison
 (CLAUDE.md's three-phase-plan table).
 
-**What's deliberately NOT done here yet, so it isn't silently assumed
-finished:**
-  - No KL-divergence / complexity-cost term is added to the training
-    loss. Bayes-by-backprop training normally regularises the learned
-    weight posterior against a prior; `kl_divergence()` below computes it
-    and `ml/training/train.py`'s loss would need to add
-    `kl_weight * model.kl_divergence() / n_batches` to combine it with
-    the energy/force loss. Left as a hook, not wired in, since that's a
-    shared-loop change that should be coordinated with whoever's working
-    in `train.py`.
-  - The shared `evaluate_test_set` (`ml/training/train.py`,
-    `ml/training/evaluate.py`) does not yet run multiple MC samples or
-    populate `ModelOutput.E_var`/`F_var` - it will score this model with
-    a single stochastic sample per batch, which is a valid but very noisy
-    point estimate, not real uncertainty. `predict_distribution` below is
-    what an MC-aware eval path should call instead.
-  - Dongxiao's UQ metric definitions (ECE, uncertainty-error correlation)
-    aren't implemented in `ml/utils/metrics.py` yet, so even once MC
-    evaluation is wired up, there's nothing yet to score calibration
-    against.
+**Status (updated once the three gaps below were closed):**
+  - The KL-divergence / complexity-cost term is wired into the training
+    loss: `ml/training/train.py`'s `batch_loss` adds
+    `kl_weight * model.kl_divergence() / n_batches` whenever the wrapped
+    model defines both `kl_weight` and `kl_divergence()`. `kl_weight`
+    defaults to 0.0 (see `__init__`) and is set per-run in
+    `experiments/configs/phase2_blip.yaml`'s `model:` block - starting
+    value, not a tuned one; watch `train_kl`/`val_kl` in the history CSV.
+  - `ml/training/evaluate.py` now calls `predict_distribution` (via
+    `ScaledEnergyModel.supports_distribution`) instead of one stochastic
+    sample, so `ModelOutput.E_var`/`F_var` are populated for real.
+  - `ml/utils/uq_metrics.py` implements ECE, prediction-interval coverage,
+    Spearman uncertainty-error correlation, a risk-coverage curve,
+    Gaussian NLL/CRPS, and sharpness, reading those `E_var`/`F_var`
+    fields. Its distributional assumption (Normal, from mean/variance,
+    not raw MC samples) is provisional pending Dongxiao's sign-off - see
+    that module's docstring and SCRUM-39.
 """
 from __future__ import annotations
 
@@ -185,17 +182,26 @@ class BLIP(nn.Module):
     ml/training/train.py), plus predict_distribution for the actual
     Phase 2 deliverable: multiple MC forward passes producing a predictive
     mean and variance.
+
+    `kl_weight` lives here rather than in `train:` because the six Phase
+    1/2 configs' `train:` blocks are locked byte-identical
+    (tests/ml/test_harness.py) and this coefficient only exists for BLIP -
+    same reasoning as `num_mc_samples` already being a `model:` key. Zero
+    by default (matches every other model having no KL term at all);
+    ml/training/train.py reads it via `getattr(inner_model, "kl_weight",
+    0.0)`, so a model that doesn't define it is simply never penalised.
     """
 
     def __init__(self, hidden_channels: int = 128, num_layers: int = 4,
                  num_rbf: int = 50, cutoff: float = 5.0,
-                 num_mc_samples: int = 20):
+                 num_mc_samples: int = 20, kl_weight: float = 0.0):
         super().__init__()
         self.hidden_channels = hidden_channels
         self.num_layers = num_layers
         self.num_rbf = num_rbf
         self.cutoff = cutoff
         self.num_mc_samples = num_mc_samples
+        self.kl_weight = kl_weight
         self.embedding = nn.Embedding(MAX_ATOMIC_NUMBER + 1, hidden_channels)
         self.rbf = GaussianRBF(num_rbf=num_rbf, cutoff=cutoff)
         self.layers = nn.ModuleList([BLIPLayer(hidden_channels, num_rbf) for _ in range(num_layers)])
@@ -213,6 +219,7 @@ class BLIP(nn.Module):
             "num_rbf": self.num_rbf,
             "cutoff": self.cutoff,
             "num_mc_samples": self.num_mc_samples,
+            "kl_weight": self.kl_weight,
         }
 
     def predict_energy(self, z: torch.Tensor, edge_index: torch.Tensor,

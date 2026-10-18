@@ -28,10 +28,18 @@ model:
   hidden_channels: 128
   num_layers: 4
   num_rbf: 50
-  # MC samples used by BLIP.predict_distribution at evaluation time - not
-  # used by the shared train.py loop yet, which only runs one stochastic
-  # sample per batch. See ml/models/blip.py's module docstring.
+  # MC samples ml/training/evaluate.py draws via BLIP.predict_distribution
+  # to populate ModelOutput.E_var/F_var (ml/models/blip.py's module docstring).
   num_mc_samples: 20
+  # Bayes-by-backprop complexity cost: train.py adds
+  # kl_weight * model.kl_divergence() / n_batches to the loss. A starting
+  # value, not a tuned one - watch train_kl/val_kl in history.csv for the
+  # first real run; raise it if weight_rho drifts large (noisy energy/force
+  # loss), lower it if weight_rho collapses toward its -5 init (no learned
+  # uncertainty at all). Zero would train BLIP as an unregularised point
+  # estimate, same risk the batch-dependence bug already showed the
+  # consequence of (docs/reviews/blip-batch-dependence.md).
+  kl_weight: 0.01
 
 train:
   epochs: 200

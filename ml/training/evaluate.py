@@ -39,9 +39,20 @@ in a forked RNG state, so a stochastic model such as BLIP scores the same
 every time, and the caller's RNG is untouched. Deterministic models draw
 no random numbers and are unaffected.
 
-Uncertainty metrics (ECE, uncertainty-error correlation) are deliberately
-absent. Those definitions are Dongxiao's; the fields appear in the output
-as `null` with a note rather than being invented here.
+A model that exposes `predict_distribution` (checked generically via
+`ScaledEnergyModel.supports_distribution`, no per-model branch) is scored
+by its MC-sample predictive mean/variance rather than one stochastic
+sample: `ModelOutput.E_var`/`F_var` get populated for real, the point-
+estimate metrics (energy/force MAE etc.) are computed on that same mean
+so the accuracy and uncertainty numbers describe one predictive
+distribution, and `ml.utils.uq_metrics.UQAccumulator` scores calibration,
+coverage, Spearman correlation, a risk-coverage curve, Gaussian NLL/CRPS,
+and sharpness. See that module's docstring for the Normal-distribution
+assumption this rests on - provisional pending Dongxiao's sign-off
+(SCRUM-39) - and ml/models/blip.py's for why this makes evaluation
+`num_mc_samples` times more expensive for BLIP specifically. A model
+without `predict_distribution` is scored exactly as before: one forward
+pass, `E_var`/`F_var` stay `None`, and `uq_metrics` is `null`.
 """
 from __future__ import annotations
 
@@ -62,6 +73,7 @@ from ml.data.datasets import MD17Dataset
 from ml.models.registry import load_model
 from ml.utils.contract import ModelOutput, ReferenceData, Units
 from ml.utils.metrics import MetricAccumulator
+from ml.utils.uq_metrics import UQAccumulator
 
 __all__ = ["evaluate_checkpoint", "main"]
 
@@ -87,10 +99,15 @@ REPRODUCIBILITY_RTOL = 1e-5
 BENCHMARK_ENERGY_FIELD = "energy_mae_total"
 BENCHMARK_FORCE_FIELD = "force_mae_component"
 
-_UQ_NOTE = (
-    "ECE and uncertainty-error correlation are defined by Dongxiao and are not "
-    "computed here; a deterministic Phase 1 model has no uncertainty by "
-    "construction. Populated for Phase 2/3 once those definitions land."
+_UQ_NOTE_DETERMINISTIC = (
+    "ECE and uncertainty-error correlation are defined by Dongxiao; this model has "
+    "no predict_distribution (deterministic, or Phase 2/3 hasn't wired one in yet), "
+    "so there is no uncertainty to score against that definition"
+)
+_UQ_NOTE_PROVISIONAL = (
+    "computed under ml.utils.uq_metrics's provisional definition (Normal "
+    "distribution assumed from E_var/F_var) - not yet Dongxiao's confirmed "
+    "definition; see that module's docstring and SCRUM-39"
 )
 
 
@@ -263,7 +280,9 @@ def _score_checkpoint(
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     accumulator = MetricAccumulator()
+    uq_accumulator = UQAccumulator()
     reference_units = units or Units()
+    scores_distribution = model.supports_distribution
 
     model_seconds = 0.0
     n_batches = 0
@@ -278,21 +297,33 @@ def _score_checkpoint(
     # F = -dE/dR, so that call is the one place a graph is needed. Not every
     # model re-enables grad internally - MPNN and SchNet do not, and raise
     # under no_grad - and evaluation must not depend on which ones do.
+    # predict_distribution manages its own grad context internally (BLIP's
+    # own @torch.no_grad() with a local enable_grad() per MC sample), so it
+    # needs no outer enable_grad() here the way the point-estimate path does.
     with torch.no_grad():
         for batch in loader:
             batch = batch.to(torch_device)
 
             model_start = time.perf_counter()
-            with torch.enable_grad():
-                energy, forces = model.predict_energy_and_forces(
+            if scores_distribution:
+                e_mean, e_var, f_mean, f_var = model.predict_distribution(
                     batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch
                 )
+                energy, forces = e_mean.detach(), f_mean.detach()
+                energy_var, force_var = e_var.detach(), f_var.detach()
+            else:
+                with torch.enable_grad():
+                    energy, forces = model.predict_energy_and_forces(
+                        batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch
+                    )
+                energy, forces = energy.detach(), forces.detach()
+                energy_var = force_var = None
             if torch_device.type == "cuda":
                 torch.cuda.synchronize()
             model_seconds += time.perf_counter() - model_start
 
             prediction = ModelOutput(
-                E=energy.detach(), F=forces.detach(), units=reference_units
+                E=energy, F=forces, E_var=energy_var, F_var=force_var, units=reference_units
             )
             reference = ReferenceData(
                 E=batch.y,
@@ -305,12 +336,21 @@ def _score_checkpoint(
             )
             # One running sum per key; the single division happens in compute().
             accumulator.update(prediction, reference)
+            if prediction.is_stochastic:
+                uq_accumulator.update(prediction, reference)
             n_batches += 1
 
     wall_seconds = time.perf_counter() - wall_start
     metrics = accumulator.compute()
+    uq_metrics = uq_accumulator.compute()  # None if the model never produced a distribution
     record = metrics["per_key"][0]
     n_configs = int(record["n_frames"])
+
+    uq_record = uq_metrics["per_key"][0] if uq_metrics is not None else None
+    benchmark_ece = uq_record["energy"]["ece"] if uq_record and uq_record["energy"] else None
+    benchmark_correlation = (
+        uq_record["energy"]["spearman_uncertainty_error"] if uq_record and uq_record["energy"] else None
+    )
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -332,6 +372,7 @@ def _score_checkpoint(
             "n_atoms_per_config": int(dataset.z.shape[0]),
         },
         "metrics": metrics,
+        "uq_metrics": uq_metrics,
         "timing": {
             "eval_wall_clock_s": wall_seconds,
             "model_inference_s": model_seconds,
@@ -364,9 +405,9 @@ def _score_checkpoint(
             "force_mae": record[BENCHMARK_FORCE_FIELD],
             "force_mae_field": BENCHMARK_FORCE_FIELD,
             "force_mae_unit": record["units"]["force"],
-            "ece": None,
-            "uncertainty_correlation": None,
-            "uncertainty_note": _UQ_NOTE,
+            "ece": benchmark_ece,
+            "uncertainty_correlation": benchmark_correlation,
+            "uncertainty_note": _UQ_NOTE_PROVISIONAL if uq_record else _UQ_NOTE_DETERMINISTIC,
         },
         "warnings": warnings,
     }
@@ -421,6 +462,11 @@ def main(argv: Optional[list[str]] = None) -> int:
           f"{row['force_mae']:.6g} {row['force_mae_unit']}")
     print(f"  inference                             : "
           f"{timing['inference_s_per_config'] * 1e3:.4g} ms/config")
+    if row["ece"] is not None:
+        print(f"  energy ECE / Spearman(std, |err|)     : "
+              f"{row['ece']:.4g} / {row['uncertainty_correlation']:.4g}"
+              if row["uncertainty_correlation"] is not None
+              else f"{row['ece']:.4g} / n/a")
     print(f"  written to {output}")
     return 0
 
