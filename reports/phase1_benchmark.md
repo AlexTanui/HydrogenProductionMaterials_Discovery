@@ -6,11 +6,11 @@ All 5 runs were checked to share one protocol before being tabulated: identical 
 
 | Run | Model | Phase | Parameters | Energy MAE | Energy RMSE | Force MAE | Force RMSE | Epochs run | Best epoch | Stop reason | Training time | Inference (ms/frame) | ECE | Unc.-error Spearman | Git commit |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| phase1_baseline | MPNN | mpnn | 384,897 | 0.0891 | 0.1084 | 0.1791 | 0.2797 | 200 | 200 | max_epochs | 0.74 h | 0.217 |  |  | `d9f3814` |
-| phase1_dimenet | GoldDimeNetPlusPlus | dimenet | 278,982 | 0.0567 | 0.0721 | 0.1254 | 0.2045 | 200 | 199 | max_epochs | 2.23 h | 1.010 |  |  | `ff3e914` |
-| phase1_painn | PaiNN | painn | 588,033 | 0.0531 | 0.0678 | 0.1196 | 0.2040 | 200 | 200 | max_epochs | 1.14 h | 0.520 |  |  | `d9f3814` |
-| phase1_physnet | PhysNet | physnet | 808,746 | 0.0590 | 0.0749 | 0.1675 | 0.2491 | 200 | 198 | max_epochs | 1.19 h | 0.545 |  |  | `d9f3814` |
-| phase1_schnet | SchNet | schnet | 61,569 | 0.1173 | 0.1496 | 0.3806 | 0.5451 | 200 | 198 | max_epochs | 0.36 h | 0.114 |  |  | `d9f3814` |
+| phase1_baseline | MPNN | mpnn | 384,897 | 0.0779 | 0.0962 | 0.1775 | 0.2774 | 200 | 199 | max_epochs | 0.63 h | 0.337 |  |  | `755d57f` |
+| phase1_dimenet | GoldDimeNetPlusPlus | dimenet | 278,982 | 0.0537 | 0.0688 | 0.1142 | 0.1994 | 200 | 191 | max_epochs | 2.07 h | 1.190 |  |  | `b1c2d89` |
+| phase1_painn | PaiNN | painn | 588,033 | 0.0557 | 0.0711 | 0.1117 | 0.1858 | 200 | 200 | max_epochs | 1.35 h | 0.742 |  |  | `b1c2d89` |
+| phase1_physnet | PhysNet | physnet | 808,746 | 0.0611 | 0.0779 | 0.1738 | 0.2596 | 200 | 200 | max_epochs | 1.10 h | 0.600 |  |  | `b1c2d89` |
+| phase1_schnet | SchNet | schnet | 61,569 | 0.1714 | 0.2247 | 0.4270 | 0.6091 | 200 | 199 | max_epochs | 0.29 h | 0.150 |  |  | `b1c2d89` |
 
 - **Energy**: kcal/mol, error in total molecular energy (`energy_mae_total`, `energy_rmse_total`). **Forces**: kcal/mol/Å, per Cartesian component (`force_mae_component`, `force_rmse_component`).
 - **Test split**: 55,509 frames of ethanol (dft), scored once by `ml/training/evaluate.py` with seed 0 and batch size 32. Scoring-data fingerprint (sha256 of the test indices and of z, R, E, F at them): `518af6e3d57bdb884dcd51e785b7330469395da40990764d4771ff099a198839`.
@@ -21,17 +21,15 @@ All 5 runs were checked to share one protocol before being tabulated: identical 
 
 - Data: `data/gold/md17/ethanol_dft.npz`, cutoff 5.0 Å, seed 42.
 - Budget: 10,000 train and 5,000 val frames (stride subsets, seed 42); batch 32; up to 200 epochs, early-stopping patience 20; device cpu.
-- Loss: energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E; weights 1.0 / 100.0.
+- Loss: energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E, plus kl_weight * model.kl_divergence() / n_batches when the model defines kl_weight (BLIP only; see ml/models/blip.py); weights 1.0 / 100.0.
 - Optimiser: Adam, lr 0.0005, weight decay 1e-06; ReduceLROnPlateau (factor 0.5, patience 5); gradient clipping 10.0; shuffle: torch.Generator seeded with data.seed.
 
 ## Run records
 
 | Run | Record | Git commit | Dirty tree | Device | Threads | Checkpoint sha256 | Re-score max relative difference |
 |---|---|---|---|---|---|---|---|
-| phase1_baseline | [experiments/runs/phase1_baseline/](../experiments/runs/phase1_baseline/) | `d9f3814` | False | cpu | 24 | `24b83e6bcabe` | 2.3e-08 |
-| phase1_dimenet | [experiments/runs/phase1_dimenet/](../experiments/runs/phase1_dimenet/) | `ff3e914` | False | cpu | 24 | `322a42c719a2` | 4.9e-10 |
-| phase1_painn | [experiments/runs/phase1_painn/](../experiments/runs/phase1_painn/) | `d9f3814` | False | cpu | 24 | `0cc2c7205c36` | 3.8e-11 |
-| phase1_physnet | [experiments/runs/phase1_physnet/](../experiments/runs/phase1_physnet/) | `d9f3814` | False | cpu | 24 | `f56aa40d7467` | 1.3e-08 |
-| phase1_schnet | [experiments/runs/phase1_schnet/](../experiments/runs/phase1_schnet/) | `d9f3814` | False | cpu | 24 | `033a7323382a` | 8.1e-10 |
-
-Runs scored before evaluate.py recorded fingerprints were re-scored by `scripts/fingerprint_run_records.py` to add one. Their stored metrics are unchanged; the last column is the largest relative difference the re-score measured against them (tolerance 1e-5 relative, because multithreaded CPU scoring is not bit-reproducible).
+| phase1_baseline | [experiments/runs/phase1_baseline/](../experiments/runs/phase1_baseline/) | `755d57f` | False | cpu | 4 | `36a760377dbc` | not re-scored |
+| phase1_dimenet | [experiments/runs/phase1_dimenet/](../experiments/runs/phase1_dimenet/) | `b1c2d89` | False | cpu | 4 | `9f2484b35baf` | not re-scored |
+| phase1_painn | [experiments/runs/phase1_painn/](../experiments/runs/phase1_painn/) | `b1c2d89` | False | cpu | 4 | `be3c3fd74a86` | not re-scored |
+| phase1_physnet | [experiments/runs/phase1_physnet/](../experiments/runs/phase1_physnet/) | `b1c2d89` | False | cpu | 4 | `1f24eb29d3e8` | not re-scored |
+| phase1_schnet | [experiments/runs/phase1_schnet/](../experiments/runs/phase1_schnet/) | `b1c2d89` | False | cpu | 4 | `17fba407f928` | not re-scored |

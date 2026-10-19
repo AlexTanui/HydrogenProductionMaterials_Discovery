@@ -5,13 +5,13 @@
   "reportable": true,
   "overrides": {},
   "status": "complete",
-  "git_commit": "ff3e9141fad2f12b73d5a84b8352b7a3898926ee",
+  "git_commit": "b1c2d8941f9fc25c3db3f7bcfa3180804d7e2e25",
   "git_dirty": false,
   "git_dirty_ignores": [
     "experiments/runs/"
   ],
   "config_path": "experiments/configs/phase1_dimenet.yaml",
-  "config_sha256": "6d89d1892bd9bfd51c554e9835843ae4459a48c4b6248a993d8855df2ff860a6",
+  "config_sha256": "f313f0faacfbda847d4c40034acecc6398864993b347e77091985a1ebdb1888d",
   "config": {
     "name": "phase1_dimenet",
     "data": {
@@ -104,9 +104,10 @@
     "formula": "E = scale * E_model + n_atoms * shift; F = scale * F_model"
   },
   "protocol": {
-    "loss": "energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E",
+    "loss": "energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E, plus kl_weight * model.kl_divergence() / n_batches when the model defines kl_weight (BLIP only; see ml/models/blip.py)",
     "energy_loss_weight": 1.0,
     "force_loss_weight": 100.0,
+    "kl_weight": 0.0,
     "optimizer": {
       "name": "Adam",
       "lr": 0.0005,
@@ -127,39 +128,39 @@
   },
   "environment": {
     "device": "cpu",
-    "torch": "2.13.0+cpu",
+    "torch": "2.13.0",
     "torch_geometric": "2.8.0.post1",
     "numpy": "2.4.6",
-    "torch_num_threads": 24,
+    "torch_num_threads": 4,
     "python": "3.11.9",
-    "platform": "Windows-10-10.0.26200-SP0",
-    "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel"
+    "platform": "macOS-14.4-arm64-arm-64bit",
+    "processor": "arm"
   },
-  "setup_s": 7.782480800000485,
-  "started_at": "2026-10-15T23:27:54+00:00",
+  "setup_s": 7.6862780840019695,
+  "started_at": "2026-10-19T02:14:16+00:00",
   "checkpoint": "experiments/checkpoints/phase1_dimenet.pt",
   "history_csv": "experiments/runs/phase1_dimenet/history.csv",
   "epochs_run": 200,
-  "best_epoch": 199,
-  "best_val_loss": 5.832851037098344,
+  "best_epoch": 191,
+  "best_val_loss": 5.9834692971721575,
   "stop_reason": "max_epochs",
-  "wall_clock_s": 8021.479586200003,
-  "finished_at": "2026-10-16T01:41:35+00:00",
-  "checkpoint_sha256": "322a42c719a2f2ed0e359312fcad0baede09e5e2d3faf81f3166e6fb293b521a",
+  "wall_clock_s": 7449.386997915979,
+  "finished_at": "2026-10-19T04:18:26+00:00",
+  "checkpoint_sha256": "9f2484b35baf863f31ebf5599ccf8f4bbbcfa17f8bffd9b768990350ffc29dd9",
   "test": {
     "metrics_json": "test_metrics.json",
     "benchmark_row": {
       "phase": "dimenet",
       "model": "GoldDimeNetPlusPlus",
-      "energy_mae": 0.05672742820983984,
+      "energy_mae": 0.05372059598443495,
       "energy_mae_field": "energy_mae_total",
       "energy_mae_unit": "kcal/mol",
-      "force_mae": 0.1253616162620671,
+      "force_mae": 0.11422385762295388,
       "force_mae_field": "force_mae_component",
       "force_mae_unit": "kcal/mol/Ang",
       "ece": null,
       "uncertainty_correlation": null,
-      "uncertainty_note": "ECE and uncertainty-error correlation are defined by Dongxiao and are not computed here; a deterministic Phase 1 model has no uncertainty by construction. Populated for Phase 2/3 once those definitions land."
+      "uncertainty_note": "ECE and uncertainty-error correlation are defined by Dongxiao; this model has no predict_distribution (deterministic, or Phase 2/3 hasn't wired one in yet), so there is no uncertainty to score against that definition"
     }
   }
 }

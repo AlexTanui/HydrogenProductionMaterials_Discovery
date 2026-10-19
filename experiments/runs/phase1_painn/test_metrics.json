@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "checkpoint": "C:\\work\\capstone\\HydrogenProductionMaterials_Discovery\\experiments\\checkpoints\\phase1_painn.pt",
+  "checkpoint": "/Users/alextanui/Desktop/Hydrogen_production/experiments/checkpoints/phase1_painn.pt",
   "phase": "painn",
   "model_config": {
     "hidden_channels": 128,
@@ -19,14 +19,10 @@
   "seed": 0,
   "n_parameters": 588033,
   "data": {
-    "gold_path": "C:\\work\\capstone\\HydrogenProductionMaterials_Discovery\\data\\gold\\md17\\ethanol_dft.npz",
+    "gold_path": "/Users/alextanui/Desktop/Hydrogen_production/data/gold/md17/ethanol_dft.npz",
     "split": "test",
     "molecule": "ethanol",
     "theory": "dft",
-    "cutoff_radius": 5.0,
-    "num_rbf": 16,
-    "n_configs": 55509,
-    "n_atoms_per_config": 9,
     "fingerprint": {
       "algorithm": "sha256",
       "sha256": "518af6e3d57bdb884dcd51e785b7330469395da40990764d4771ff099a198839",
@@ -65,7 +61,11 @@
           3
         ]
       }
-    }
+    },
+    "cutoff_radius": 5.0,
+    "num_rbf": 16,
+    "n_configs": 55509,
+    "n_atoms_per_config": 9
   },
   "metrics": {
     "schema_version": 1,
@@ -91,14 +91,14 @@
           "length": "Ang",
           "force": "kcal/mol/Ang"
         },
-        "energy_mae_total": 0.053056430038372154,
-        "energy_rmse_total": 0.06778928250711469,
-        "energy_mae_per_atom": 0.005895158893152467,
-        "energy_rmse_per_atom": 0.007532142500790518,
-        "force_mae_component": 0.11955786132282928,
-        "force_rmse_component": 0.20395214369982004,
-        "force_mae_atom_norm": 0.23938225703648378,
-        "force_rmse_atom_norm": 0.353255475200677,
+        "energy_mae_total": 0.05571056044965681,
+        "energy_rmse_total": 0.07106904385140239,
+        "energy_mae_per_atom": 0.0061900622721840935,
+        "energy_rmse_per_atom": 0.007896560427933599,
+        "force_mae_component": 0.11170388273606027,
+        "force_rmse_component": 0.1857835413833306,
+        "force_mae_atom_norm": 0.22361822625535524,
+        "force_rmse_atom_norm": 0.32178653288600373,
         "fields": {
           "energy_mae_total": {
             "quantity": "energy",
@@ -167,14 +167,14 @@
         "force": "kcal/mol/Ang"
       },
       "excluded": {},
-      "force_mae_component": 0.11955786132282928,
-      "force_rmse_component": 0.20395214369982004,
-      "force_mae_atom_norm": 0.23938225703648378,
-      "force_rmse_atom_norm": 0.353255475200677,
-      "energy_mae_total": 0.053056430038372154,
-      "energy_rmse_total": 0.06778928250711469,
-      "energy_mae_per_atom": 0.005895158893152467,
-      "energy_rmse_per_atom": 0.007532142500790518,
+      "force_mae_component": 0.11170388273606027,
+      "force_rmse_component": 0.1857835413833306,
+      "force_mae_atom_norm": 0.22361822625535524,
+      "force_rmse_atom_norm": 0.32178653288600373,
+      "energy_mae_total": 0.05571056044965681,
+      "energy_rmse_total": 0.07106904385140239,
+      "energy_mae_per_atom": 0.0061900622721840935,
+      "energy_rmse_per_atom": 0.007896560427933599,
       "fields": {
         "energy_mae_total": {
           "quantity": "energy",
@@ -228,74 +228,35 @@
       "stochastic": false
     }
   },
+  "uq_metrics": null,
   "timing": {
-    "eval_wall_clock_s": 38.22683119997964,
-    "model_inference_s": 28.84857029982959,
-    "inference_s_per_config": 0.0005197097821944115,
-    "wall_clock_s_per_config": 0.0006886600587288483,
+    "eval_wall_clock_s": 45.392279999970924,
+    "model_inference_s": 41.196028319653124,
+    "inference_s_per_config": 0.0007421504318156177,
+    "wall_clock_s_per_config": 0.0008177463114084369,
     "batch_size": 32,
     "n_batches": 1735,
-    "train_wall_clock_s": 4105.932660099992
+    "train_wall_clock_s": 4872.230183000036
   },
   "environment": {
     "device": "cpu",
-    "torch": "2.13.0+cpu",
-    "torch_num_threads": 24,
+    "torch": "2.13.0",
+    "torch_num_threads": 4,
     "python": "3.11.9",
-    "platform": "Windows-10-10.0.26200-SP0"
+    "platform": "macOS-14.4-arm64-arm-64bit"
   },
   "benchmark_row": {
     "phase": "painn",
     "model": "PaiNN",
-    "energy_mae": 0.053056430038372154,
+    "energy_mae": 0.05571056044965681,
     "energy_mae_field": "energy_mae_total",
     "energy_mae_unit": "kcal/mol",
-    "force_mae": 0.11955786132282928,
+    "force_mae": 0.11170388273606027,
     "force_mae_field": "force_mae_component",
     "force_mae_unit": "kcal/mol/Ang",
     "ece": null,
     "uncertainty_correlation": null,
-    "uncertainty_note": "ECE and uncertainty-error correlation are defined by Dongxiao and are not computed here; a deterministic Phase 1 model has no uncertainty by construction. Populated for Phase 2/3 once those definitions land."
+    "uncertainty_note": "ECE and uncertainty-error correlation are defined by Dongxiao; this model has no predict_distribution (deterministic, or Phase 2/3 hasn't wired one in yet), so there is no uncertainty to score against that definition"
   },
-  "warnings": [],
-  "rescore": {
-    "purpose": "add data.fingerprint; reproduces the stored metrics and tunes nothing",
-    "date": "2026-10-16",
-    "git_commit": "549e6dd1c1827c3164b9bb2895841584f92dd6f5",
-    "git_dirty": false,
-    "evaluate_py_sha256": "f35bf8348378428d39586efdc02061497d906acf7d8068ebb2d50acdc09b4400",
-    "script": "scripts/fingerprint_run_records.py",
-    "torch_num_threads": 24,
-    "seed": 0,
-    "batch_size": 32,
-    "tolerance_relative": 1e-05,
-    "max_relative_difference": 3.78164702823407e-11,
-    "relative_differences": {
-      "metrics.schema_version": 0.0,
-      "metrics.per_key.0.n_frames": 0.0,
-      "metrics.per_key.0.n_atoms": 0.0,
-      "metrics.per_key.0.energy_mae_total": 0.0,
-      "metrics.per_key.0.energy_rmse_total": 0.0,
-      "metrics.per_key.0.energy_mae_per_atom": 0.0,
-      "metrics.per_key.0.energy_rmse_per_atom": 0.0,
-      "metrics.per_key.0.force_mae_component": 3.101861777625074e-11,
-      "metrics.per_key.0.force_rmse_component": 6.399841800129766e-12,
-      "metrics.per_key.0.force_mae_atom_norm": 3.78164702823407e-11,
-      "metrics.per_key.0.force_rmse_atom_norm": 6.3997511822284514e-12,
-      "metrics.overall.n_keys": 0.0,
-      "metrics.overall.n_frames": 0.0,
-      "metrics.overall.n_atoms": 0.0,
-      "metrics.overall.force_mae_component": 3.101861777625074e-11,
-      "metrics.overall.force_rmse_component": 6.399841800129766e-12,
-      "metrics.overall.force_mae_atom_norm": 3.78164702823407e-11,
-      "metrics.overall.force_rmse_atom_norm": 6.3997511822284514e-12,
-      "metrics.overall.energy_mae_total": 0.0,
-      "metrics.overall.energy_rmse_total": 0.0,
-      "metrics.overall.energy_mae_per_atom": 0.0,
-      "metrics.overall.energy_rmse_per_atom": 0.0,
-      "benchmark_row.energy_mae": 0.0,
-      "benchmark_row.force_mae": 3.101861777625074e-11
-    },
-    "stored_metrics_unchanged": true
-  }
+  "warnings": []
 }
