@@ -131,6 +131,46 @@ class ScaledEnergyModel(nn.Module):
         )
 
     @property
+    def supports_training_distribution(self) -> bool:
+        """Whether the wrapped model exposes `predict_training_distribution`
+        (BLIP with `train_num_mc_samples` > 1). See that method and
+        ml/training/train.py's `batch_loss`."""
+        return hasattr(self.model, "predict_training_distribution")
+
+    def predict_training_distribution(
+        self,
+        z: Tensor,
+        pos: Tensor,
+        edge_index: Tensor,
+        edge_attr: Optional[Tensor],
+        batch: Optional[Tensor] = None,
+        num_mc_samples: Optional[int] = None,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Rescaled (E_mean, E_var, F_mean, F_var), gradient-carrying - the
+        training-time counterpart to `predict_distribution`. No
+        `torch.no_grad()` anywhere in this path; calling it outside a
+        training context just wastes compute, it does not break anything.
+        """
+        if not self.supports_training_distribution:
+            raise AttributeError(
+                f"{type(self.model).__name__} has no predict_training_distribution; "
+                "check supports_training_distribution before calling this"
+            )
+        if batch is None:
+            batch = torch.zeros(pos.shape[0], dtype=torch.long, device=pos.device)
+        e_mean, e_var, f_mean, f_var = self.model.predict_training_distribution(
+            z, pos, edge_index, edge_attr, batch=batch, num_mc_samples=num_mc_samples
+        )
+        n_atoms = torch.bincount(batch, minlength=e_mean.shape[0]).to(e_mean.dtype)
+        scale_sq = self.scale * self.scale
+        return (
+            self.scale * e_mean + n_atoms * self.shift,
+            scale_sq * e_var,
+            self.scale * f_mean,
+            scale_sq * f_var,
+        )
+
+    @property
     def cutoff_radius(self) -> Optional[float]:
         """The wrapped model's own cutoff, whatever its constructor calls it.
 

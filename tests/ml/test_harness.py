@@ -23,6 +23,7 @@ from __future__ import annotations
 import csv
 import dataclasses
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -33,9 +34,10 @@ import numpy as np
 import pytest
 import torch
 from torch import nn
+from torch_geometric.loader import DataLoader
 
 import ml.training.train as train_module
-from ml.config import ExperimentConfig
+from ml.config import ExperimentConfig, ModelConfig
 from ml.models.blip import BLIP
 from ml.models.painn import PaiNN
 from ml.models.registry import MODEL_REGISTRY, UnknownModel, load_model
@@ -43,7 +45,7 @@ from ml.models.scaling import ScaledEnergyModel
 from ml.models.schnet import SchNet
 from ml.training.evaluate import evaluate_checkpoint
 from ml.training.train import (
-    build_model, git_state, open_split, select_subsets, stride_subset, train,
+    batch_loss, build_model, git_state, open_split, select_subsets, stride_subset, train,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -489,3 +491,101 @@ def test_dirty_check_ignores_run_records_and_nothing_else(tmp_path):
     stage("ml/config.py")
     assert dirty() is True
 
+
+
+# --------------------------------------------------------------------------
+# 7. BLIP's NLL training path (train_num_mc_samples > 1)
+# --------------------------------------------------------------------------
+#
+# Added after the first real phase2_blip run came back badly overconfident
+# and nearly uncorrelated with actual error (Spearman ~0.005 on energy):
+# nothing in plain MSE on one stochastic sample ever rewards the model for
+# making its variance track its own error. These tests cover the opt-in
+# fix, not the original (default, train_num_mc_samples=1) path - that one
+# is still exercised byte-for-byte by every test above.
+
+def _blip_nll_kwargs(train_num_mc_samples: int = 3) -> dict:
+    return {**_load("phase2_blip").model.kwargs, "train_num_mc_samples": train_num_mc_samples}
+
+
+def test_blip_trains_with_nll_loss_when_configured(tiny_gold, tmp_path):
+    """Mechanism-only: the NLL path runs end to end through train() and
+    produces finite numbers. It does NOT assert those numbers are a
+    reasonable magnitude - at this model's real-world scale, with no
+    warmup (nll_warmup_epochs defaults to 0 here) and only 1-2 optimiser
+    steps, the loss is legitimately huge (observed ~1e8 in manual
+    verification: kl_weight pulls weight_rho toward a tiny prior with
+    nothing pushing it back up, so variance can be tiny exactly where
+    error is not). That instability is real and currently open - a
+    warmup alone was not enough to fix it either - see
+    experiments/configs/phase2_blip_nll.yaml and SCRUM-31. Tightening
+    this test to also check magnitude is the right next step once a real
+    fix (a minimum-variance floor, most likely) lands."""
+    cfg = dataclasses.replace(
+        _tiny_config("phase2_blip", tiny_gold.path),
+        name="phase2_blip_nll_tiny",
+        model=ModelConfig(phase="blip", kwargs=_blip_nll_kwargs()),
+    )
+    record = train(cfg, output_root=tmp_path)
+
+    assert record["status"] == "complete"
+    assert record["protocol"]["train_num_mc_samples"] == 3
+    assert "NLL" in record["protocol"]["loss"]
+
+    history = list(csv.DictReader((tmp_path / "runs" / cfg.name / "history.csv").open(encoding="utf-8")))
+    # NLL is a log-density, not a squared error - it can legitimately be
+    # negative. It only needs to be finite (the variance floor's job).
+    assert math.isfinite(float(history[0]["train_energy_mse"]))
+    assert math.isfinite(float(history[0]["train_force_mse"]))
+
+
+def test_blip_with_default_train_num_mc_samples_is_unaffected(tiny_gold, tmp_path):
+    """train_num_mc_samples defaults to 1: every run before this feature,
+    and every config that never sets it, must take the old MSE branch."""
+    cfg = _tiny_config("phase2_blip", tiny_gold.path)
+    assert "train_num_mc_samples" not in cfg.model.kwargs
+    record = train(cfg, output_root=tmp_path)
+    assert record["protocol"]["train_num_mc_samples"] == 1
+    assert "NLL" not in record["protocol"]["loss"]
+    assert "MSE" in record["protocol"]["loss"]
+
+
+def test_batch_loss_gives_the_noise_gate_a_real_gradient_under_nll(tiny_gold):
+    """The actual mechanism the NLL loss is supposed to provide: a gradient
+    into noise_gate, which decides how much weight-noise a given input
+    gets. Plain MSE on one sample never touches this parameter's gradient
+    in a way that depends on how wrong the prediction turned out to be."""
+    cfg = dataclasses.replace(
+        _tiny_config("phase2_blip", tiny_gold.path),
+        model=ModelConfig(phase="blip", kwargs=_blip_nll_kwargs()),
+    )
+    inner = build_model(cfg)
+    wrapped = ScaledEnergyModel(inner, shift=0.0, scale=1.0)
+    gate = inner.layers[0].message_lin1.noise_gate
+
+    train_ds = open_split(cfg, "train")
+    loader = DataLoader(torch.utils.data.Subset(train_ds, list(range(8))), batch_size=8)
+    batch = next(iter(loader))
+
+    loss, _, _, _ = batch_loss(wrapped, batch, energy_w=1.0, force_w=100.0, n_batches=1)
+    loss.backward()
+
+    assert gate.weight.grad is not None
+    assert float(gate.weight.grad.abs().sum()) > 0
+
+
+def test_batch_loss_falls_back_to_mse_for_every_other_model(tiny_gold):
+    """hasattr(inner, "train_num_mc_samples") is False for MPNN/SchNet/etc,
+    so batch_loss must take the exact same branch it always has."""
+    cfg = _tiny_config("phase1_baseline", tiny_gold.path)
+    inner = build_model(cfg)
+    wrapped = ScaledEnergyModel(inner, shift=0.0, scale=1.0)
+    assert not hasattr(inner, "train_num_mc_samples")
+    assert not getattr(wrapped, "supports_training_distribution", False)
+
+    train_ds = open_split(cfg, "train")
+    loader = DataLoader(torch.utils.data.Subset(train_ds, list(range(8))), batch_size=8)
+    batch = next(iter(loader))
+    loss, energy_loss, force_loss, kl_term = batch_loss(wrapped, batch, energy_w=1.0, force_w=100.0, n_batches=1)
+    assert kl_term == 0.0
+    assert energy_loss >= 0.0 and force_loss >= 0.0  # MSE, never negative

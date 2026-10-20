@@ -190,11 +190,33 @@ class BLIP(nn.Module):
     by default (matches every other model having no KL term at all);
     ml/training/train.py reads it via `getattr(inner_model, "kl_weight",
     0.0)`, so a model that doesn't define it is simply never penalised.
+
+    `train_num_mc_samples` (default 1) is a second such hook, added after
+    the first real training run (SCRUM-31, kl_weight=0.01) came back
+    badly overconfident and nearly uncorrelated with actual error
+    (Spearman ~0.005 on energy). Root cause: training only ever ran ONE
+    stochastic sample through plain MSE, so nothing in the loss rewarded
+    the model for making its variance track its own error. At 1 (the
+    default, and what every past run used), `predict_energy_and_forces`
+    + MSE behaves exactly as before - strictly opt-in. Set above 1 and
+    `ml/training/train.py`'s `batch_loss` switches to Gaussian NLL on
+    `predict_training_distribution`'s K-sample mean/variance instead -
+    the loss that actually has a reason to calibrate the variance.
+
+    `nll_warmup_epochs` (default 0) exists because NLL-from-scratch
+    diverges: `reset_parameters` below starts `weight_rho` at
+    softplus(-5) ~= 0.0067 *on purpose*, so an untrained model's K-sample
+    variance is tiny while its squared error is not - a smoke test hit
+    `error^2 / (2*var)` ~= 1e8 before this existed. For this many epochs,
+    `batch_loss` uses plain MSE regardless of `train_num_mc_samples`, so
+    the mean prediction is no longer catastrophically wrong by the time
+    division by a still-small variance turns on.
     """
 
     def __init__(self, hidden_channels: int = 128, num_layers: int = 4,
                  num_rbf: int = 50, cutoff: float = 5.0,
-                 num_mc_samples: int = 20, kl_weight: float = 0.0):
+                 num_mc_samples: int = 20, kl_weight: float = 0.0,
+                 train_num_mc_samples: int = 1, nll_warmup_epochs: int = 0):
         super().__init__()
         self.hidden_channels = hidden_channels
         self.num_layers = num_layers
@@ -202,6 +224,8 @@ class BLIP(nn.Module):
         self.cutoff = cutoff
         self.num_mc_samples = num_mc_samples
         self.kl_weight = kl_weight
+        self.train_num_mc_samples = train_num_mc_samples
+        self.nll_warmup_epochs = nll_warmup_epochs
         self.embedding = nn.Embedding(MAX_ATOMIC_NUMBER + 1, hidden_channels)
         self.rbf = GaussianRBF(num_rbf=num_rbf, cutoff=cutoff)
         self.layers = nn.ModuleList([BLIPLayer(hidden_channels, num_rbf) for _ in range(num_layers)])
@@ -220,6 +244,8 @@ class BLIP(nn.Module):
             "cutoff": self.cutoff,
             "num_mc_samples": self.num_mc_samples,
             "kl_weight": self.kl_weight,
+            "train_num_mc_samples": self.train_num_mc_samples,
+            "nll_warmup_epochs": self.nll_warmup_epochs,
         }
 
     def predict_energy(self, z: torch.Tensor, edge_index: torch.Tensor,
@@ -292,6 +318,39 @@ class BLIP(nn.Module):
         e_stack = torch.stack(energies, dim=0)  # [n, B]
         f_stack = torch.stack(forces, dim=0)    # [n, N, 3]
         return e_stack.mean(0), e_stack.var(0, unbiased=True), f_stack.mean(0), f_stack.var(0, unbiased=True)
+
+    def predict_training_distribution(self, z: torch.Tensor, pos: torch.Tensor,
+                                        edge_index: torch.Tensor, edge_attr: torch.Tensor,
+                                        batch: Optional[torch.Tensor] = None,
+                                        num_mc_samples: Optional[int] = None,
+                                        ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Like `predict_distribution`, but keeps the autograd graph alive -
+        no `@torch.no_grad()`, no `.detach()` - so a loss built on the
+        returned mean/variance can backpropagate into the weights that
+        produced them. This is what makes training against Gaussian NLL
+        possible at all; `predict_distribution` is eval-only by design.
+
+        Biased (population) variance, not `predict_distribution`'s
+        unbiased one: `num_mc_samples` here is small on purpose (cost
+        scales with it during training - this is K forward+backward
+        passes per batch, not one), and the unbiased estimator is both
+        noisier and divides by zero at n as low as 1.
+
+        Same leaf tensor `pos` is reused across samples (not detached
+        between them, unlike `predict_distribution`): there is no outer
+        `no_grad` to escape here, so each sample's graph is simply an
+        independent branch off that one leaf - standard for multiple
+        losses sharing an input.
+        """
+        n = num_mc_samples or self.num_mc_samples
+        energies, forces = [], []
+        for _ in range(n):
+            e, f = self.predict_energy_and_forces(z, pos, edge_index, edge_attr, batch=batch)
+            energies.append(e)
+            forces.append(f)
+        e_stack = torch.stack(energies, dim=0)  # [n, B]
+        f_stack = torch.stack(forces, dim=0)    # [n, N, 3]
+        return e_stack.mean(0), e_stack.var(0, unbiased=False), f_stack.mean(0), f_stack.var(0, unbiased=False)
 
     def kl_divergence(self) -> torch.Tensor:
         """Total KL(q(W) || prior) across every stochastic layer. See the

@@ -7,6 +7,13 @@ writes one table as CSV and Markdown:
     python -m ml.training.benchmark                       # -> reports/phase1_benchmark.{csv,md}
     python -m ml.training.benchmark --runs-dir DIR --out reports/NAME
 
+With no `--runs-dir`, only `phase1_*` run directories are read (see
+`main`'s `--name-prefix`): the shared `experiments/runs/` also holds
+Phase 2/3 runs (phase2_blip) under a genuinely different protocol, and
+this report is scoped to the Phase 1 bake-off. Pass `--runs-dir` and the
+filter drops to "everything there" by default - naming a directory is
+already choosing what's in it.
+
 **Refuses to compare unlike runs.** A benchmark table comparing models
 scored under different conditions is worse than no table (CLAUDE.md), so
 every run must match the first on all of:
@@ -92,12 +99,33 @@ def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def load_runs(runs_dir: Path = RUNS_DIR) -> list[RunResult]:
-    """Every run record under `runs_dir`, sorted by name. Refuses non-results."""
+def load_runs(runs_dir: Path = RUNS_DIR, name_prefix: str = "") -> list[RunResult]:
+    """Every run record under `runs_dir` whose directory name starts with
+    `name_prefix` (default "": every run record), sorted by name. Refuses
+    non-results.
+
+    The empty default means "take every run record I'm handed" - right
+    for a caller that already points `runs_dir` at exactly the runs it
+    wants (an isolated test fixture, or a hand-picked directory). It is
+    wrong for `main()`'s CLI, which defaults `runs_dir` to the live,
+    shared `experiments/runs/` - that directory now holds Phase 2/3 runs
+    too (phase2_blip, with a genuinely different protocol: kl_weight > 0,
+    its own loss term), and scanning it unfiltered picked those up right
+    alongside the five Phase 1 runs, so `check_same_protocol` raised
+    `ProtocolMismatch` the moment a Phase 2 run first existed - not a bug
+    in that check, a missing filter at the one call site that needed one.
+    `main()` passes `name_prefix="phase1_"` by default for exactly that
+    reason; this function's own default is unfiltered on purpose.
+    """
     runs_dir = Path(runs_dir)
-    run_dirs = sorted(p for p in runs_dir.iterdir() if (p / "run.json").is_file()) if runs_dir.is_dir() else []
+    run_dirs = (
+        sorted(p for p in runs_dir.iterdir() if p.name.startswith(name_prefix) and (p / "run.json").is_file())
+        if runs_dir.is_dir() else []
+    )
     if not run_dirs:
-        raise FileNotFoundError(f"no run records (*/run.json) under {runs_dir}")
+        raise FileNotFoundError(
+            f"no run records ({name_prefix or '*'}*/run.json) under {runs_dir}"
+        )
     results = []
     for path in run_dirs:
         run = _read_json(path / "run.json")
@@ -316,9 +344,10 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
     return "\n".join(lines) + "\n"
 
 
-def build(runs_dir: Path = RUNS_DIR, title: str = "Phase 1 benchmark") -> tuple[str, str, list[dict]]:
-    """(csv text, markdown text, rows) for every run under `runs_dir`."""
-    results = load_runs(runs_dir)
+def build(runs_dir: Path = RUNS_DIR, title: str = "Phase 1 benchmark",
+          name_prefix: str = "") -> tuple[str, str, list[dict]]:
+    """(csv text, markdown text, rows) for every `name_prefix*` run under `runs_dir`."""
+    results = load_runs(runs_dir, name_prefix=name_prefix)
     shared = check_same_protocol(results)
     rows = build_rows(results)
     return render_csv(rows), render_markdown(results, rows, shared, title=title), rows
@@ -326,13 +355,25 @@ def build(runs_dir: Path = RUNS_DIR, title: str = "Phase 1 benchmark") -> tuple[
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Build the comparison table from the run records.")
-    parser.add_argument("--runs-dir", default=str(RUNS_DIR))
+    parser.add_argument("--runs-dir", default=None,
+                        help=f"default {RUNS_DIR} - the live, shared run directory, which also means "
+                             "--name-prefix defaults to 'phase1_' there (see --name-prefix)")
+    parser.add_argument("--name-prefix", default=None,
+                        help="only include run directories whose name starts with this. Defaults to "
+                             "'phase1_' when --runs-dir is left at its default (the shared "
+                             "experiments/runs/, which holds Phase 2/3 runs under other protocols too), "
+                             "and to '' (every run record) when --runs-dir is given explicitly - a "
+                             "caller who names a directory has already chosen what's in it")
     parser.add_argument("--out", default=str(DEFAULT_OUT),
                         help="output path without extension; writes .csv and .md")
     parser.add_argument("--title", default="Phase 1 benchmark")
     args = parser.parse_args(argv)
 
-    csv_text, md_text, rows = build(Path(args.runs_dir), title=args.title)
+    runs_dir_given = args.runs_dir is not None
+    runs_dir = Path(args.runs_dir) if runs_dir_given else RUNS_DIR
+    name_prefix = args.name_prefix if args.name_prefix is not None else ("" if runs_dir_given else "phase1_")
+
+    csv_text, md_text, rows = build(runs_dir, title=args.title, name_prefix=name_prefix)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     # newline="" so the files are byte-identical to the strings (tests compare them).

@@ -64,6 +64,7 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 import platform
 import subprocess
 import sys
@@ -193,9 +194,55 @@ def select_subsets(cfg: ExperimentConfig) -> dict[str, dict[str, Any]]:
 # The loop
 # --------------------------------------------------------------------------
 
-def batch_loss(model: torch.nn.Module, batch, energy_w: float, force_w: float, n_batches: int = 1):
-    """MSE on absolute energy (kcal/mol) and forces (kcal/mol/A), weighted,
-    plus BLIP's KL complexity cost when the wrapped model defines one.
+# Variance floor for the NLL loss below. 1e-6, not uq_metrics.py's 1e-12:
+# that module scores a trained checkpoint in float64; this runs every
+# training step in float32, where 1e-12 is close enough to the precision
+# limit that log(variance) and 1/variance can both go unstable.
+_NLL_VAR_EPS = 1e-6
+
+
+def _gaussian_nll_loss(mean: torch.Tensor, var: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """Mean of -log N(target; mean, var) = 0.5*log(2*pi*var) + (target-mean)^2 / (2*var).
+
+    Unlike MSE, this has a gradient through `var` as well as `mean`: it
+    rewards a larger predicted variance exactly where the squared error
+    is large, and penalises a large variance where the error is small.
+    That is the one piece plain MSE can never provide, no matter how
+    `kl_weight` is tuned - see ml/models/blip.py's module docstring.
+    """
+    var = var.clamp_min(_NLL_VAR_EPS)
+    return (0.5 * torch.log(2 * math.pi * var) + (target - mean) ** 2 / (2 * var)).mean()
+
+
+def batch_loss(model: torch.nn.Module, batch, energy_w: float, force_w: float,
+                n_batches: int = 1, epoch: Optional[int] = None):
+    """Energy/force loss, weighted, plus BLIP's KL complexity cost when the
+    wrapped model defines one.
+
+    Two loss forms, chosen per-model by a generic hook (no model-name
+    branch, same spirit as the `kl_weight` hook below):
+
+    - **Default (every model, and BLIP at its old `train_num_mc_samples=1`
+      default):** MSE on one stochastic sample, exactly as before.
+    - **BLIP with `train_num_mc_samples > 1`, past its warmup:** Gaussian
+      NLL (`_gaussian_nll_loss` above) on the K-sample mean/variance from
+      `predict_training_distribution`. Costs roughly K forward+backward
+      passes instead of one.
+
+    **Why a warmup, and why `epoch` (not a step count):** NLL training
+    from BLIP's actual initialisation diverges. `weight_rho` starts at
+    softplus(-5) ~= 0.0067 by design (ml/models/blip.py's
+    `reset_parameters` - small noise so it doesn't swamp the signal
+    early), so at step 0 the K-sample variance is tiny while an untrained
+    model's squared error is not - `error^2 / (2*var)` was observed to
+    reach ~1e8 in a smoke test before this existed. `nll_warmup_epochs`
+    (a `model:` key, read via `getattr(inner, "nll_warmup_epochs", 0)` -
+    same hook pattern as `kl_weight`) runs plain MSE for that many epochs
+    first, so the mean prediction is no longer catastrophically wrong by
+    the time NLL - and its division by a still-small variance - turns
+    on. `epoch` is None when a caller (e.g. a unit test) wants the NLL
+    branch immediately regardless of warmup; `train()` always passes the
+    real epoch number.
 
     `n_batches` is the loader's length for the epoch being run (not
     `max_batches`'s dev-mode truncation): the minibatch-ELBO recipe
@@ -206,14 +253,27 @@ def batch_loss(model: torch.nn.Module, batch, energy_w: float, force_w: float, n
     gets `getattr(..., 0.0)` and the branch is skipped - zero added cost
     for models this was never meant to touch.
     """
-    pred_e, pred_f = model.predict_energy_and_forces(
-        batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch,
-    )
-    energy_loss = F.mse_loss(pred_e, batch.y.view(-1))
-    force_loss = F.mse_loss(pred_f, batch.force)
+    inner = getattr(model, "model", model)
+    train_k = int(getattr(inner, "train_num_mc_samples", 1))
+    warmup = int(getattr(inner, "nll_warmup_epochs", 0))
+    past_warmup = epoch is None or epoch > warmup
+
+    if train_k > 1 and past_warmup and getattr(model, "supports_training_distribution", False):
+        pred_e, e_var, pred_f, f_var = model.predict_training_distribution(
+            batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch,
+            num_mc_samples=train_k,
+        )
+        energy_loss = _gaussian_nll_loss(pred_e, e_var, batch.y.view(-1))
+        force_loss = _gaussian_nll_loss(pred_f, f_var, batch.force)
+    else:
+        pred_e, pred_f = model.predict_energy_and_forces(
+            batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch,
+        )
+        energy_loss = F.mse_loss(pred_e, batch.y.view(-1))
+        force_loss = F.mse_loss(pred_f, batch.force)
+
     loss = energy_w * energy_loss + force_w * force_loss
 
-    inner = getattr(model, "model", model)
     kl_weight = float(getattr(inner, "kl_weight", 0.0))
     kl_term = 0.0
     if kl_weight > 0 and hasattr(inner, "kl_divergence"):
@@ -224,11 +284,15 @@ def batch_loss(model: torch.nn.Module, batch, energy_w: float, force_w: float, n
     return loss, float(energy_loss.detach()), float(force_loss.detach()), kl_term
 
 
-def run_epoch(model, loader, energy_w, force_w, device, optimizer=None, max_batches=None):
+def run_epoch(model, loader, energy_w, force_w, device, optimizer=None, max_batches=None, epoch=None):
     """One pass over `loader`; returns mean (loss, energy MSE, force MSE, KL term) over batches.
 
     optimizer=None -> eval mode, no weight update. Forces still need
     autograd, so this is never wrapped in torch.no_grad().
+
+    `epoch` just passes through to `batch_loss`'s NLL-warmup check - see
+    that docstring. `train()` passes the real epoch number for both the
+    train and val passes, so warmup applies identically to both.
     """
     is_train = optimizer is not None
     model.train(is_train)
@@ -239,7 +303,7 @@ def run_epoch(model, loader, energy_w, force_w, device, optimizer=None, max_batc
         batch = batch.to(device)
         if is_train:
             optimizer.zero_grad()
-        loss, e_loss, f_loss, kl_term = batch_loss(model, batch, energy_w, force_w, n_batches)
+        loss, e_loss, f_loss, kl_term = batch_loss(model, batch, energy_w, force_w, n_batches, epoch=epoch)
         if is_train:
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=GRAD_CLIP)
@@ -448,13 +512,21 @@ def train(
         },
         "protocol": {
             "loss": (
-                "energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E, "
-                "plus kl_weight * model.kl_divergence() / n_batches when the model defines "
+                (
+                    "Gaussian NLL(E) + Gaussian NLL(F) on the train_num_mc_samples-sample "
+                    "mean/variance from predict_training_distribution, weighted by "
+                    "energy_loss_weight/force_loss_weight"
+                    if int(getattr(inner, "train_num_mc_samples", 1)) > 1 else
+                    "energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E"
+                )
+                + ", plus kl_weight * model.kl_divergence() / n_batches when the model defines "
                 "kl_weight (BLIP only; see ml/models/blip.py)"
             ),
             "energy_loss_weight": energy_w,
             "force_loss_weight": force_w,
             "kl_weight": float(getattr(inner, "kl_weight", 0.0)),
+            "train_num_mc_samples": int(getattr(inner, "train_num_mc_samples", 1)),
+            "nll_warmup_epochs": int(getattr(inner, "nll_warmup_epochs", 0)),
             "optimizer": {"name": "Adam", "lr": cfg.train.lr, "weight_decay": WEIGHT_DECAY},
             "scheduler": {"name": "ReduceLROnPlateau", "factor": LR_FACTOR, "patience": LR_PATIENCE},
             "grad_clip_norm": GRAD_CLIP,
@@ -514,11 +586,11 @@ def train(
                 epoch_start = time.perf_counter()
                 train_loss, train_e, train_f, train_kl = run_epoch(
                     model, train_loader, energy_w, force_w, device,
-                    optimizer=optimizer, max_batches=max_batches,
+                    optimizer=optimizer, max_batches=max_batches, epoch=epoch,
                 )
                 train_s = time.perf_counter() - epoch_start
                 val_loss, val_e, val_f, val_kl = run_epoch(
-                    model, val_loader, energy_w, force_w, device, max_batches=max_batches,
+                    model, val_loader, energy_w, force_w, device, max_batches=max_batches, epoch=epoch,
                 )
                 epoch_s = time.perf_counter() - epoch_start
                 scheduler.step(val_loss)

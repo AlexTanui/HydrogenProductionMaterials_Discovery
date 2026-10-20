@@ -251,9 +251,12 @@ def _assert_csv_reproduces_records(csv_text: str, runs_dir: Path) -> int:
 def test_csv_reproduces_the_committed_run_records_exactly():
     if not RUNS.is_dir():
         pytest.skip("no experiments/runs/")
-    csv_text, _, _ = build(RUNS)
+    # phase1_ only: experiments/runs/ also holds Phase 2/3 runs (phase2_blip)
+    # under a genuinely different protocol - reports/phase1_benchmark is
+    # scoped to the Phase 1 bake-off, same default main() uses.
+    csv_text, _, _ = build(RUNS, name_prefix="phase1_")
     n_rows = _assert_csv_reproduces_records(csv_text, RUNS)
-    assert n_rows == len([p for p in RUNS.iterdir() if (p / "run.json").is_file()])
+    assert n_rows == len([p for p in RUNS.iterdir() if p.name.startswith("phase1_") and (p / "run.json").is_file()])
 
 
 def test_uncertainty_columns_carry_phase_2_values_when_present(tmp_path):
@@ -283,7 +286,7 @@ def test_committed_report_matches_a_fresh_build(suffix):
     """reports/phase1_benchmark.{csv,md} are regenerated whenever a run record changes."""
     if not RUNS.is_dir():
         pytest.skip("no experiments/runs/")
-    csv_text, md_text, _ = build(RUNS)
+    csv_text, md_text, _ = build(RUNS, name_prefix="phase1_")
     committed = REPORT.with_suffix(suffix).read_text(encoding="utf-8").replace("\r\n", "\n")
     assert committed == (csv_text if suffix == ".csv" else md_text), (
         f"{REPORT.with_suffix(suffix).name} is out of date - run `python -m ml.training.benchmark`"
