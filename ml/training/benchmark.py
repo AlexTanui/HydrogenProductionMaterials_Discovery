@@ -104,7 +104,12 @@ EXPECTED_UNITS = {"energy": "kcal/mol", "force": "kcal/mol/Ang"}
 # different commits can share a config and still train on different
 # losses (an L1 PhysNet, a per-atom energy target). BLIP's NLL replacement
 # is recorded separately, as loss_override, so the base stays comparable.
-MODEL_SPECIFIC_PROTOCOL_KEYS = ("kl_weight", "train_num_mc_samples", "nll_warmup_epochs", "loss_override")
+# The NLL variance floor and the epoch it was calibrated at are measured
+# per run from that run's own validation error, so they differ by design.
+MODEL_SPECIFIC_PROTOCOL_KEYS = (
+    "kl_weight", "train_num_mc_samples", "nll_warmup_epochs", "loss_override",
+    "nll_min_energy_var", "nll_min_force_var", "nll_min_var_epoch",
+)
 
 # Every other run["protocol"] key train.py writes: the training-loop
 # conditions every model in one table must share. The two lists together

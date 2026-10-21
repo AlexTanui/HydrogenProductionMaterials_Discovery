@@ -549,6 +549,9 @@ def test_blip_trains_with_nll_loss_when_configured(tiny_gold, tmp_path):
     # The NLL replacement is model-specific; the shared base loss is unchanged (SCRUM-62).
     assert "NLL" in record["protocol"]["loss_override"]
     assert "NLL" not in record["protocol"]["loss"]
+    # No warmup, so nothing is calibrated: batch_loss's default floor is in force.
+    assert record["protocol"]["nll_min_energy_var"] == record["protocol"]["nll_min_force_var"] == 1e-6
+    assert record["protocol"]["nll_min_var_epoch"] is None
     _assert_protocol_keys_classified(record)
 
     history = list(csv.DictReader((tmp_path / "runs" / cfg.name / "history.csv").open(encoding="utf-8")))
@@ -566,6 +569,8 @@ def test_blip_with_default_train_num_mc_samples_is_unaffected(tiny_gold, tmp_pat
     record = train(cfg, output_root=tmp_path)
     assert record["protocol"]["train_num_mc_samples"] == 1
     assert record["protocol"]["loss_override"] is None
+    for key in ("nll_min_energy_var", "nll_min_force_var", "nll_min_var_epoch"):
+        assert record["protocol"][key] is None, key
     assert "NLL" not in record["protocol"]["loss"]
     assert "MSE" in record["protocol"]["loss"]
 
@@ -668,6 +673,31 @@ def test_nll_loss_does_not_blow_up_across_the_warmup_boundary(tiny_gold, tmp_pat
     assert first_nll_epoch_loss < warmup_epoch_loss * 20, (
         f"switch epoch jumped from {warmup_epoch_loss} to {first_nll_epoch_loss} - looks like the old blowup"
     )
+
+
+def test_nll_run_records_the_calibrated_variance_floor(tiny_gold, tmp_path):
+    """The floor set at the warmup boundary shapes every NLL step after it,
+    so run.json records the values and the epoch - read back from disk and
+    checked against that epoch's measured validation MSE in history.csv."""
+    cfg = dataclasses.replace(
+        _tiny_config("phase2_blip", tiny_gold.path, epochs=4),
+        name="phase2_blip_nll_floor",
+        model=ModelConfig(phase="blip", kwargs={
+            **_load("phase2_blip").model.kwargs,
+            "train_num_mc_samples": 3, "nll_warmup_epochs": 2,
+        }),
+    )
+    record = train(cfg, output_root=tmp_path)
+    run_dir = tmp_path / "runs" / cfg.name
+    saved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["protocol"]
+    history = {int(row["epoch"]): row for row in csv.DictReader((run_dir / "history.csv").open(encoding="utf-8"))}
+
+    assert saved == record["protocol"]
+    assert saved["nll_min_var_epoch"] == 2
+    assert saved["nll_min_energy_var"] == pytest.approx(max(float(history[2]["val_energy_mse"]), 1e-6))
+    assert saved["nll_min_force_var"] == pytest.approx(max(float(history[2]["val_force_mse"]), 1e-6))
+    # Measured, not the default: an all-but-untrained model's val MSE is far above 1e-6.
+    assert saved["nll_min_energy_var"] > 1e-6 and saved["nll_min_force_var"] > 1e-6
 
 
 def test_checkpoint_selection_resets_at_the_loss_switch(tiny_gold, tmp_path):

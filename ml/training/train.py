@@ -568,6 +568,13 @@ def train(
                 "best-val selection and the LR scheduler reset at the first NLL epoch"
                 if nll_active else None
             ),
+            # The NLL variance floor in force: batch_loss's default until the
+            # loop below calibrates it at the warmup boundary, then the
+            # calibrated values and the epoch they were set. None when the
+            # run never takes the NLL branch.
+            "nll_min_energy_var": _NLL_VAR_EPS if nll_active else None,
+            "nll_min_force_var": _NLL_VAR_EPS if nll_active else None,
+            "nll_min_var_epoch": None,
             "energy_loss_weight": energy_w,
             "force_loss_weight": force_w,
             "kl_weight": float(getattr(inner, "kl_weight", 0.0)),
@@ -648,6 +655,14 @@ def train(
                         # docstring. Read by next epoch's batch_loss call.
                         inner.nll_min_energy_var = max(val_e, 1e-6)
                         inner.nll_min_force_var = max(val_f, 1e-6)
+                        if nll_active:
+                            # Recorded, not just described in loss_override:
+                            # the floor shapes every NLL step after this one.
+                            record["protocol"].update(
+                                nll_min_energy_var=inner.nll_min_energy_var,
+                                nll_min_force_var=inner.nll_min_force_var,
+                                nll_min_var_epoch=epoch,
+                            )
                     if epoch == nll_warmup + 1:
                         # First NLL epoch: val_loss just changed what it
                         # means (MSE -> NLL). Comparing it against a
