@@ -7,10 +7,10 @@ ml/models/scaling.py. What a pass here guarantees about the benchmark:
    train.py -> save_checkpoint -> evaluate_checkpoint, and is scored at
    ethanol's real absolute energy - not ~97,196 kcal/mol off (shift lost)
    or ~194,000 off (shift applied twice).
-2. **One protocol.** The six configs differ only in `model:`. Their `data:`
+2. **One protocol.** The seven configs differ only in `model:`. Their `data:`
    and `train:` blocks - gold file, molecule, theory, seed, budget,
    optimiser settings - are byte-identical.
-3. **One set of frames.** All six train and select on exactly the same
+3. **One set of frames.** All seven train and select on exactly the same
    frames, spread over their whole blocks, and none is a test frame.
 
 Real-data tests skip if data/gold/md17/ethanol_dft.npz is absent (run
@@ -60,6 +60,7 @@ EXPECTED_MODELS = {
     "phase1_physnet": ("physnet", "PhysNet"),
     "phase1_dimenet": ("dimenet", "GoldDimeNetPlusPlus"),
     "phase2_blip": ("blip", "BLIP"),
+    "phase3_graph_stochastic": ("graph_stochastic", "GraphStochastic"),
 }
 CONFIG_NAMES = tuple(EXPECTED_MODELS)
 

@@ -57,6 +57,7 @@ from torch import nn
 
 from ml.models.blip import BLIP
 from ml.models.dimenet import GoldDimeNetPlusPlus
+from ml.models.graph_stochastic import GraphStochastic
 from ml.models.mpnn import MPNN
 from ml.models.painn import PaiNN
 from ml.models.physnet import PhysNet
@@ -74,8 +75,9 @@ __all__ = [
 ]
 
 # Keyed by `model.phase` in the experiment YAML (glossary.md section 6): the
-# five Phase 1 bake-off backbones plus Phase 2's BLIP. Phase 3
-# (`graph_stochastic`) registers here when ml/models/graph_stochastic.py lands.
+# five Phase 1 bake-off backbones, Phase 2's BLIP, and Phase 3's
+# graph_stochastic (ml/models/graph_stochastic.py - first-draft mechanism,
+# see that module's docstring).
 MODEL_REGISTRY: dict[str, type[nn.Module]] = {
     "mpnn": MPNN,
     "schnet": SchNet,
@@ -83,6 +85,7 @@ MODEL_REGISTRY: dict[str, type[nn.Module]] = {
     "physnet": PhysNet,
     "dimenet": GoldDimeNetPlusPlus,
     "blip": BLIP,
+    "graph_stochastic": GraphStochastic,
 }
 
 CHECKPOINT_VERSION = 2

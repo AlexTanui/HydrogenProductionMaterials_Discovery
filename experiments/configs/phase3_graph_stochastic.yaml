@@ -1,0 +1,61 @@
+# Phase 3 - graph-space stochasticity (SCRUM-32), first draft. Same backbone,
+# data and training protocol as phase1_baseline.yaml/phase2_blip.yaml on
+# purpose, so Phase 1/2/3 differ only in where stochasticity lives
+# (CLAUDE.md's three-phase-plan note) - same reasoning phase2_blip.yaml gives.
+#
+# "First draft" because the exact mechanism is supposed to be a team
+# decision from the literature review (CLAUDE.md), which hadn't landed as
+# of 2026-10-22 (SCRUM-33/34). ml/models/graph_stochastic.py implements one
+# reasonable mechanism - input-dependent Gaussian noise on node
+# representations - so Phase 3 isn't blocked on the literature review's own
+# kickoff. Revisit kl_weight and this choice once that review lands.
+#
+# Joins the locked protocol set tests/ml/test_harness.py checks
+# (CONFIG_NAMES/EXPECTED_MODELS, now seven configs) - the data:/train:
+# blocks below are byte-identical to the other six on purpose, not out of
+# convenience, and that test will fail if they drift.
+name: phase3_graph_stochastic
+
+data:
+  dataset: md17
+  molecule: ethanol
+  theory: dft
+  gold_path: data/gold/md17/ethanol_dft.npz   # gold only; if missing, run `python -m ml.data.preprocessing`
+  cutoff_radius: 5.0          # A; each model's own cutoff must equal it (train.py checks)
+  train_split: 0.8            # how the gold file's contiguous trajectory blocks were made;
+  val_split: 0.1              #   the split is baked in as train/val/test_idx and never re-derived
+  test_split: 0.1
+  use_literature_split: false # ethanol_dft ships no literature-standard split
+  num_rbf: 16                 # width of the dataset's edge_attr; no model reads it
+  seed: 42                    # torch seed: initialisation and shuffle order
+
+model:
+  phase: graph_stochastic
+  hidden_channels: 128
+  num_layers: 4
+  num_rbf: 50
+  # MC samples ml/training/evaluate.py draws via predict_distribution to
+  # populate ModelOutput.E_var/F_var - same role as BLIP's.
+  num_mc_samples: 20
+  # Same starting value and same reasoning as phase2_blip.yaml's kl_weight:
+  # not tuned, watch train_kl/val_kl in history.csv. Kept equal to BLIP's
+  # on purpose for a first look at whether the representation-noise
+  # mechanism behaves differently from weight noise under the same
+  # regularization strength - not because 0.01 is known to suit either.
+  kl_weight: 0.01
+
+train:
+  epochs: 200
+  batch_size: 32
+  lr: 0.0005
+  energy_loss_weight: 1.0
+  force_loss_weight: 100.0    # forces weighted far above energy (glossary.md section 6)
+  patience: 20
+  device: cpu
+  # Compute budget: 10,000 of 444,074 train frames and 5,000 of 55,509 val
+  # frames, each a fixed stride over its block with a seeded offset, so every
+  # model sees exactly the same frames. Nothing is re-split; the test split is
+  # never read in training and is scored whole by ml/training/evaluate.py.
+  train_subset: 10000
+  train_subset_seed: 42
+  val_subset: 5000
