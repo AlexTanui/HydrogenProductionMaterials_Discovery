@@ -194,14 +194,16 @@ def select_subsets(cfg: ExperimentConfig) -> dict[str, dict[str, Any]]:
 # The loop
 # --------------------------------------------------------------------------
 
-# Variance floor for the NLL loss below. 1e-6, not uq_metrics.py's 1e-12:
-# that module scores a trained checkpoint in float64; this runs every
-# training step in float32, where 1e-12 is close enough to the precision
-# limit that log(variance) and 1/variance can both go unstable.
+# Absolute-last-resort variance floor - not the real fix, see
+# `_gaussian_nll_loss` below. 1e-6, not uq_metrics.py's 1e-12: that module
+# scores a trained checkpoint in float64; this runs every training step
+# in float32, where 1e-12 is close enough to the precision limit that
+# log(variance) and 1/variance can both go unstable.
 _NLL_VAR_EPS = 1e-6
 
 
-def _gaussian_nll_loss(mean: torch.Tensor, var: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+def _gaussian_nll_loss(mean: torch.Tensor, var: torch.Tensor, target: torch.Tensor,
+                        min_var: float = _NLL_VAR_EPS) -> torch.Tensor:
     """Mean of -log N(target; mean, var) = 0.5*log(2*pi*var) + (target-mean)^2 / (2*var).
 
     Unlike MSE, this has a gradient through `var` as well as `mean`: it
@@ -209,8 +211,22 @@ def _gaussian_nll_loss(mean: torch.Tensor, var: torch.Tensor, target: torch.Tens
     is large, and penalises a large variance where the error is small.
     That is the one piece plain MSE can never provide, no matter how
     `kl_weight` is tuned - see ml/models/blip.py's module docstring.
+
+    `min_var` is ADDED to `var`, never `clamp_min`-ed in: `var.clamp_min(x)`
+    has zero gradient everywhere `var < x`, and right after BLIP's warmup
+    the predicted variance is tiny almost everywhere (Fazin's review of
+    SCRUM-61 - noise_gate has no KL term and plain MSE actively shrinks it
+    during warmup) - a clamp there would silence the one gradient this
+    loss exists to provide, freezing noise_gate exactly when it most
+    needs to move. Addition keeps that gradient flowing at every scale of
+    `var` while still guaranteeing the denominator below is never smaller
+    than `min_var`. Train calls this with `min_var` set from the model's
+    own warmup-era validation error (`batch_loss`/`train()`); a bare call
+    (e.g. a unit test) falls back to the numerical-safety default above,
+    which does not protect against the real-world blowup - the caller
+    choosing a real `min_var` is what does that.
     """
-    var = var.clamp_min(_NLL_VAR_EPS)
+    var = var + min_var
     return (0.5 * torch.log(2 * math.pi * var) + (target - mean) ** 2 / (2 * var)).mean()
 
 
@@ -229,20 +245,28 @@ def batch_loss(model: torch.nn.Module, batch, energy_w: float, force_w: float,
       `predict_training_distribution`. Costs roughly K forward+backward
       passes instead of one.
 
-    **Why a warmup, and why `epoch` (not a step count):** NLL training
-    from BLIP's actual initialisation diverges. `weight_rho` starts at
-    softplus(-5) ~= 0.0067 by design (ml/models/blip.py's
-    `reset_parameters` - small noise so it doesn't swamp the signal
-    early), so at step 0 the K-sample variance is tiny while an untrained
-    model's squared error is not - `error^2 / (2*var)` was observed to
-    reach ~1e8 in a smoke test before this existed. `nll_warmup_epochs`
-    (a `model:` key, read via `getattr(inner, "nll_warmup_epochs", 0)` -
-    same hook pattern as `kl_weight`) runs plain MSE for that many epochs
-    first, so the mean prediction is no longer catastrophically wrong by
-    the time NLL - and its division by a still-small variance - turns
-    on. `epoch` is None when a caller (e.g. a unit test) wants the NLL
-    branch immediately regardless of warmup; `train()` always passes the
-    real epoch number.
+    **Why a warmup, why `min_var` matters more than the warmup itself,
+    and why `epoch` (not a step count):** NLL training from BLIP's actual
+    state after plain-MSE warmup diverges on its own. Per Fazin's review
+    of SCRUM-61: `StochasticLinear.noise_gate` carries no KL term at all
+    (only `weight_mu`/`weight_rho` do), so a single-sample MSE warmup
+    actively shrinks it - any weight-noise is just unwanted variance from
+    MSE's point of view, and nothing resists that. By the time warmup
+    ends, the K-sample variance is often tiny while the model's squared
+    error is not; `error^2 / (2*var)` was observed to reach ~1e8-3e8 in
+    both a smoke test and a hand-checked estimate from real training data
+    before `min_var` (below) existed. `nll_warmup_epochs` (a `model:` key,
+    read via `getattr(inner, "nll_warmup_epochs", 0)` - same hook pattern
+    as `kl_weight`) buys the mean prediction time to stop being
+    catastrophically wrong before NLL turns on, but a warmup alone does
+    not fix the collapsed-variance side: nothing during MSE-only warmup
+    ever grows it back up. That is `train()`'s job, once per run, right
+    at the boundary: measure that epoch's real validation error and use
+    it to set `inner.nll_min_energy_var`/`nll_min_force_var`, the `min_var`
+    `_gaussian_nll_loss` adds in (see that function for why addition, not
+    a clamp). `epoch` is None when a caller (e.g. a unit test) wants the
+    NLL branch immediately regardless of warmup; `train()` always passes
+    the real epoch number.
 
     `n_batches` is the loader's length for the epoch being run (not
     `max_batches`'s dev-mode truncation): the minibatch-ELBO recipe
@@ -263,8 +287,15 @@ def batch_loss(model: torch.nn.Module, batch, energy_w: float, force_w: float,
             batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch,
             num_mc_samples=train_k,
         )
-        energy_loss = _gaussian_nll_loss(pred_e, e_var, batch.y.view(-1))
-        force_loss = _gaussian_nll_loss(pred_f, f_var, batch.force)
+        # Set once, at the warmup/NLL boundary, from that epoch's own
+        # measured validation error (train()'s loop) - not a guessed
+        # constant. Falls back to the tiny numerical default only for a
+        # caller that never went through that boundary (e.g. a unit test
+        # requesting the NLL branch directly via epoch=None).
+        e_min_var = float(getattr(inner, "nll_min_energy_var", _NLL_VAR_EPS))
+        f_min_var = float(getattr(inner, "nll_min_force_var", _NLL_VAR_EPS))
+        energy_loss = _gaussian_nll_loss(pred_e, e_var, batch.y.view(-1), e_min_var)
+        force_loss = _gaussian_nll_loss(pred_f, f_var, batch.force, f_min_var)
     else:
         pred_e, pred_f = model.predict_energy_and_forces(
             batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch,
@@ -472,6 +503,11 @@ def train(
     energy_w, force_w = cfg.train.energy_loss_weight, cfg.train.force_loss_weight
     max_epochs = epochs if epochs is not None else cfg.train.epochs
     patience = cfg.train.patience
+    # BLIP's NLL path (0 for every other model, and for BLIP at its
+    # default train_num_mc_samples=1): see batch_loss's docstring for why
+    # both of these need handling here, not just in the loss function.
+    nll_train_k = int(getattr(inner, "train_num_mc_samples", 1))
+    nll_warmup = int(getattr(inner, "nll_warmup_epochs", 0))
     setup_s = time.perf_counter() - setup_start
 
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -593,6 +629,31 @@ def train(
                     model, val_loader, energy_w, force_w, device, max_batches=max_batches, epoch=epoch,
                 )
                 epoch_s = time.perf_counter() - epoch_start
+
+                if nll_train_k > 1:
+                    if epoch == nll_warmup:
+                        # Last MSE-warmup epoch: calibrate the NLL
+                        # variance floor to THIS epoch's real validation
+                        # error, not a guessed constant - batch_loss's
+                        # docstring. Read by next epoch's batch_loss call.
+                        inner.nll_min_energy_var = max(val_e, 1e-6)
+                        inner.nll_min_force_var = max(val_f, 1e-6)
+                    if epoch == nll_warmup + 1:
+                        # First NLL epoch: val_loss just changed what it
+                        # means (MSE -> NLL). Comparing it against a
+                        # best_val_loss set under the old loss, or
+                        # carrying the scheduler's internal "best" across
+                        # the switch, silently freezes the checkpoint at
+                        # the last warmup epoch and reports an ordinary
+                        # MSE model as the NLL result (Fazin's review,
+                        # SCRUM-61) - reset both so the new regime is
+                        # judged on its own terms from its own first epoch.
+                        best_val_loss = float("inf")
+                        epochs_without_improvement = 0
+                        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                            optimizer, mode="min", factor=LR_FACTOR, patience=LR_PATIENCE
+                        )
+
                 scheduler.step(val_loss)
                 elapsed = time.perf_counter() - train_start
 

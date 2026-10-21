@@ -589,3 +589,74 @@ def test_batch_loss_falls_back_to_mse_for_every_other_model(tiny_gold):
     loss, energy_loss, force_loss, kl_term = batch_loss(wrapped, batch, energy_w=1.0, force_w=100.0, n_batches=1)
     assert kl_term == 0.0
     assert energy_loss >= 0.0 and force_loss >= 0.0  # MSE, never negative
+
+
+# --------------------------------------------------------------------------
+# 8. The real fix for the warmup -> NLL blowup (Fazin's review, SCRUM-61)
+# --------------------------------------------------------------------------
+#
+# A warmup alone (section 7, above) was not enough - manual verification
+# found the loss still hit ~1.5e8 right at the switch, because nothing
+# during warmup ever grows the collapsed variance back up, and nothing
+# protected checkpoint selection from a mid-run change in what val_loss
+# even means. These tests cover train()'s actual fix: a variance floor
+# calibrated to the warmup epoch's own validation error, and a reset of
+# best_val_loss/the scheduler at the switch - over a real (if tiny) epoch
+# loop, not a hand-rolled repeated-batch script.
+
+def test_nll_loss_does_not_blow_up_across_the_warmup_boundary(tiny_gold, tmp_path):
+    cfg = dataclasses.replace(
+        _tiny_config("phase2_blip", tiny_gold.path, epochs=4),
+        name="phase2_blip_nll_boundary",
+        model=ModelConfig(phase="blip", kwargs={
+            **_load("phase2_blip").model.kwargs,
+            "train_num_mc_samples": 3, "nll_warmup_epochs": 2,
+        }),
+    )
+    record = train(cfg, output_root=tmp_path)
+    assert record["status"] == "complete"
+
+    history = list(csv.DictReader((tmp_path / "runs" / cfg.name / "history.csv").open(encoding="utf-8")))
+    assert len(history) == 4
+    losses = [float(row["val_loss"]) for row in history]
+    for val_loss in losses:
+        assert math.isfinite(val_loss)
+        # The pre-fix blowup was ~1e8-1.5e8; this tiny, force-weighted MSE
+        # model's ordinary early-training loss is in the tens of thousands
+        # (verified by inspection), so the real test is many orders of
+        # magnitude below the blowup scale, not below "small".
+        assert val_loss < 1_000_000, f"val_loss={val_loss} - looks like the old blowup"
+    # The failure Fazin found was specifically an explosion *at the switch*
+    # (last warmup epoch -> first NLL epoch), not high loss in general -
+    # warmup's own force-weighted MSE is already in the tens of thousands
+    # here. So assert the switch itself doesn't multiply the loss up by a
+    # large factor; a drop (as the floor is calibrated from real val error)
+    # or a modest increase is fine, a 1e8-style jump is not.
+    warmup_epoch_loss, first_nll_epoch_loss = losses[1], losses[2]
+    assert first_nll_epoch_loss < warmup_epoch_loss * 20, (
+        f"switch epoch jumped from {warmup_epoch_loss} to {first_nll_epoch_loss} - looks like the old blowup"
+    )
+
+
+def test_checkpoint_selection_resets_at_the_loss_switch(tiny_gold, tmp_path):
+    """epoch == nll_warmup_epochs + 1 must always record improved=1, by
+    construction (best_val_loss is reset to inf right before it) -
+    regardless of the actual loss value. Before this fix, that epoch's
+    val_loss was being compared against a best_val_loss set under a
+    completely different loss function (MSE), which the NLL-era number
+    could never beat - freezing the checkpoint at the warmup epoch and
+    reporting an ordinary MSE model as the NLL result."""
+    cfg = dataclasses.replace(
+        _tiny_config("phase2_blip", tiny_gold.path, epochs=4),
+        name="phase2_blip_nll_reset",
+        model=ModelConfig(phase="blip", kwargs={
+            **_load("phase2_blip").model.kwargs,
+            "train_num_mc_samples": 3, "nll_warmup_epochs": 2,
+        }),
+    )
+    train(cfg, output_root=tmp_path)
+    history = {
+        int(row["epoch"]): row
+        for row in csv.DictReader((tmp_path / "runs" / cfg.name / "history.csv").open(encoding="utf-8"))
+    }
+    assert int(history[3]["improved"]) == 1, "first NLL epoch (warmup=2) must reset-and-improve by construction"

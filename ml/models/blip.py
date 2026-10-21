@@ -204,13 +204,25 @@ class BLIP(nn.Module):
     the loss that actually has a reason to calibrate the variance.
 
     `nll_warmup_epochs` (default 0) exists because NLL-from-scratch
-    diverges: `reset_parameters` below starts `weight_rho` at
-    softplus(-5) ~= 0.0067 *on purpose*, so an untrained model's K-sample
-    variance is tiny while its squared error is not - a smoke test hit
-    `error^2 / (2*var)` ~= 1e8 before this existed. For this many epochs,
-    `batch_loss` uses plain MSE regardless of `train_num_mc_samples`, so
-    the mean prediction is no longer catastrophically wrong by the time
-    division by a still-small variance turns on.
+    diverges - but not for the reason an earlier version of this
+    docstring gave. It is not `weight_rho`'s init: `kl_divergence()`'s
+    prior (PRIOR_SIGMA=0.1) is *larger* than that init
+    (softplus(-5)~=0.0067), so KL pulls weight noise up, not down.
+    What actually collapses is `StochasticLinear.noise_gate` - it carries
+    no KL term at all, so a single-sample MSE warmup (plain MSE sees any
+    weight-noise as unwanted variance) shrinks it with nothing resisting
+    (Fazin's review, SCRUM-61). By the end of warmup the K-sample variance
+    is often tiny while the squared error is not - `error^2 / (2*var)`
+    reached ~1e8-3e8 before `ml/training/train.py`'s `min_var` existed.
+    For `nll_warmup_epochs` epochs, `batch_loss` uses plain MSE regardless
+    of `train_num_mc_samples`, buying the mean prediction time to stop
+    being catastrophically wrong - but the warmup alone does not fix the
+    collapsed-variance side, since nothing during it ever grows
+    `noise_gate` back up. `train()` handles that at the boundary: it
+    measures that epoch's real validation error and sets
+    `nll_min_energy_var`/`nll_min_force_var` from it, which
+    `ml.training.train._gaussian_nll_loss` adds into the variance (not a
+    clamp - that would zero the one gradient `noise_gate` needs).
     """
 
     def __init__(self, hidden_channels: int = 128, num_layers: int = 4,
