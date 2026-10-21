@@ -268,25 +268,27 @@ the run record is [`experiments/runs/phase1_painn/`](../../experiments/runs/phas
 |---|---|
 | Config | [`experiments/configs/phase1_painn.yaml`](../../experiments/configs/phase1_painn.yaml) - hidden_channels 128, num_layers 3, cutoff_radius 5.0, num_rbf 20, max_atomic_number 100, eps 1e-08 |
 | Parameters | 588,033 |
-| Trained at | `d9f3814`, clean tree |
+| Trained at | `b1c2d89`, clean tree |
 | Data | ethanol DFT: 10,000 train / 5,000 val frames (stride subsets, seed 42); test: all 55,509 frames, seed 0, batch 32 |
-| Epochs | 200 run, best epoch 200; stopped by the 200-epoch cap, still improving (7 val improvements in the last 20 epochs, final lr 7.81e-06) |
-| Val / train loss at the best epoch | 3.45x |
-| Training time | 4,106 s (1.14 h), cpu, 24 threads |
-| Physics checks on the trained checkpoint | 14 of 14 pass (`tests/ml/test_painn_physics.py`: rotation, reflection, translation, permutation, finite-difference forces, zero net force, batching, gradient path from `pos`) |
+| Epochs | 200 run, best epoch 200; stopped by the 200-epoch cap, still improving (12 val improvements in the last 20 epochs, final lr 1.56e-05) |
+| Val / train loss at the best epoch | 3.53x |
+| Training time | 4,872 s (1.35 h), cpu, 4 threads |
+| Physics checks | 14 of 14 passed on the earlier `d9f3814` checkpoint (`tests/ml/test_painn_physics.py`: rotation, reflection, translation, permutation, finite-difference forces, zero net force, batching, gradient path from `pos`); not yet re-run on this retrained one |
 
 | Test metric | Value |
 |---|---|
-| **Energy MAE** (total) | **0.0531** kcal/mol |
-| Energy RMSE (total) | 0.0678 kcal/mol |
-| Energy MAE (per atom) | 0.00590 kcal/mol/atom |
-| **Force MAE** (component) | **0.1196** kcal/mol/Å |
-| Force RMSE (component) | 0.2040 kcal/mol/Å |
-| Force MAE (atom norm) | 0.2394 kcal/mol/Å |
-| Inference | 0.520 ms/frame (forward + force backward, batch 32) |
+| **Energy MAE** (total) | **0.0557** kcal/mol |
+| Energy RMSE (total) | 0.0711 kcal/mol |
+| Energy MAE (per atom) | 0.00619 kcal/mol/atom |
+| **Force MAE** (component) | **0.1117** kcal/mol/Å |
+| Force RMSE (component) | 0.1858 kcal/mol/Å |
+| Force MAE (atom norm) | 0.2236 kcal/mol/Å |
+| Inference | 0.742 ms/frame (forward + force backward, batch 32) |
 
 One seed, at the epoch cap; see the protocol's limitations before comparing
 close rows.
+
+Supersedes the first v1 run (`d9f3814`, energy MAE 0.0531, force MAE 0.1196), retrained with the same config and seed on another machine on 19 Oct for run-record schema consistency.
 
 Both energy conventions (`total`, `per_atom`) and both force conventions
 (`component`, `atom_norm`) are always computed and labelled - a bare MAE is

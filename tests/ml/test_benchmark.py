@@ -108,6 +108,9 @@ def _write_run(runs_dir: Path, name: str, run_changes=None, test_changes=None) -
     ("run", "config.data.theory", "ccsd_t", "data.theory"),
     ("run", "config.data.gold_path", "data/gold/md17/ethanol_ccsd_t.npz", "data.gold_path"),
     ("run", "protocol.grad_clip_norm", 1.0, "training loop.grad_clip_norm"),
+    # Still must-match after 48f10a4 exempted MODEL_SPECIFIC_PROTOCOL_KEYS.
+    ("run", "protocol.optimizer.lr", 0.001, "training loop.optimizer"),
+    ("run", "protocol.force_loss_weight", 10.0, "training loop.force_loss_weight"),
     ("run", "subsets.train.gold_indices_sha256", "d" * 64, "train frames.sha256"),
     ("test", "seed", 1, "test scoring.seed"),
     ("test", "timing.batch_size", 1, "test scoring.batch_size"),
@@ -144,6 +147,9 @@ def test_runs_under_one_protocol_are_tabulated(tmp_path):
     ({}, {"data.split": "val"}, "not the test split"),
     ({}, {"metrics.per_key.0.units.energy": "eV"}, "kcal/mol"),
     ({"n_parameters": 11}, {}, "parameter count"),
+    # SCRUM-48: accepted results come from a clean commit; None means git couldn't say.
+    ({"git_dirty": True}, {}, "a: git_dirty=True .*clean commit"),
+    ({"git_dirty": None}, {}, "a: git_dirty=None .*clean commit"),
 ])
 def test_records_that_are_not_comparable_results_are_refused(tmp_path, run_changes, test_changes, match):
     if test_changes.get("metrics.per_key.0.units.energy"):
@@ -301,3 +307,209 @@ def test_main_writes_both_files(tmp_path):
     csv_text = out.with_suffix(".csv").read_text(encoding="utf-8")
     assert _assert_csv_reproduces_records(csv_text, runs) == 1
     assert out.with_suffix(".md").read_text(encoding="utf-8").startswith("# Phase 1 benchmark")
+
+
+# --------------------------------------------------------------------------
+# 3. Model-specific protocol keys (48f10a4, SCRUM-62 review)
+# --------------------------------------------------------------------------
+# Which keys may differ per model, and that the shared base loss, the
+# eval MC sample count and every other shared key are still refused.
+
+# train.py's own protocol.loss text on the MSE path - what every real record carries.
+_MSE_LOSS = ("energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E, plus kl_weight * "
+             "model.kl_divergence() / n_batches when the model defines kl_weight (BLIP only; see "
+             "ml/models/blip.py)")
+
+
+def _md_cell(md_text: str, run: str, header: str) -> str:
+    """One cell of the main Markdown table (the first table row for `run`)."""
+    row = next(line for line in md_text.splitlines() if line.startswith(f"| {run} |"))
+    cells = [cell.strip() for cell in row.strip().strip("|").split("|")]
+    return cells[[h for _, h in benchmark.COLUMNS].index(header)]
+
+
+@pytest.mark.parametrize("other_loss", [
+    # PhysNet's own trainer (ml/training/train_physnet.py) uses L1 - SCRUM-40.
+    _MSE_LOSS.replace("MSE(E)", "L1(E)").replace("MSE(F)", "L1(F)"),
+    _MSE_LOSS.replace("absolute E", "per-atom E"),
+], ids=["l1", "per_atom"])
+def test_a_different_base_loss_is_refused(tmp_path, other_loss):
+    _write_run(tmp_path, "a_reference", run_changes={"protocol.loss": _MSE_LOSS})
+    _write_run(tmp_path, "b_different", run_changes={"protocol.loss": other_loss})
+    with pytest.raises(ProtocolMismatch, match=r"b_different: training loop.loss ="):
+        build(tmp_path)
+
+
+def test_a_model_specific_loss_override_is_reported_not_refused(tmp_path):
+    # MPNN next to an NLL-trained BLIP: same base loss, BLIP's replacement
+    # recorded separately - tabulated, with the override shown under Loss.
+    _write_run(tmp_path, "a_mpnn", run_changes={"protocol.loss": _MSE_LOSS, "protocol.loss_override": None})
+    _write_run(tmp_path, "b_blip_nll", run_changes={"protocol.loss": _MSE_LOSS,
+                                                    "protocol.loss_override": "Gaussian NLL after warmup",
+                                                    "protocol.train_num_mc_samples": 4})
+    _, md_text, rows = build(tmp_path)
+    assert [row["run"] for row in rows] == ["a_mpnn", "b_blip_nll"]
+    assert "b_blip_nll replaces it (model-specific `loss_override`, not checked): Gaussian NLL after warmup." in md_text
+    assert "a_mpnn replaces it" not in md_text
+
+
+def test_a_run_recorded_before_the_nll_hooks_shares_a_table_with_one_after(tmp_path):
+    # The phase1_* records predate train_num_mc_samples/nll_warmup_epochs
+    # (3fe964c); a model retrained today records them at their "off" values.
+    # Retraining one model must not force a retrain of the rest.
+    _write_run(tmp_path, "a_old", run_changes={"protocol.loss": _MSE_LOSS, "protocol.kl_weight": 0.0})
+    _write_run(tmp_path, "b_new", run_changes={"protocol.loss": _MSE_LOSS, "protocol.kl_weight": 0.0,
+                                               "protocol.train_num_mc_samples": 1,
+                                               "protocol.nll_warmup_epochs": 0})
+    csv_text, _, rows = build(tmp_path)
+    assert [row["run"] for row in rows] == ["a_old", "b_new"]
+    # Copied from the records, not normalised: absent -> blank, recorded -> its value.
+    cells = {row["run"]: row for row in csv.DictReader(io.StringIO(csv_text))}
+    assert (cells["a_old"]["train_num_mc_samples"], cells["a_old"]["nll_warmup_epochs"]) == ("", "")
+    assert (cells["b_new"]["train_num_mc_samples"], cells["b_new"]["nll_warmup_epochs"]) == ("1", "0")
+
+
+def test_mpnn_and_blip_with_different_kl_weights_share_a_table(tmp_path):
+    _write_run(tmp_path, "phase1_baseline", run_changes={"model": "MPNN", "phase": "mpnn",
+                                                         "protocol.kl_weight": 0.0})
+    _write_run(tmp_path, "phase2_blip", run_changes={"model": "BLIP", "phase": "blip",
+                                                     "protocol.kl_weight": 0.01})
+    csv_text, md_text, _ = build(tmp_path)
+    cells = {row["run"]: row for row in csv.DictReader(io.StringIO(csv_text))}
+    assert float(cells["phase1_baseline"]["kl_weight"]) == 0.0
+    assert float(cells["phase2_blip"]["kl_weight"]) == 0.01
+    assert _md_cell(md_text, "phase1_baseline", "KL weight") == "0"
+    assert _md_cell(md_text, "phase2_blip", "KL weight") == "0.01"
+
+
+def test_a_small_kl_weight_is_distinguishable_from_zero_in_the_markdown(tmp_path):
+    _write_run(tmp_path, "a", run_changes={"protocol.kl_weight": 0.0})
+    _write_run(tmp_path, "b", run_changes={"protocol.kl_weight": 1e-5})
+    _, md_text, _ = build(tmp_path)
+    assert _md_cell(md_text, "a", "KL weight") != _md_cell(md_text, "b", "KL weight")
+
+
+def test_an_unclassified_protocol_key_is_refused_with_a_message_to_classify_it(tmp_path):
+    # A future per-model hook that train.py records but nobody classifies.
+    # Without the check the old record would clash with the new one on
+    # values, which reads like a real protocol difference (SCRUM-61 trap).
+    _write_run(tmp_path, "a_old")
+    _write_run(tmp_path, "b_new", run_changes={"protocol.ensemble_size": 1})
+    with pytest.raises(ValueError, match=r"b_new: protocol key\(s\) ensemble_size not classified"):
+        build(tmp_path)
+
+
+def test_every_protocol_key_is_classified_exactly_once():
+    shared, specific = set(benchmark.SHARED_PROTOCOL_KEYS), set(benchmark.MODEL_SPECIFIC_PROTOCOL_KEYS)
+    assert not shared & specific
+    assert set(_RUN["protocol"]) <= shared | specific
+
+
+def test_a_run_with_no_recorded_loss_is_refused(tmp_path):
+    _write_run(tmp_path, "a")
+    path = _write_run(tmp_path, "b")
+    run = json.loads((path / "run.json").read_text(encoding="utf-8"))
+    del run["protocol"]["loss"]
+    (path / "run.json").write_text(json.dumps(run), encoding="utf-8")
+    with pytest.raises(ProtocolMismatch, match=r"b: training loop.loss = None"):
+        build(tmp_path)
+
+
+def test_markdown_names_the_protocol_keys_that_were_not_checked(tmp_path):
+    _write_run(tmp_path, "a")
+    _, md_text, _ = build(tmp_path)
+    claim = next(line for line in md_text.splitlines() if "checked to share one protocol" in line)
+    for key in benchmark.MODEL_SPECIFIC_PROTOCOL_KEYS:
+        assert key in claim, key
+
+
+def test_runs_scored_with_different_mc_sample_counts_are_refused(tmp_path):
+    # CLAUDE.md: same MC sample count across phases. evaluate.py records
+    # the count it actually used as test_metrics.json["num_mc_samples"].
+    for name, n in (("a_blip", 20), ("b_blip", 5)):
+        _write_run(tmp_path, name, test_changes={"num_mc_samples": n})
+    with pytest.raises(ProtocolMismatch, match=r"num_mc_samples differs between stochastic runs \(a_blip=20, b_blip=5\)"):
+        build(tmp_path)
+
+
+def test_a_deterministic_run_is_not_compared_on_mc_sample_count(tmp_path):
+    _write_run(tmp_path, "a_mpnn", test_changes={"num_mc_samples": None})
+    _write_run(tmp_path, "b_blip", test_changes={"num_mc_samples": 20})
+    _write_run(tmp_path, "c_blip", test_changes={"num_mc_samples": 20})
+    _, _, rows = build(tmp_path)
+    assert [row["run"] for row in rows] == ["a_mpnn", "b_blip", "c_blip"]
+
+
+def test_a_stochastic_run_with_no_recorded_mc_sample_count_is_refused(tmp_path):
+    # e.g. phase2_blip, scored before evaluate.py recorded the count.
+    path = _write_run(tmp_path, "a")
+    test = json.loads((path / "test_metrics.json").read_text(encoding="utf-8"))
+    test["metrics"]["per_key"][0]["stochastic"] = True
+    (path / "test_metrics.json").write_text(json.dumps(test), encoding="utf-8")
+    with pytest.raises(ValueError, match="a: scored as a distribution, but .* no eval MC sample count"):
+        load_runs(tmp_path)
+
+
+# --------------------------------------------------------------------------
+# 4. CLI selection and report notes (SCRUM-62 follow-ups, SCRUM-39 table)
+# --------------------------------------------------------------------------
+
+def test_main_runs_selects_exactly_the_named_runs(tmp_path):
+    # A prefix can't pick out MPNN and BLIP alone; --runs can.
+    runs = tmp_path / "runs"
+    for name in ("phase1_baseline", "phase1_schnet", "phase2_blip"):
+        _write_run(runs, name)
+    out = tmp_path / "out" / "mpnn_vs_blip"
+    assert main(["--runs-dir", str(runs), "--runs", "phase2_blip", "phase1_baseline",
+                 "--title", "MPNN vs BLIP", "--out", str(out)]) == 0
+    rows = list(csv.DictReader(io.StringIO(out.with_suffix(".csv").read_text(encoding="utf-8"))))
+    assert [row["run"] for row in rows] == ["phase1_baseline", "phase2_blip"]
+    assert out.with_suffix(".md").read_text(encoding="utf-8").startswith("# MPNN vs BLIP")
+
+
+def test_a_named_run_that_does_not_exist_is_refused(tmp_path):
+    _write_run(tmp_path, "a")
+    with pytest.raises(FileNotFoundError, match="no run record for b, c under"):
+        load_runs(tmp_path, names=["a", "b", "c"])
+
+
+@pytest.mark.parametrize("argv", [
+    ["--runs", "phase1_baseline", "phase2_blip"],
+    ["--name-prefix", ""],
+    ["--runs-dir", "{runs}"],
+])
+def test_main_requires_out_unless_the_selection_is_the_default_phase1_set(tmp_path, monkeypatch, argv):
+    # Without this, --name-prefix "" would overwrite the committed Phase 1 report.
+    default_out = tmp_path / "default" / "phase1_benchmark"
+    monkeypatch.setattr(benchmark, "DEFAULT_OUT", default_out)
+    _write_run(tmp_path / "runs", "a")
+    with pytest.raises(SystemExit):
+        main([arg.format(runs=tmp_path / "runs") for arg in argv])
+    assert not default_out.parent.exists()
+
+
+def test_main_refuses_both_a_prefix_and_named_runs(tmp_path):
+    with pytest.raises(SystemExit):
+        main(["--name-prefix", "phase1_", "--runs", "phase1_baseline", "--out", str(tmp_path / "x")])
+
+
+def test_markdown_notes_for_a_stochastic_run(tmp_path):
+    _write_run(tmp_path, "a_mpnn")
+    _write_run(tmp_path, "b_blip", test_changes={
+        "num_mc_samples": 20, "benchmark_row.ece": 0.7033,
+        "benchmark_row.uncertainty_note": "computed under the provisional definition"})
+    _, md_text, _ = build(tmp_path)
+    assert "for b_blip, scored as a distribution, it covers all 20 MC passes per frame" in md_text
+    assert "provisional until signed off (SCRUM-39); each scored run's own note:" in md_text
+    assert "  - b_blip: computed under the provisional definition." in md_text
+    assert "  - a_mpnn:" not in md_text
+    # The training-time count can't be read as the eval count, and the legend says what blank/0/1 mean.
+    assert "| Training MC samples (NLL) |" in md_text
+    assert "0 / 1 / 0 means the hook is off; blank means the record predates the key." in md_text
+
+
+def test_markdown_notes_for_deterministic_runs_only(tmp_path):
+    _write_run(tmp_path, "a")
+    _, md_text, _ = build(tmp_path)
+    assert "MC passes" not in md_text
+    assert "provisional until signed off (SCRUM-39)." in md_text

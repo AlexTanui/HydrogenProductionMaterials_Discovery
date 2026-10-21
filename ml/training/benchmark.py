@@ -5,14 +5,18 @@ by ml/training/train.py, the test metrics by ml/training/evaluate.py) and
 writes one table as CSV and Markdown:
 
     python -m ml.training.benchmark                       # -> reports/phase1_benchmark.{csv,md}
+    python -m ml.training.benchmark --runs phase1_baseline phase2_blip --title "MPNN vs BLIP" --out reports/NAME
     python -m ml.training.benchmark --runs-dir DIR --out reports/NAME
 
-With no `--runs-dir`, only `phase1_*` run directories are read (see
-`main`'s `--name-prefix`): the shared `experiments/runs/` also holds
+With no `--runs-dir` or `--runs`, only `phase1_*` run directories are read
+(see `main`'s `--name-prefix`): the shared `experiments/runs/` also holds
 Phase 2/3 runs (phase2_blip) under a genuinely different protocol, and
 this report is scoped to the Phase 1 bake-off. Pass `--runs-dir` and the
 filter drops to "everything there" by default - naming a directory is
-already choosing what's in it.
+already choosing what's in it. `--runs` names the exact run directories
+to compare instead (a prefix can't pick out e.g. MPNN and BLIP alone).
+Any selection other than the default Phase 1 set must name its own
+`--out`, so it can't overwrite the committed report by accident.
 
 **Refuses to compare unlike runs - but only on what must be shared.**
 A benchmark table comparing models scored under different *training
@@ -24,30 +28,41 @@ must match the first on all of:
 
 - `data:` and `train:` - the config's locked blocks, as resolved;
 - the training loop's fixed settings recorded in `run.json["protocol"]`
-  (optimiser, scheduler, clipping, shuffle, epoch cap, the two loss
-  *weights*), which live in code rather than config, so two runs at
+  (base loss, optimiser, scheduler, clipping, shuffle, epoch cap, the two
+  loss weights), which live in code rather than config, so two runs at
   different commits could share configs and still differ here -
-  **except** `MODEL_SPECIFIC_PROTOCOL_KEYS` (the loss *description*,
-  `kl_weight`, and BLIP's NLL-training settings): those belong to one
-  model, not to the shared protocol, and are reported as their own
-  columns instead of gated on;
+  **except** `MODEL_SPECIFIC_PROTOCOL_KEYS` (`kl_weight`, BLIP's NLL
+  training settings, and `loss_override`, its NLL replacement for the
+  base loss): those belong to one model, not to the shared protocol, so
+  they are reported instead of gated on, and the report names them.
+  Every protocol key must be in exactly one of `SHARED_PROTOCOL_KEYS` and
+  `MODEL_SPECIFIC_PROTOCOL_KEYS`; a run carrying a key in neither is
+  refused, with a message to classify it here;
 - the exact train and val frames (sha256 of their gold indices);
 - the test scoring: split, molecule, theory, frame count, seed and batch
   size, and the **scoring-data fingerprint** (sha256 of the test indices
   and of z, R, E, F at them, recorded by evaluate.py), so a different gold
-  file of the same size cannot pass.
+  file of the same size cannot pass;
+- the eval MC sample count (`test_metrics.json["num_mc_samples"]`), across
+  the runs scored as a distribution only - a deterministic run has none,
+  and that is not a mismatch (CLAUDE.md; SCRUM-49 sets the value).
 
 Any remaining difference raises `ProtocolMismatch` naming the run and the
 setting. Runs that are not complete, reportable test-split results are
-refused too.
+refused too, and so are runs not trained from a clean commit (`git_dirty`
+must be false): accepted results must come from one (SCRUM-48), or the
+recorded commit does not fully describe the run.
 
 Numbers are copied from the records, never recomputed: the CSV keeps them
 at full precision (so tests can check them exactly), the Markdown rounds
-them for reading. Each row carries the git commit it was trained at. ECE,
-uncertainty-error Spearman, and the `MODEL_SPECIFIC_PROTOCOL_KEYS` columns
-are present but empty for a model that doesn't define them (every Phase 1
-model, for the BLIP-only ones) - same convention throughout. ECE/Spearman
-come from evaluate.py's benchmark_row, whose definitions are Dongxiao's.
+them for reading. Each row carries the git commit it was trained at. ECE
+and uncertainty-error Spearman are empty for a deterministic model; they
+come from evaluate.py's benchmark_row, whose definitions are Dongxiao's
+and provisional until signed off (each run's own uncertainty_note is
+shown). The model-specific columns (KL weight, training MC samples, NLL
+warmup) are copied as recorded: train.py records them for every model,
+at their "off" values 0 / 1 / 0 when the hook isn't used, so they are
+blank only for a record that predates the key.
 """
 from __future__ import annotations
 
@@ -75,15 +90,44 @@ EXPECTED_UNITS = {"energy": "kcal/mol", "force": "kcal/mol/Ang"}
 # allowed to differ between runs on purpose: they describe what that model
 # itself does, not the shared training-loop conditions the comparison is
 # supposed to hold fixed. Excluded from check_same_protocol's equality
-# check (see protocol_signature) and shown as their own columns instead
-# (except "loss", a prose description - not a table cell; read the run's
-# own run.json for that). Found by Fazin's review of SCRUM-31/61: without
-# this split, every optional per-model hook (kl_weight, then
-# train_num_mc_samples/nll_warmup_epochs) silently became a new
-# must-match field for every model, so retraining even one Phase 1 model
-# after the hook existed produced a ProtocolMismatch against the other
-# four that predated it - simulated and confirmed, not hypothetical.
-MODEL_SPECIFIC_PROTOCOL_KEYS = ("loss", "kl_weight", "train_num_mc_samples", "nll_warmup_epochs")
+# check (see protocol_signature) and reported instead: the numbers as
+# columns, loss_override's prose under the report's Loss line. Found by
+# Fazin's review of SCRUM-31/61: without this split, every optional
+# per-model hook (kl_weight, then train_num_mc_samples/nll_warmup_epochs)
+# silently became a new must-match field for every model, so retraining
+# even one Phase 1 model after the hook existed produced a
+# ProtocolMismatch against the other four that predated it - simulated
+# and confirmed, not hypothetical.
+#
+# "loss" is deliberately not here (SCRUM-62): it is the shared base loss,
+# and it lives in train.py rather than the config, so two runs at
+# different commits can share a config and still train on different
+# losses (an L1 PhysNet, a per-atom energy target). BLIP's NLL replacement
+# is recorded separately, as loss_override, so the base stays comparable.
+# The NLL variance floor and the epoch it was calibrated at are measured
+# per run from that run's own validation error, so they differ by design.
+MODEL_SPECIFIC_PROTOCOL_KEYS = (
+    "kl_weight", "train_num_mc_samples", "nll_warmup_epochs", "loss_override",
+    "nll_min_energy_var", "nll_min_force_var", "nll_min_var_epoch",
+)
+
+# Every other run["protocol"] key train.py writes: the training-loop
+# conditions every model in one table must share. The two lists together
+# must classify every key - an unclassified one is refused by load_runs,
+# because guessing either way is wrong: as must-match it repeats the
+# SCRUM-61 retrain trap, as exempt it silently drops a fairness check.
+# tests/ml/test_harness.py fails as soon as train.py writes a new key, so
+# the decision is made in the same commit that adds it.
+SHARED_PROTOCOL_KEYS = (
+    "loss", "energy_loss_weight", "force_loss_weight", "optimizer", "scheduler", "grad_clip_norm",
+    "batch_size", "max_epochs", "patience", "max_batches_per_epoch", "shuffle", "selection",
+)
+
+if set(SHARED_PROTOCOL_KEYS) & set(MODEL_SPECIFIC_PROTOCOL_KEYS):
+    raise RuntimeError(
+        "protocol keys classified as both shared and model-specific: "
+        f"{sorted(set(SHARED_PROTOCOL_KEYS) & set(MODEL_SPECIFIC_PROTOCOL_KEYS))}"
+    )
 
 # (CSV column, Markdown header). Order is the table's column order.
 COLUMNS = [
@@ -103,7 +147,7 @@ COLUMNS = [
     ("ece", "ECE"),
     ("uncertainty_error_spearman", "Unc.-error Spearman"),
     ("kl_weight", "KL weight"),
-    ("train_num_mc_samples", "Train MC samples"),
+    ("train_num_mc_samples", "Training MC samples (NLL)"),  # not the eval count: see the Inference note
     ("nll_warmup_epochs", "NLL warmup epochs"),
     ("git_commit", "Git commit"),
 ]
@@ -125,10 +169,12 @@ def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def load_runs(runs_dir: Path = RUNS_DIR, name_prefix: str = "") -> list[RunResult]:
+def load_runs(runs_dir: Path = RUNS_DIR, name_prefix: str = "",
+              names: Optional[list[str]] = None) -> list[RunResult]:
     """Every run record under `runs_dir` whose directory name starts with
-    `name_prefix` (default "": every run record), sorted by name. Refuses
-    non-results.
+    `name_prefix` (default "": every run record) - or, given `names`,
+    exactly those run directories, each of which must exist - sorted by
+    name. Refuses non-results.
 
     The empty default means "take every run record I'm handed" - right
     for a caller that already points `runs_dir` at exactly the runs it
@@ -144,10 +190,16 @@ def load_runs(runs_dir: Path = RUNS_DIR, name_prefix: str = "") -> list[RunResul
     reason; this function's own default is unfiltered on purpose.
     """
     runs_dir = Path(runs_dir)
-    run_dirs = (
-        sorted(p for p in runs_dir.iterdir() if p.name.startswith(name_prefix) and (p / "run.json").is_file())
-        if runs_dir.is_dir() else []
-    )
+    if names is not None:
+        missing = [name for name in names if not (runs_dir / name / "run.json").is_file()]
+        if missing:
+            raise FileNotFoundError(f"no run record for {', '.join(missing)} under {runs_dir}")
+        run_dirs = sorted({runs_dir / name for name in names})
+    else:
+        run_dirs = (
+            sorted(p for p in runs_dir.iterdir() if p.name.startswith(name_prefix) and (p / "run.json").is_file())
+            if runs_dir.is_dir() else []
+        )
     if not run_dirs:
         raise FileNotFoundError(
             f"no run records ({name_prefix or '*'}*/run.json) under {runs_dir}"
@@ -159,6 +211,19 @@ def load_runs(runs_dir: Path = RUNS_DIR, name_prefix: str = "") -> list[RunResul
             raise ValueError(
                 f"{path.name}: status={run.get('status')!r}, reportable={run.get('reportable')!r}. "
                 "Only complete, reportable runs go in a benchmark table."
+            )
+        unclassified = sorted(set(run["protocol"]) - set(SHARED_PROTOCOL_KEYS) - set(MODEL_SPECIFIC_PROTOCOL_KEYS))
+        if unclassified:
+            raise ValueError(
+                f"{path.name}: protocol key(s) {', '.join(unclassified)} not classified. Classify each in "
+                "ml/training/benchmark.py: SHARED_PROTOCOL_KEYS if every model in a table must match "
+                "on it, MODEL_SPECIFIC_PROTOCOL_KEYS if it may differ per model."
+            )
+        if run.get("git_dirty") is not False:
+            # True, or None (git unavailable): either way, no clean commit on record.
+            raise ValueError(
+                f"{path.name}: git_dirty={run.get('git_dirty')!r} at commit {str(run.get('git_commit'))[:7]}. "
+                "Accepted results must come from a clean commit (SCRUM-48) - retrain it from one."
             )
         test_path = path / "test_metrics.json"
         if not test_path.is_file():
@@ -178,6 +243,12 @@ def load_runs(runs_dir: Path = RUNS_DIR, name_prefix: str = "") -> list[RunResul
             raise ValueError(
                 f"{path.name}: test_metrics.json has no scoring-data fingerprint, so the data it was "
                 "scored on cannot be checked. Re-score it: python scripts/fingerprint_run_records.py"
+            )
+        if test["metrics"]["per_key"][0].get("stochastic") and test.get("num_mc_samples") is None:
+            raise ValueError(
+                f"{path.name}: scored as a distribution, but test_metrics.json records no eval MC "
+                "sample count, so it cannot be checked against other stochastic runs (SCRUM-49). "
+                "Re-score it with the current evaluate.py."
             )
         results.append(RunResult(path.name, path, run, test))
     return results
@@ -220,6 +291,16 @@ def check_same_protocol(results: list[RunResult]) -> dict[str, Any]:
                         f"{result.name}: {section}.{key} = {actual.get(key)!r}, but "
                         f"{results[0].name} has {expected.get(key)!r}"
                     )
+    # Not in protocol_signature: a deterministic run has no count, and that
+    # must not mismatch a stochastic one. Compared across the rest.
+    counts = {result.name: result.test.get("num_mc_samples") for result in results}
+    counts = {name: n for name, n in counts.items() if n is not None}
+    if len(set(counts.values())) > 1:
+        problems.append(
+            "test scoring.num_mc_samples differs between stochastic runs ("
+            + ", ".join(f"{name}={n}" for name, n in counts.items())
+            + ") - every stochastic run in one table must be scored with the same MC sample count"
+        )
     if problems:
         raise ProtocolMismatch(
             "these runs were not trained and scored under one protocol, so they cannot share "
@@ -289,6 +370,8 @@ def _md_value(column: str, value: Any) -> str:
         return f"{value:.3f}"
     if column == "git_commit":
         return f"`{value[:7]}`"
+    if column == "kl_weight":
+        return f"{value:.3g}"  # 4 dp would print a 1e-5 weight as 0.0000 - the same as "off"
     if isinstance(value, float):
         return f"{value:.4f}"
     return str(value)
@@ -312,19 +395,14 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
                     title: str = "Phase 1 benchmark") -> str:
     data, train = shared["data"], shared["train"]
     loop, scoring = shared["training loop"], shared["test scoring"]
-    # "loss" is model-specific (MODEL_SPECIFIC_PROTOCOL_KEYS), so it is not
-    # in `loop` - read it from the results directly. Still worth one shared
-    # line when every result happens to agree (true of the five Phase 1
-    # models today); say so plainly when they don't, rather than picking one.
-    loss_texts = {result.run["protocol"].get("loss") for result in results}
-    loss_line = (
-        f"- Loss: {next(iter(loss_texts))}; weights {loop['energy_loss_weight']} / "
-        f"{loop['force_loss_weight']}."
-        if len(loss_texts) == 1 else
-        f"- Loss: differs per model - see each run's own protocol.loss, or the "
-        f"table's Train MC samples/NLL warmup columns; weights {loop['energy_loss_weight']} / "
-        f"{loop['force_loss_weight']} shared by all."
-    )
+    unchecked = ", ".join(f"`{key}`" for key in MODEL_SPECIFIC_PROTOCOL_KEYS)
+    overrides = [(result.name, result.run["protocol"].get("loss_override")) for result in results]
+    # Equal across the runs that have one - check_same_protocol enforced it.
+    mc_counts = {result.name: result.test.get("num_mc_samples") for result in results}
+    mc_counts = {name: n for name, n in mc_counts.items() if n is not None}
+    uq_notes = [(result.name, result.test["benchmark_row"].get("uncertainty_note"))
+                for result, row in zip(results, rows)
+                if row["ece"] is not None or row["uncertainty_error_spearman"] is not None]
     lines = [
         f"# {title}: {data['molecule']} ({data['theory']})",
         "",
@@ -333,7 +411,8 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
         f"in [{PROTOCOL_DOC}](../{PROTOCOL_DOC}).",
         "",
         f"All {len(rows)} runs were checked to share one protocol before being tabulated: identical "
-        "`data:` and `train:` blocks, training-loop settings, train and val frames, and test scoring.",
+        "`data:` and `train:` blocks, training-loop settings, train and val frames, and test scoring. "
+        f"Not checked, because each describes one model rather than the shared protocol: {unchecked}.",
         "",
         "| " + " | ".join(header for _, header in COLUMNS) + " |",
         "|" + "|".join("---" for _ in COLUMNS) + "|",
@@ -351,9 +430,17 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
         f"(sha256 of the test indices and of z, R, E, F at them): `{scoring['data_fingerprint']}`.",
         "- **Training time**: wall-clock of the training loop, excluding test scoring. "
         "**Inference**: forward pass plus force backward pass per frame, batch size "
-        f"{scoring['batch_size']}, excluding graph construction.",
-        "- **ECE / uncertainty-error Spearman**: empty for deterministic models. The definitions "
-        "are Dongxiao's; Phase 2/3 rows fill these columns.",
+        f"{scoring['batch_size']}, excluding graph construction"
+        + (f"; for {', '.join(mc_counts)}, scored as a distribution, it covers all "
+           f"{next(iter(mc_counts.values()))} MC passes per frame (the eval MC sample count, the same "
+           "for every stochastic run here)." if mc_counts else "."),
+        "- **ECE / uncertainty-error Spearman**: empty for deterministic models; Phase 2/3 rows fill "
+        "these columns. The definitions are Dongxiao's to confirm, so they are provisional until "
+        "signed off (SCRUM-39)" + ("; each scored run's own note:" if uq_notes else "."),
+        *(f"  - {name}: {note or 'no uncertainty_note recorded'}." for name, note in uq_notes),
+        "- **KL weight / Training MC samples (NLL) / NLL warmup epochs**: model-specific training "
+        "hooks, not checked across runs, copied from each run record. 0 / 1 / 0 means the hook is "
+        "off; blank means the record predates the key.",
         "",
         "## Shared protocol",
         "",
@@ -361,7 +448,10 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
         f"- Budget: {_budget_text(train)}; batch {train['batch_size']}; up to "
         f"{train['epochs']} epochs, early-stopping patience {train['patience']}; "
         f"device {train['device']}.",
-        loss_line,
+        f"- Loss: {loop['loss']}; weights {loop['energy_loss_weight']} / "
+        f"{loop['force_loss_weight']}.",
+        *(f"  - {name} replaces it (model-specific `loss_override`, not checked): {text}."
+          for name, text in overrides if text),
         f"- Optimiser: {loop['optimizer']['name']}, lr {loop['optimizer']['lr']}, weight decay "
         f"{loop['optimizer']['weight_decay']}; {loop['scheduler']['name']} (factor "
         f"{loop['scheduler']['factor']}, patience {loop['scheduler']['patience']}); gradient "
@@ -395,9 +485,9 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
 
 
 def build(runs_dir: Path = RUNS_DIR, title: str = "Phase 1 benchmark",
-          name_prefix: str = "") -> tuple[str, str, list[dict]]:
-    """(csv text, markdown text, rows) for every `name_prefix*` run under `runs_dir`."""
-    results = load_runs(runs_dir, name_prefix=name_prefix)
+          name_prefix: str = "", runs: Optional[list[str]] = None) -> tuple[str, str, list[dict]]:
+    """(csv text, markdown text, rows) for every `name_prefix*` run under `runs_dir`, or exactly `runs`."""
+    results = load_runs(runs_dir, name_prefix=name_prefix, names=runs)
     shared = check_same_protocol(results)
     rows = build_rows(results)
     return render_csv(rows), render_markdown(results, rows, shared, title=title), rows
@@ -408,23 +498,32 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--runs-dir", default=None,
                         help=f"default {RUNS_DIR} - the live, shared run directory, which also means "
                              "--name-prefix defaults to 'phase1_' there (see --name-prefix)")
-    parser.add_argument("--name-prefix", default=None,
-                        help="only include run directories whose name starts with this. Defaults to "
-                             "'phase1_' when --runs-dir is left at its default (the shared "
-                             "experiments/runs/, which holds Phase 2/3 runs under other protocols too), "
-                             "and to '' (every run record) when --runs-dir is given explicitly - a "
-                             "caller who names a directory has already chosen what's in it")
-    parser.add_argument("--out", default=str(DEFAULT_OUT),
-                        help="output path without extension; writes .csv and .md")
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--name-prefix", default=None,
+                           help="only include run directories whose name starts with this. Defaults to "
+                                "'phase1_' when --runs-dir is left at its default (the shared "
+                                "experiments/runs/, which holds Phase 2/3 runs under other protocols too), "
+                                "and to '' (every run record) when --runs-dir is given explicitly - a "
+                                "caller who names a directory has already chosen what's in it")
+    selection.add_argument("--runs", nargs="+", metavar="NAME", default=None,
+                           help="exactly these run directories, e.g. phase1_baseline phase2_blip")
+    parser.add_argument("--out", default=None,
+                        help=f"output path without extension; writes .csv and .md. Defaults to {DEFAULT_OUT} "
+                             "for the default Phase 1 set only - any other selection must name its own, "
+                             "so it can't overwrite the committed Phase 1 report")
     parser.add_argument("--title", default="Phase 1 benchmark")
     args = parser.parse_args(argv)
 
     runs_dir_given = args.runs_dir is not None
     runs_dir = Path(args.runs_dir) if runs_dir_given else RUNS_DIR
     name_prefix = args.name_prefix if args.name_prefix is not None else ("" if runs_dir_given else "phase1_")
+    default_selection = not runs_dir_given and args.runs is None and name_prefix == "phase1_"
+    if args.out is None and not default_selection:
+        parser.error(f"--out is required unless the selection is the default Phase 1 set (phase1_* under "
+                     f"{RUNS_DIR}); otherwise this table would overwrite {DEFAULT_OUT}")
 
-    csv_text, md_text, rows = build(runs_dir, title=args.title, name_prefix=name_prefix)
-    out = Path(args.out)
+    csv_text, md_text, rows = build(runs_dir, title=args.title, name_prefix=name_prefix, runs=args.runs)
+    out = Path(args.out) if args.out is not None else DEFAULT_OUT
     out.parent.mkdir(parents=True, exist_ok=True)
     # newline="" so the files are byte-identical to the strings (tests compare them).
     with open(out.with_suffix(".csv"), "w", encoding="utf-8", newline="") as f:
