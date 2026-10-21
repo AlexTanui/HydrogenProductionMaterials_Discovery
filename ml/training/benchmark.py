@@ -5,14 +5,18 @@ by ml/training/train.py, the test metrics by ml/training/evaluate.py) and
 writes one table as CSV and Markdown:
 
     python -m ml.training.benchmark                       # -> reports/phase1_benchmark.{csv,md}
+    python -m ml.training.benchmark --runs phase1_baseline phase2_blip --title "MPNN vs BLIP" --out reports/NAME
     python -m ml.training.benchmark --runs-dir DIR --out reports/NAME
 
-With no `--runs-dir`, only `phase1_*` run directories are read (see
-`main`'s `--name-prefix`): the shared `experiments/runs/` also holds
+With no `--runs-dir` or `--runs`, only `phase1_*` run directories are read
+(see `main`'s `--name-prefix`): the shared `experiments/runs/` also holds
 Phase 2/3 runs (phase2_blip) under a genuinely different protocol, and
 this report is scoped to the Phase 1 bake-off. Pass `--runs-dir` and the
 filter drops to "everything there" by default - naming a directory is
-already choosing what's in it.
+already choosing what's in it. `--runs` names the exact run directories
+to compare instead (a prefix can't pick out e.g. MPNN and BLIP alone).
+Any selection other than the default Phase 1 set must name its own
+`--out`, so it can't overwrite the committed report by accident.
 
 **Refuses to compare unlike runs - but only on what must be shared.**
 A benchmark table comparing models scored under different *training
@@ -51,11 +55,14 @@ recorded commit does not fully describe the run.
 
 Numbers are copied from the records, never recomputed: the CSV keeps them
 at full precision (so tests can check them exactly), the Markdown rounds
-them for reading. Each row carries the git commit it was trained at. ECE,
-uncertainty-error Spearman, and the `MODEL_SPECIFIC_PROTOCOL_KEYS` columns
-are present but empty for a model that doesn't define them (every Phase 1
-model, for the BLIP-only ones) - same convention throughout. ECE/Spearman
-come from evaluate.py's benchmark_row, whose definitions are Dongxiao's.
+them for reading. Each row carries the git commit it was trained at. ECE
+and uncertainty-error Spearman are empty for a deterministic model; they
+come from evaluate.py's benchmark_row, whose definitions are Dongxiao's
+and provisional until signed off (each run's own uncertainty_note is
+shown). The model-specific columns (KL weight, training MC samples, NLL
+warmup) are copied as recorded: train.py records them for every model,
+at their "off" values 0 / 1 / 0 when the hook isn't used, so they are
+blank only for a record that predates the key.
 """
 from __future__ import annotations
 
@@ -135,7 +142,7 @@ COLUMNS = [
     ("ece", "ECE"),
     ("uncertainty_error_spearman", "Unc.-error Spearman"),
     ("kl_weight", "KL weight"),
-    ("train_num_mc_samples", "Train MC samples"),
+    ("train_num_mc_samples", "Training MC samples (NLL)"),  # not the eval count: see the Inference note
     ("nll_warmup_epochs", "NLL warmup epochs"),
     ("git_commit", "Git commit"),
 ]
@@ -157,10 +164,12 @@ def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def load_runs(runs_dir: Path = RUNS_DIR, name_prefix: str = "") -> list[RunResult]:
+def load_runs(runs_dir: Path = RUNS_DIR, name_prefix: str = "",
+              names: Optional[list[str]] = None) -> list[RunResult]:
     """Every run record under `runs_dir` whose directory name starts with
-    `name_prefix` (default "": every run record), sorted by name. Refuses
-    non-results.
+    `name_prefix` (default "": every run record) - or, given `names`,
+    exactly those run directories, each of which must exist - sorted by
+    name. Refuses non-results.
 
     The empty default means "take every run record I'm handed" - right
     for a caller that already points `runs_dir` at exactly the runs it
@@ -176,10 +185,16 @@ def load_runs(runs_dir: Path = RUNS_DIR, name_prefix: str = "") -> list[RunResul
     reason; this function's own default is unfiltered on purpose.
     """
     runs_dir = Path(runs_dir)
-    run_dirs = (
-        sorted(p for p in runs_dir.iterdir() if p.name.startswith(name_prefix) and (p / "run.json").is_file())
-        if runs_dir.is_dir() else []
-    )
+    if names is not None:
+        missing = [name for name in names if not (runs_dir / name / "run.json").is_file()]
+        if missing:
+            raise FileNotFoundError(f"no run record for {', '.join(missing)} under {runs_dir}")
+        run_dirs = sorted({runs_dir / name for name in names})
+    else:
+        run_dirs = (
+            sorted(p for p in runs_dir.iterdir() if p.name.startswith(name_prefix) and (p / "run.json").is_file())
+            if runs_dir.is_dir() else []
+        )
     if not run_dirs:
         raise FileNotFoundError(
             f"no run records ({name_prefix or '*'}*/run.json) under {runs_dir}"
@@ -350,6 +365,8 @@ def _md_value(column: str, value: Any) -> str:
         return f"{value:.3f}"
     if column == "git_commit":
         return f"`{value[:7]}`"
+    if column == "kl_weight":
+        return f"{value:.3g}"  # 4 dp would print a 1e-5 weight as 0.0000 - the same as "off"
     if isinstance(value, float):
         return f"{value:.4f}"
     return str(value)
@@ -375,6 +392,12 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
     loop, scoring = shared["training loop"], shared["test scoring"]
     unchecked = ", ".join(f"`{key}`" for key in MODEL_SPECIFIC_PROTOCOL_KEYS)
     overrides = [(result.name, result.run["protocol"].get("loss_override")) for result in results]
+    # Equal across the runs that have one - check_same_protocol enforced it.
+    mc_counts = {result.name: result.test.get("num_mc_samples") for result in results}
+    mc_counts = {name: n for name, n in mc_counts.items() if n is not None}
+    uq_notes = [(result.name, result.test["benchmark_row"].get("uncertainty_note"))
+                for result, row in zip(results, rows)
+                if row["ece"] is not None or row["uncertainty_error_spearman"] is not None]
     lines = [
         f"# {title}: {data['molecule']} ({data['theory']})",
         "",
@@ -402,9 +425,17 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
         f"(sha256 of the test indices and of z, R, E, F at them): `{scoring['data_fingerprint']}`.",
         "- **Training time**: wall-clock of the training loop, excluding test scoring. "
         "**Inference**: forward pass plus force backward pass per frame, batch size "
-        f"{scoring['batch_size']}, excluding graph construction.",
-        "- **ECE / uncertainty-error Spearman**: empty for deterministic models. The definitions "
-        "are Dongxiao's; Phase 2/3 rows fill these columns.",
+        f"{scoring['batch_size']}, excluding graph construction"
+        + (f"; for {', '.join(mc_counts)}, scored as a distribution, it covers all "
+           f"{next(iter(mc_counts.values()))} MC passes per frame (the eval MC sample count, the same "
+           "for every stochastic run here)." if mc_counts else "."),
+        "- **ECE / uncertainty-error Spearman**: empty for deterministic models; Phase 2/3 rows fill "
+        "these columns. The definitions are Dongxiao's to confirm, so they are provisional until "
+        "signed off (SCRUM-39)" + ("; each scored run's own note:" if uq_notes else "."),
+        *(f"  - {name}: {note or 'no uncertainty_note recorded'}." for name, note in uq_notes),
+        "- **KL weight / Training MC samples (NLL) / NLL warmup epochs**: model-specific training "
+        "hooks, not checked across runs, copied from each run record. 0 / 1 / 0 means the hook is "
+        "off; blank means the record predates the key.",
         "",
         "## Shared protocol",
         "",
@@ -449,9 +480,9 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
 
 
 def build(runs_dir: Path = RUNS_DIR, title: str = "Phase 1 benchmark",
-          name_prefix: str = "") -> tuple[str, str, list[dict]]:
-    """(csv text, markdown text, rows) for every `name_prefix*` run under `runs_dir`."""
-    results = load_runs(runs_dir, name_prefix=name_prefix)
+          name_prefix: str = "", runs: Optional[list[str]] = None) -> tuple[str, str, list[dict]]:
+    """(csv text, markdown text, rows) for every `name_prefix*` run under `runs_dir`, or exactly `runs`."""
+    results = load_runs(runs_dir, name_prefix=name_prefix, names=runs)
     shared = check_same_protocol(results)
     rows = build_rows(results)
     return render_csv(rows), render_markdown(results, rows, shared, title=title), rows
@@ -462,23 +493,32 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--runs-dir", default=None,
                         help=f"default {RUNS_DIR} - the live, shared run directory, which also means "
                              "--name-prefix defaults to 'phase1_' there (see --name-prefix)")
-    parser.add_argument("--name-prefix", default=None,
-                        help="only include run directories whose name starts with this. Defaults to "
-                             "'phase1_' when --runs-dir is left at its default (the shared "
-                             "experiments/runs/, which holds Phase 2/3 runs under other protocols too), "
-                             "and to '' (every run record) when --runs-dir is given explicitly - a "
-                             "caller who names a directory has already chosen what's in it")
-    parser.add_argument("--out", default=str(DEFAULT_OUT),
-                        help="output path without extension; writes .csv and .md")
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--name-prefix", default=None,
+                           help="only include run directories whose name starts with this. Defaults to "
+                                "'phase1_' when --runs-dir is left at its default (the shared "
+                                "experiments/runs/, which holds Phase 2/3 runs under other protocols too), "
+                                "and to '' (every run record) when --runs-dir is given explicitly - a "
+                                "caller who names a directory has already chosen what's in it")
+    selection.add_argument("--runs", nargs="+", metavar="NAME", default=None,
+                           help="exactly these run directories, e.g. phase1_baseline phase2_blip")
+    parser.add_argument("--out", default=None,
+                        help=f"output path without extension; writes .csv and .md. Defaults to {DEFAULT_OUT} "
+                             "for the default Phase 1 set only - any other selection must name its own, "
+                             "so it can't overwrite the committed Phase 1 report")
     parser.add_argument("--title", default="Phase 1 benchmark")
     args = parser.parse_args(argv)
 
     runs_dir_given = args.runs_dir is not None
     runs_dir = Path(args.runs_dir) if runs_dir_given else RUNS_DIR
     name_prefix = args.name_prefix if args.name_prefix is not None else ("" if runs_dir_given else "phase1_")
+    default_selection = not runs_dir_given and args.runs is None and name_prefix == "phase1_"
+    if args.out is None and not default_selection:
+        parser.error(f"--out is required unless the selection is the default Phase 1 set (phase1_* under "
+                     f"{RUNS_DIR}); otherwise this table would overwrite {DEFAULT_OUT}")
 
-    csv_text, md_text, rows = build(runs_dir, title=args.title, name_prefix=name_prefix)
-    out = Path(args.out)
+    csv_text, md_text, rows = build(runs_dir, title=args.title, name_prefix=name_prefix, runs=args.runs)
+    out = Path(args.out) if args.out is not None else DEFAULT_OUT
     out.parent.mkdir(parents=True, exist_ok=True)
     # newline="" so the files are byte-identical to the strings (tests compare them).
     with open(out.with_suffix(".csv"), "w", encoding="utf-8", newline="") as f:

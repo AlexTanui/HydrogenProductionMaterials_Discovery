@@ -379,11 +379,10 @@ def test_mpnn_and_blip_with_different_kl_weights_share_a_table(tmp_path):
     cells = {row["run"]: row for row in csv.DictReader(io.StringIO(csv_text))}
     assert float(cells["phase1_baseline"]["kl_weight"]) == 0.0
     assert float(cells["phase2_blip"]["kl_weight"]) == 0.01
-    assert _md_cell(md_text, "phase1_baseline", "KL weight") == "0.0000"
-    assert _md_cell(md_text, "phase2_blip", "KL weight") == "0.0100"
+    assert _md_cell(md_text, "phase1_baseline", "KL weight") == "0"
+    assert _md_cell(md_text, "phase2_blip", "KL weight") == "0.01"
 
 
-@pytest.mark.xfail(strict=True, reason="_md_value's 4-dp float format prints a kl_weight below 5e-5 as 0.0000")
 def test_a_small_kl_weight_is_distinguishable_from_zero_in_the_markdown(tmp_path):
     _write_run(tmp_path, "a", run_changes={"protocol.kl_weight": 0.0})
     _write_run(tmp_path, "b", run_changes={"protocol.kl_weight": 1e-5})
@@ -450,3 +449,68 @@ def test_a_stochastic_run_with_no_recorded_mc_sample_count_is_refused(tmp_path):
     (path / "test_metrics.json").write_text(json.dumps(test), encoding="utf-8")
     with pytest.raises(ValueError, match="a: scored as a distribution, but .* no eval MC sample count"):
         load_runs(tmp_path)
+
+
+# --------------------------------------------------------------------------
+# 4. CLI selection and report notes (SCRUM-62 follow-ups, SCRUM-39 table)
+# --------------------------------------------------------------------------
+
+def test_main_runs_selects_exactly_the_named_runs(tmp_path):
+    # A prefix can't pick out MPNN and BLIP alone; --runs can.
+    runs = tmp_path / "runs"
+    for name in ("phase1_baseline", "phase1_schnet", "phase2_blip"):
+        _write_run(runs, name)
+    out = tmp_path / "out" / "mpnn_vs_blip"
+    assert main(["--runs-dir", str(runs), "--runs", "phase2_blip", "phase1_baseline",
+                 "--title", "MPNN vs BLIP", "--out", str(out)]) == 0
+    rows = list(csv.DictReader(io.StringIO(out.with_suffix(".csv").read_text(encoding="utf-8"))))
+    assert [row["run"] for row in rows] == ["phase1_baseline", "phase2_blip"]
+    assert out.with_suffix(".md").read_text(encoding="utf-8").startswith("# MPNN vs BLIP")
+
+
+def test_a_named_run_that_does_not_exist_is_refused(tmp_path):
+    _write_run(tmp_path, "a")
+    with pytest.raises(FileNotFoundError, match="no run record for b, c under"):
+        load_runs(tmp_path, names=["a", "b", "c"])
+
+
+@pytest.mark.parametrize("argv", [
+    ["--runs", "phase1_baseline", "phase2_blip"],
+    ["--name-prefix", ""],
+    ["--runs-dir", "{runs}"],
+])
+def test_main_requires_out_unless_the_selection_is_the_default_phase1_set(tmp_path, monkeypatch, argv):
+    # Without this, --name-prefix "" would overwrite the committed Phase 1 report.
+    default_out = tmp_path / "default" / "phase1_benchmark"
+    monkeypatch.setattr(benchmark, "DEFAULT_OUT", default_out)
+    _write_run(tmp_path / "runs", "a")
+    with pytest.raises(SystemExit):
+        main([arg.format(runs=tmp_path / "runs") for arg in argv])
+    assert not default_out.parent.exists()
+
+
+def test_main_refuses_both_a_prefix_and_named_runs(tmp_path):
+    with pytest.raises(SystemExit):
+        main(["--name-prefix", "phase1_", "--runs", "phase1_baseline", "--out", str(tmp_path / "x")])
+
+
+def test_markdown_notes_for_a_stochastic_run(tmp_path):
+    _write_run(tmp_path, "a_mpnn")
+    _write_run(tmp_path, "b_blip", test_changes={
+        "num_mc_samples": 20, "benchmark_row.ece": 0.7033,
+        "benchmark_row.uncertainty_note": "computed under the provisional definition"})
+    _, md_text, _ = build(tmp_path)
+    assert "for b_blip, scored as a distribution, it covers all 20 MC passes per frame" in md_text
+    assert "provisional until signed off (SCRUM-39); each scored run's own note:" in md_text
+    assert "  - b_blip: computed under the provisional definition." in md_text
+    assert "  - a_mpnn:" not in md_text
+    # The training-time count can't be read as the eval count, and the legend says what blank/0/1 mean.
+    assert "| Training MC samples (NLL) |" in md_text
+    assert "0 / 1 / 0 means the hook is off; blank means the record predates the key." in md_text
+
+
+def test_markdown_notes_for_deterministic_runs_only(tmp_path):
+    _write_run(tmp_path, "a")
+    _, md_text, _ = build(tmp_path)
+    assert "MC passes" not in md_text
+    assert "provisional until signed off (SCRUM-39)." in md_text
