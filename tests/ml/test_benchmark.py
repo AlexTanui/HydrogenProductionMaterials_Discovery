@@ -312,9 +312,8 @@ def test_main_writes_both_files(tmp_path):
 # --------------------------------------------------------------------------
 # 3. Model-specific protocol keys (48f10a4, SCRUM-62 review)
 # --------------------------------------------------------------------------
-# xfail(strict=True) marks a defect the review found: the test states the
-# behaviour we want, so fixing the defect turns it into an XPASS failure
-# and the marker has to come off.
+# Which keys may differ per model, and that the shared base loss, the
+# eval MC sample count and every other shared key are still refused.
 
 # train.py's own protocol.loss text on the MSE path - what every real record carries.
 _MSE_LOSS = ("energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E, plus kl_weight * "
