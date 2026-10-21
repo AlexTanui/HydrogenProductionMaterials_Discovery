@@ -14,31 +14,40 @@ this report is scoped to the Phase 1 bake-off. Pass `--runs-dir` and the
 filter drops to "everything there" by default - naming a directory is
 already choosing what's in it.
 
-**Refuses to compare unlike runs.** A benchmark table comparing models
-scored under different conditions is worse than no table (CLAUDE.md), so
-every run must match the first on all of:
+**Refuses to compare unlike runs - but only on what must be shared.**
+A benchmark table comparing models scored under different *training
+conditions* is worse than no table (CLAUDE.md); a table that also
+refuses to show two models with different *model* settings is just
+broken, and did exactly that the first time a Phase 2 run existed
+alongside Phase 1 ones (Fazin's review of SCRUM-31/61). So every run
+must match the first on all of:
 
 - `data:` and `train:` - the config's locked blocks, as resolved;
 - the training loop's fixed settings recorded in `run.json["protocol"]`
-  (optimiser, scheduler, clipping, loss, shuffle, epoch cap), which live
-  in code rather than config, so two runs at different commits could
-  share configs and still differ here;
+  (optimiser, scheduler, clipping, shuffle, epoch cap, the two loss
+  *weights*), which live in code rather than config, so two runs at
+  different commits could share configs and still differ here -
+  **except** `MODEL_SPECIFIC_PROTOCOL_KEYS` (the loss *description*,
+  `kl_weight`, and BLIP's NLL-training settings): those belong to one
+  model, not to the shared protocol, and are reported as their own
+  columns instead of gated on;
 - the exact train and val frames (sha256 of their gold indices);
 - the test scoring: split, molecule, theory, frame count, seed and batch
   size, and the **scoring-data fingerprint** (sha256 of the test indices
   and of z, R, E, F at them, recorded by evaluate.py), so a different gold
   file of the same size cannot pass.
 
-Any difference raises `ProtocolMismatch` naming the run and the setting.
-Runs that are not complete, reportable test-split results are refused too.
+Any remaining difference raises `ProtocolMismatch` naming the run and the
+setting. Runs that are not complete, reportable test-split results are
+refused too.
 
 Numbers are copied from the records, never recomputed: the CSV keeps them
 at full precision (so tests can check them exactly), the Markdown rounds
-them for reading. Each row carries the git commit it was trained at. ECE
-and uncertainty-error Spearman columns are present but empty for
-deterministic models; they come from evaluate.py's benchmark_row, whose
-definitions are Dongxiao's, so Phase 2/3 rows fill them without a schema
-change.
+them for reading. Each row carries the git commit it was trained at. ECE,
+uncertainty-error Spearman, and the `MODEL_SPECIFIC_PROTOCOL_KEYS` columns
+are present but empty for a model that doesn't define them (every Phase 1
+model, for the BLIP-only ones) - same convention throughout. ECE/Spearman
+come from evaluate.py's benchmark_row, whose definitions are Dongxiao's.
 """
 from __future__ import annotations
 
@@ -62,6 +71,20 @@ PROTOCOL_DOC = "docs/phase1_protocol.md"
 
 EXPECTED_UNITS = {"energy": "kcal/mol", "force": "kcal/mol/Ang"}
 
+# run["protocol"] keys that exist for one model (today, only BLIP) and are
+# allowed to differ between runs on purpose: they describe what that model
+# itself does, not the shared training-loop conditions the comparison is
+# supposed to hold fixed. Excluded from check_same_protocol's equality
+# check (see protocol_signature) and shown as their own columns instead
+# (except "loss", a prose description - not a table cell; read the run's
+# own run.json for that). Found by Fazin's review of SCRUM-31/61: without
+# this split, every optional per-model hook (kl_weight, then
+# train_num_mc_samples/nll_warmup_epochs) silently became a new
+# must-match field for every model, so retraining even one Phase 1 model
+# after the hook existed produced a ProtocolMismatch against the other
+# four that predated it - simulated and confirmed, not hypothetical.
+MODEL_SPECIFIC_PROTOCOL_KEYS = ("loss", "kl_weight", "train_num_mc_samples", "nll_warmup_epochs")
+
 # (CSV column, Markdown header). Order is the table's column order.
 COLUMNS = [
     ("run", "Run"),
@@ -79,6 +102,9 @@ COLUMNS = [
     ("inference_ms_per_frame", "Inference (ms/frame)"),
     ("ece", "ECE"),
     ("uncertainty_error_spearman", "Unc.-error Spearman"),
+    ("kl_weight", "KL weight"),
+    ("train_num_mc_samples", "Train MC samples"),
+    ("nll_warmup_epochs", "NLL warmup epochs"),
     ("git_commit", "Git commit"),
 ]
 
@@ -158,12 +184,17 @@ def load_runs(runs_dir: Path = RUNS_DIR, name_prefix: str = "") -> list[RunResul
 
 
 def protocol_signature(result: RunResult) -> dict[str, Any]:
-    """Everything that must match for two runs to share a table."""
+    """Everything that must match for two runs to share a table.
+
+    "training loop" is `run["protocol"]` minus `MODEL_SPECIFIC_PROTOCOL_KEYS`
+    - those vary per model on purpose (BLIP's kl_weight, its NLL warmup) and
+    are reported as their own columns in `build_rows`, not gated on here.
+    """
     run, test = result.run, result.test
     return {
         "data": run["config"]["data"],
         "train": run["config"]["train"],
-        "training loop": run["protocol"],
+        "training loop": {k: v for k, v in run["protocol"].items() if k not in MODEL_SPECIFIC_PROTOCOL_KEYS},
         "train frames": {"sha256": run["subsets"]["train"]["gold_indices_sha256"]},
         "val frames": {"sha256": run["subsets"]["val"]["gold_indices_sha256"]},
         "test scoring": {
@@ -220,6 +251,13 @@ def build_rows(results: list[RunResult]) -> list[dict[str, Any]]:
             "inference_ms_per_frame": test["timing"]["inference_s_per_config"] * 1000,
             "ece": row["ece"],
             "uncertainty_error_spearman": row["uncertainty_correlation"],
+            # Model-specific (MODEL_SPECIFIC_PROTOCOL_KEYS) - not gated on,
+            # shown so a reader can see why e.g. two BLIP runs differ.
+            # .get(): absent entirely for a run recorded before the key
+            # existed, same convention as ece/uncertainty_error_spearman.
+            "kl_weight": run["protocol"].get("kl_weight"),
+            "train_num_mc_samples": run["protocol"].get("train_num_mc_samples"),
+            "nll_warmup_epochs": run["protocol"].get("nll_warmup_epochs"),
             "git_commit": run["git_commit"],
         })
     return rows
@@ -274,6 +312,19 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
                     title: str = "Phase 1 benchmark") -> str:
     data, train = shared["data"], shared["train"]
     loop, scoring = shared["training loop"], shared["test scoring"]
+    # "loss" is model-specific (MODEL_SPECIFIC_PROTOCOL_KEYS), so it is not
+    # in `loop` - read it from the results directly. Still worth one shared
+    # line when every result happens to agree (true of the five Phase 1
+    # models today); say so plainly when they don't, rather than picking one.
+    loss_texts = {result.run["protocol"].get("loss") for result in results}
+    loss_line = (
+        f"- Loss: {next(iter(loss_texts))}; weights {loop['energy_loss_weight']} / "
+        f"{loop['force_loss_weight']}."
+        if len(loss_texts) == 1 else
+        f"- Loss: differs per model - see each run's own protocol.loss, or the "
+        f"table's Train MC samples/NLL warmup columns; weights {loop['energy_loss_weight']} / "
+        f"{loop['force_loss_weight']} shared by all."
+    )
     lines = [
         f"# {title}: {data['molecule']} ({data['theory']})",
         "",
@@ -310,8 +361,7 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
         f"- Budget: {_budget_text(train)}; batch {train['batch_size']}; up to "
         f"{train['epochs']} epochs, early-stopping patience {train['patience']}; "
         f"device {train['device']}.",
-        f"- Loss: {loop['loss']}; weights {loop['energy_loss_weight']} / "
-        f"{loop['force_loss_weight']}.",
+        loss_line,
         f"- Optimiser: {loop['optimizer']['name']}, lr {loop['optimizer']['lr']}, weight decay "
         f"{loop['optimizer']['weight_decay']}; {loop['scheduler']['name']} (factor "
         f"{loop['scheduler']['factor']}, patience {loop['scheduler']['patience']}); gradient "
