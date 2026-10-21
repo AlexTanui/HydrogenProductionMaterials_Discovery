@@ -30,7 +30,10 @@ must match the first on all of:
   **except** `MODEL_SPECIFIC_PROTOCOL_KEYS` (`kl_weight`, BLIP's NLL
   training settings, and `loss_override`, its NLL replacement for the
   base loss): those belong to one model, not to the shared protocol, so
-  they are reported instead of gated on, and the report names them;
+  they are reported instead of gated on, and the report names them.
+  Every protocol key must be in exactly one of `SHARED_PROTOCOL_KEYS` and
+  `MODEL_SPECIFIC_PROTOCOL_KEYS`; a run carrying a key in neither is
+  refused, with a message to classify it here;
 - the exact train and val frames (sha256 of their gold indices);
 - the test scoring: split, molecule, theory, frame count, seed and batch
   size, and the **scoring-data fingerprint** (sha256 of the test indices
@@ -95,6 +98,24 @@ EXPECTED_UNITS = {"energy": "kcal/mol", "force": "kcal/mol/Ang"}
 # losses (an L1 PhysNet, a per-atom energy target). BLIP's NLL replacement
 # is recorded separately, as loss_override, so the base stays comparable.
 MODEL_SPECIFIC_PROTOCOL_KEYS = ("kl_weight", "train_num_mc_samples", "nll_warmup_epochs", "loss_override")
+
+# Every other run["protocol"] key train.py writes: the training-loop
+# conditions every model in one table must share. The two lists together
+# must classify every key - an unclassified one is refused by load_runs,
+# because guessing either way is wrong: as must-match it repeats the
+# SCRUM-61 retrain trap, as exempt it silently drops a fairness check.
+# tests/ml/test_harness.py fails as soon as train.py writes a new key, so
+# the decision is made in the same commit that adds it.
+SHARED_PROTOCOL_KEYS = (
+    "loss", "energy_loss_weight", "force_loss_weight", "optimizer", "scheduler", "grad_clip_norm",
+    "batch_size", "max_epochs", "patience", "max_batches_per_epoch", "shuffle", "selection",
+)
+
+if set(SHARED_PROTOCOL_KEYS) & set(MODEL_SPECIFIC_PROTOCOL_KEYS):
+    raise RuntimeError(
+        "protocol keys classified as both shared and model-specific: "
+        f"{sorted(set(SHARED_PROTOCOL_KEYS) & set(MODEL_SPECIFIC_PROTOCOL_KEYS))}"
+    )
 
 # (CSV column, Markdown header). Order is the table's column order.
 COLUMNS = [
@@ -170,6 +191,13 @@ def load_runs(runs_dir: Path = RUNS_DIR, name_prefix: str = "") -> list[RunResul
             raise ValueError(
                 f"{path.name}: status={run.get('status')!r}, reportable={run.get('reportable')!r}. "
                 "Only complete, reportable runs go in a benchmark table."
+            )
+        unclassified = sorted(set(run["protocol"]) - set(SHARED_PROTOCOL_KEYS) - set(MODEL_SPECIFIC_PROTOCOL_KEYS))
+        if unclassified:
+            raise ValueError(
+                f"{path.name}: protocol key(s) {', '.join(unclassified)} not classified. Classify each in "
+                "ml/training/benchmark.py: SHARED_PROTOCOL_KEYS if every model in a table must match "
+                "on it, MODEL_SPECIFIC_PROTOCOL_KEYS if it may differ per model."
             )
         if run.get("git_dirty") is not False:
             # True, or None (git unavailable): either way, no clean commit on record.

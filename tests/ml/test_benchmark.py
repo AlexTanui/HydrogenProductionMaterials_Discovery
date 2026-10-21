@@ -391,15 +391,20 @@ def test_a_small_kl_weight_is_distinguishable_from_zero_in_the_markdown(tmp_path
     assert _md_cell(md_text, "a", "KL weight") != _md_cell(md_text, "b", "KL weight")
 
 
-@pytest.mark.xfail(strict=True, reason="a protocol key in neither list silently becomes must-match (SCRUM-61 trap)")
 def test_an_unclassified_protocol_key_is_refused_with_a_message_to_classify_it(tmp_path):
-    # A future per-model hook that train.py records but nobody adds to
-    # MODEL_SPECIFIC_PROTOCOL_KEYS: today the old record clashes with the
-    # new one on values, which reads like a real protocol difference.
+    # A future per-model hook that train.py records but nobody classifies.
+    # Without the check the old record would clash with the new one on
+    # values, which reads like a real protocol difference (SCRUM-61 trap).
     _write_run(tmp_path, "a_old")
     _write_run(tmp_path, "b_new", run_changes={"protocol.ensemble_size": 1})
-    with pytest.raises(ValueError, match=r"ensemble_size.*classif"):
+    with pytest.raises(ValueError, match=r"b_new: protocol key\(s\) ensemble_size not classified"):
         build(tmp_path)
+
+
+def test_every_protocol_key_is_classified_exactly_once():
+    shared, specific = set(benchmark.SHARED_PROTOCOL_KEYS), set(benchmark.MODEL_SPECIFIC_PROTOCOL_KEYS)
+    assert not shared & specific
+    assert set(_RUN["protocol"]) <= shared | specific
 
 
 def test_a_run_with_no_recorded_loss_is_refused(tmp_path):

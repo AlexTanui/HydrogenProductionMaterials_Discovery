@@ -43,6 +43,7 @@ from ml.models.painn import PaiNN
 from ml.models.registry import MODEL_REGISTRY, UnknownModel, load_model
 from ml.models.scaling import ScaledEnergyModel
 from ml.models.schnet import SchNet
+from ml.training.benchmark import MODEL_SPECIFIC_PROTOCOL_KEYS, SHARED_PROTOCOL_KEYS
 from ml.training.evaluate import evaluate_checkpoint
 from ml.training.train import (
     batch_loss, build_model, git_state, open_split, select_subsets, stride_subset, train,
@@ -340,6 +341,17 @@ def _tiny_config(name: str, gold_path: Path, **train_overrides) -> ExperimentCon
     )
 
 
+def _assert_protocol_keys_classified(record: dict) -> None:
+    """Every protocol key train.py writes must be classified in benchmark.py,
+    or the benchmark refuses the run. Failing here means a key was just
+    added to train.py: decide there whether every model must match on it."""
+    unclassified = set(record["protocol"]) - set(SHARED_PROTOCOL_KEYS) - set(MODEL_SPECIFIC_PROTOCOL_KEYS)
+    assert not unclassified, (
+        f"train.py writes protocol key(s) {sorted(unclassified)} that ml/training/benchmark.py doesn't "
+        "classify: add each to SHARED_PROTOCOL_KEYS or MODEL_SPECIFIC_PROTOCOL_KEYS"
+    )
+
+
 @pytest.mark.parametrize("name", CONFIG_NAMES)
 def test_config_trains_saves_and_is_scored_at_absolute_energy(name, tiny_gold, tmp_path):
     cfg = _tiny_config(name, tiny_gold.path)
@@ -349,6 +361,7 @@ def test_config_trains_saves_and_is_scored_at_absolute_energy(name, tiny_gold, t
     record = train(cfg, output_root=tmp_path)
 
     assert record["status"] == "complete" and record["reportable"] is True
+    _assert_protocol_keys_classified(record)
     assert record["epochs_run"] == record["best_epoch"] == 1
     assert len(list(csv.DictReader((run_dir / "history.csv").open(encoding="utf-8")))) == 1
 
@@ -536,6 +549,7 @@ def test_blip_trains_with_nll_loss_when_configured(tiny_gold, tmp_path):
     # The NLL replacement is model-specific; the shared base loss is unchanged (SCRUM-62).
     assert "NLL" in record["protocol"]["loss_override"]
     assert "NLL" not in record["protocol"]["loss"]
+    _assert_protocol_keys_classified(record)
 
     history = list(csv.DictReader((tmp_path / "runs" / cfg.name / "history.csv").open(encoding="utf-8")))
     # NLL is a log-density, not a squared error - it can legitimately be
