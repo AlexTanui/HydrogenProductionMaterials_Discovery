@@ -326,7 +326,6 @@ def _md_cell(md_text: str, run: str, header: str) -> str:
     return cells[[h for _, h in benchmark.COLUMNS].index(header)]
 
 
-@pytest.mark.xfail(strict=True, reason="48f10a4 exempts protocol.loss as a whole, so the base loss is unchecked")
 @pytest.mark.parametrize("other_loss", [
     # PhysNet's own trainer (ml/training/train_physnet.py) uses L1 - SCRUM-40.
     _MSE_LOSS.replace("MSE(E)", "L1(E)").replace("MSE(F)", "L1(F)"),
@@ -337,6 +336,19 @@ def test_a_different_base_loss_is_refused(tmp_path, other_loss):
     _write_run(tmp_path, "b_different", run_changes={"protocol.loss": other_loss})
     with pytest.raises(ProtocolMismatch, match=r"b_different: training loop.loss ="):
         build(tmp_path)
+
+
+def test_a_model_specific_loss_override_is_reported_not_refused(tmp_path):
+    # MPNN next to an NLL-trained BLIP: same base loss, BLIP's replacement
+    # recorded separately - tabulated, with the override shown under Loss.
+    _write_run(tmp_path, "a_mpnn", run_changes={"protocol.loss": _MSE_LOSS, "protocol.loss_override": None})
+    _write_run(tmp_path, "b_blip_nll", run_changes={"protocol.loss": _MSE_LOSS,
+                                                    "protocol.loss_override": "Gaussian NLL after warmup",
+                                                    "protocol.train_num_mc_samples": 4})
+    _, md_text, rows = build(tmp_path)
+    assert [row["run"] for row in rows] == ["a_mpnn", "b_blip_nll"]
+    assert "b_blip_nll replaces it (model-specific `loss_override`, not checked): Gaussian NLL after warmup." in md_text
+    assert "a_mpnn replaces it" not in md_text
 
 
 def test_a_run_recorded_before_the_nll_hooks_shares_a_table_with_one_after(tmp_path):
@@ -387,7 +399,6 @@ def test_an_unclassified_protocol_key_is_refused_with_a_message_to_classify_it(t
         build(tmp_path)
 
 
-@pytest.mark.xfail(strict=True, reason="loss is exempt, so a run with no recorded loss is tabulated, not refused")
 def test_a_run_with_no_recorded_loss_is_refused(tmp_path):
     _write_run(tmp_path, "a")
     path = _write_run(tmp_path, "b")
@@ -398,7 +409,6 @@ def test_a_run_with_no_recorded_loss_is_refused(tmp_path):
         build(tmp_path)
 
 
-@pytest.mark.xfail(strict=True, reason="the 'checked to share one protocol' line doesn't name the exempt keys")
 def test_markdown_names_the_protocol_keys_that_were_not_checked(tmp_path):
     _write_run(tmp_path, "a")
     _, md_text, _ = build(tmp_path)

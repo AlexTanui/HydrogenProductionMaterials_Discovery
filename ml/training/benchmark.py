@@ -24,13 +24,13 @@ must match the first on all of:
 
 - `data:` and `train:` - the config's locked blocks, as resolved;
 - the training loop's fixed settings recorded in `run.json["protocol"]`
-  (optimiser, scheduler, clipping, shuffle, epoch cap, the two loss
-  *weights*), which live in code rather than config, so two runs at
+  (base loss, optimiser, scheduler, clipping, shuffle, epoch cap, the two
+  loss weights), which live in code rather than config, so two runs at
   different commits could share configs and still differ here -
-  **except** `MODEL_SPECIFIC_PROTOCOL_KEYS` (the loss *description*,
-  `kl_weight`, and BLIP's NLL-training settings): those belong to one
-  model, not to the shared protocol, and are reported as their own
-  columns instead of gated on;
+  **except** `MODEL_SPECIFIC_PROTOCOL_KEYS` (`kl_weight`, BLIP's NLL
+  training settings, and `loss_override`, its NLL replacement for the
+  base loss): those belong to one model, not to the shared protocol, so
+  they are reported instead of gated on, and the report names them;
 - the exact train and val frames (sha256 of their gold indices);
 - the test scoring: split, molecule, theory, frame count, seed and batch
   size, and the **scoring-data fingerprint** (sha256 of the test indices
@@ -75,15 +75,21 @@ EXPECTED_UNITS = {"energy": "kcal/mol", "force": "kcal/mol/Ang"}
 # allowed to differ between runs on purpose: they describe what that model
 # itself does, not the shared training-loop conditions the comparison is
 # supposed to hold fixed. Excluded from check_same_protocol's equality
-# check (see protocol_signature) and shown as their own columns instead
-# (except "loss", a prose description - not a table cell; read the run's
-# own run.json for that). Found by Fazin's review of SCRUM-31/61: without
-# this split, every optional per-model hook (kl_weight, then
-# train_num_mc_samples/nll_warmup_epochs) silently became a new
-# must-match field for every model, so retraining even one Phase 1 model
-# after the hook existed produced a ProtocolMismatch against the other
-# four that predated it - simulated and confirmed, not hypothetical.
-MODEL_SPECIFIC_PROTOCOL_KEYS = ("loss", "kl_weight", "train_num_mc_samples", "nll_warmup_epochs")
+# check (see protocol_signature) and reported instead: the numbers as
+# columns, loss_override's prose under the report's Loss line. Found by
+# Fazin's review of SCRUM-31/61: without this split, every optional
+# per-model hook (kl_weight, then train_num_mc_samples/nll_warmup_epochs)
+# silently became a new must-match field for every model, so retraining
+# even one Phase 1 model after the hook existed produced a
+# ProtocolMismatch against the other four that predated it - simulated
+# and confirmed, not hypothetical.
+#
+# "loss" is deliberately not here (SCRUM-62): it is the shared base loss,
+# and it lives in train.py rather than the config, so two runs at
+# different commits can share a config and still train on different
+# losses (an L1 PhysNet, a per-atom energy target). BLIP's NLL replacement
+# is recorded separately, as loss_override, so the base stays comparable.
+MODEL_SPECIFIC_PROTOCOL_KEYS = ("kl_weight", "train_num_mc_samples", "nll_warmup_epochs", "loss_override")
 
 # (CSV column, Markdown header). Order is the table's column order.
 COLUMNS = [
@@ -312,19 +318,8 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
                     title: str = "Phase 1 benchmark") -> str:
     data, train = shared["data"], shared["train"]
     loop, scoring = shared["training loop"], shared["test scoring"]
-    # "loss" is model-specific (MODEL_SPECIFIC_PROTOCOL_KEYS), so it is not
-    # in `loop` - read it from the results directly. Still worth one shared
-    # line when every result happens to agree (true of the five Phase 1
-    # models today); say so plainly when they don't, rather than picking one.
-    loss_texts = {result.run["protocol"].get("loss") for result in results}
-    loss_line = (
-        f"- Loss: {next(iter(loss_texts))}; weights {loop['energy_loss_weight']} / "
-        f"{loop['force_loss_weight']}."
-        if len(loss_texts) == 1 else
-        f"- Loss: differs per model - see each run's own protocol.loss, or the "
-        f"table's Train MC samples/NLL warmup columns; weights {loop['energy_loss_weight']} / "
-        f"{loop['force_loss_weight']} shared by all."
-    )
+    unchecked = ", ".join(f"`{key}`" for key in MODEL_SPECIFIC_PROTOCOL_KEYS)
+    overrides = [(result.name, result.run["protocol"].get("loss_override")) for result in results]
     lines = [
         f"# {title}: {data['molecule']} ({data['theory']})",
         "",
@@ -333,7 +328,8 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
         f"in [{PROTOCOL_DOC}](../{PROTOCOL_DOC}).",
         "",
         f"All {len(rows)} runs were checked to share one protocol before being tabulated: identical "
-        "`data:` and `train:` blocks, training-loop settings, train and val frames, and test scoring.",
+        "`data:` and `train:` blocks, training-loop settings, train and val frames, and test scoring. "
+        f"Not checked, because each describes one model rather than the shared protocol: {unchecked}.",
         "",
         "| " + " | ".join(header for _, header in COLUMNS) + " |",
         "|" + "|".join("---" for _ in COLUMNS) + "|",
@@ -361,7 +357,10 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
         f"- Budget: {_budget_text(train)}; batch {train['batch_size']}; up to "
         f"{train['epochs']} epochs, early-stopping patience {train['patience']}; "
         f"device {train['device']}.",
-        loss_line,
+        f"- Loss: {loop['loss']}; weights {loop['energy_loss_weight']} / "
+        f"{loop['force_loss_weight']}.",
+        *(f"  - {name} replaces it (model-specific `loss_override`, not checked): {text}."
+          for name, text in overrides if text),
         f"- Optimiser: {loop['optimizer']['name']}, lr {loop['optimizer']['lr']}, weight decay "
         f"{loop['optimizer']['weight_decay']}; {loop['scheduler']['name']} (factor "
         f"{loop['scheduler']['factor']}, patience {loop['scheduler']['patience']}); gradient "

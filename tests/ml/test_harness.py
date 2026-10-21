@@ -530,7 +530,9 @@ def test_blip_trains_with_nll_loss_when_configured(tiny_gold, tmp_path):
 
     assert record["status"] == "complete"
     assert record["protocol"]["train_num_mc_samples"] == 3
-    assert "NLL" in record["protocol"]["loss"]
+    # The NLL replacement is model-specific; the shared base loss is unchanged (SCRUM-62).
+    assert "NLL" in record["protocol"]["loss_override"]
+    assert "NLL" not in record["protocol"]["loss"]
 
     history = list(csv.DictReader((tmp_path / "runs" / cfg.name / "history.csv").open(encoding="utf-8")))
     # NLL is a log-density, not a squared error - it can legitimately be
@@ -546,8 +548,21 @@ def test_blip_with_default_train_num_mc_samples_is_unaffected(tiny_gold, tmp_pat
     assert "train_num_mc_samples" not in cfg.model.kwargs
     record = train(cfg, output_root=tmp_path)
     assert record["protocol"]["train_num_mc_samples"] == 1
+    assert record["protocol"]["loss_override"] is None
     assert "NLL" not in record["protocol"]["loss"]
     assert "MSE" in record["protocol"]["loss"]
+
+
+def test_base_loss_text_matches_the_committed_run_records(tiny_gold, tmp_path):
+    """protocol.loss is must-match in benchmark.py (SCRUM-62), so any edit
+    to its text makes every existing record mismatch a new run - i.e. a
+    full retrain. Change it only on purpose."""
+    committed = {json.loads(p.read_text(encoding="utf-8"))["protocol"]["loss"]
+                 for p in (ROOT / "experiments" / "runs").glob("*/run.json")}
+    if not committed:
+        pytest.skip("no experiments/runs/")
+    record = train(_tiny_config("phase1_schnet", tiny_gold.path), output_root=tmp_path)
+    assert committed == {record["protocol"]["loss"]}
 
 
 def test_batch_loss_gives_the_noise_gate_a_real_gradient_under_nll(tiny_gold):
