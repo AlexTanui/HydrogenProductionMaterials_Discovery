@@ -43,6 +43,7 @@ from ml.models.painn import PaiNN
 from ml.models.registry import MODEL_REGISTRY, UnknownModel, load_model
 from ml.models.scaling import ScaledEnergyModel
 from ml.models.schnet import SchNet
+from ml.training.benchmark import MODEL_SPECIFIC_PROTOCOL_KEYS, SHARED_PROTOCOL_KEYS
 from ml.training.evaluate import evaluate_checkpoint
 from ml.training.train import (
     batch_loss, build_model, git_state, open_split, select_subsets, stride_subset, train,
@@ -341,6 +342,17 @@ def _tiny_config(name: str, gold_path: Path, **train_overrides) -> ExperimentCon
     )
 
 
+def _assert_protocol_keys_classified(record: dict) -> None:
+    """Every protocol key train.py writes must be classified in benchmark.py,
+    or the benchmark refuses the run. Failing here means a key was just
+    added to train.py: decide there whether every model must match on it."""
+    unclassified = set(record["protocol"]) - set(SHARED_PROTOCOL_KEYS) - set(MODEL_SPECIFIC_PROTOCOL_KEYS)
+    assert not unclassified, (
+        f"train.py writes protocol key(s) {sorted(unclassified)} that ml/training/benchmark.py doesn't "
+        "classify: add each to SHARED_PROTOCOL_KEYS or MODEL_SPECIFIC_PROTOCOL_KEYS"
+    )
+
+
 @pytest.mark.parametrize("name", CONFIG_NAMES)
 def test_config_trains_saves_and_is_scored_at_absolute_energy(name, tiny_gold, tmp_path):
     cfg = _tiny_config(name, tiny_gold.path)
@@ -350,6 +362,7 @@ def test_config_trains_saves_and_is_scored_at_absolute_energy(name, tiny_gold, t
     record = train(cfg, output_root=tmp_path)
 
     assert record["status"] == "complete" and record["reportable"] is True
+    _assert_protocol_keys_classified(record)
     assert record["epochs_run"] == record["best_epoch"] == 1
     assert len(list(csv.DictReader((run_dir / "history.csv").open(encoding="utf-8")))) == 1
 
@@ -377,6 +390,9 @@ def test_config_trains_saves_and_is_scored_at_absolute_energy(name, tiny_gold, t
     # BLIP included, since evaluate_checkpoint scores under a fixed seed.
     saved = json.loads((run_dir / "test_metrics.json").read_text(encoding="utf-8"))
     assert saved["seed"] == result["seed"]
+    # The eval MC sample count actually used (SCRUM-49): BLIP's own, null otherwise.
+    expected_mc = int(model.model.num_mc_samples) if model.supports_distribution else None
+    assert saved["num_mc_samples"] == result["num_mc_samples"] == expected_mc
     assert saved["benchmark_row"]["energy_mae"] == pytest.approx(row["energy_mae"], rel=1e-6)
     assert saved["benchmark_row"]["force_mae"] == pytest.approx(row["force_mae"], rel=1e-6)
 
@@ -531,7 +547,13 @@ def test_blip_trains_with_nll_loss_when_configured(tiny_gold, tmp_path):
 
     assert record["status"] == "complete"
     assert record["protocol"]["train_num_mc_samples"] == 3
-    assert "NLL" in record["protocol"]["loss"]
+    # The NLL replacement is model-specific; the shared base loss is unchanged (SCRUM-62).
+    assert "NLL" in record["protocol"]["loss_override"]
+    assert "NLL" not in record["protocol"]["loss"]
+    # No warmup, so nothing is calibrated: batch_loss's default floor is in force.
+    assert record["protocol"]["nll_min_energy_var"] == record["protocol"]["nll_min_force_var"] == 1e-6
+    assert record["protocol"]["nll_min_var_epoch"] is None
+    _assert_protocol_keys_classified(record)
 
     history = list(csv.DictReader((tmp_path / "runs" / cfg.name / "history.csv").open(encoding="utf-8")))
     # NLL is a log-density, not a squared error - it can legitimately be
@@ -547,8 +569,23 @@ def test_blip_with_default_train_num_mc_samples_is_unaffected(tiny_gold, tmp_pat
     assert "train_num_mc_samples" not in cfg.model.kwargs
     record = train(cfg, output_root=tmp_path)
     assert record["protocol"]["train_num_mc_samples"] == 1
+    assert record["protocol"]["loss_override"] is None
+    for key in ("nll_min_energy_var", "nll_min_force_var", "nll_min_var_epoch"):
+        assert record["protocol"][key] is None, key
     assert "NLL" not in record["protocol"]["loss"]
     assert "MSE" in record["protocol"]["loss"]
+
+
+def test_base_loss_text_matches_the_committed_run_records(tiny_gold, tmp_path):
+    """protocol.loss is must-match in benchmark.py (SCRUM-62), so any edit
+    to its text makes every existing record mismatch a new run - i.e. a
+    full retrain. Change it only on purpose."""
+    committed = {json.loads(p.read_text(encoding="utf-8"))["protocol"]["loss"]
+                 for p in (ROOT / "experiments" / "runs").glob("*/run.json")}
+    if not committed:
+        pytest.skip("no experiments/runs/")
+    record = train(_tiny_config("phase1_schnet", tiny_gold.path), output_root=tmp_path)
+    assert committed == {record["protocol"]["loss"]}
 
 
 def test_batch_loss_gives_the_noise_gate_a_real_gradient_under_nll(tiny_gold):
@@ -637,6 +674,31 @@ def test_nll_loss_does_not_blow_up_across_the_warmup_boundary(tiny_gold, tmp_pat
     assert first_nll_epoch_loss < warmup_epoch_loss * 20, (
         f"switch epoch jumped from {warmup_epoch_loss} to {first_nll_epoch_loss} - looks like the old blowup"
     )
+
+
+def test_nll_run_records_the_calibrated_variance_floor(tiny_gold, tmp_path):
+    """The floor set at the warmup boundary shapes every NLL step after it,
+    so run.json records the values and the epoch - read back from disk and
+    checked against that epoch's measured validation MSE in history.csv."""
+    cfg = dataclasses.replace(
+        _tiny_config("phase2_blip", tiny_gold.path, epochs=4),
+        name="phase2_blip_nll_floor",
+        model=ModelConfig(phase="blip", kwargs={
+            **_load("phase2_blip").model.kwargs,
+            "train_num_mc_samples": 3, "nll_warmup_epochs": 2,
+        }),
+    )
+    record = train(cfg, output_root=tmp_path)
+    run_dir = tmp_path / "runs" / cfg.name
+    saved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["protocol"]
+    history = {int(row["epoch"]): row for row in csv.DictReader((run_dir / "history.csv").open(encoding="utf-8"))}
+
+    assert saved == record["protocol"]
+    assert saved["nll_min_var_epoch"] == 2
+    assert saved["nll_min_energy_var"] == pytest.approx(max(float(history[2]["val_energy_mse"]), 1e-6))
+    assert saved["nll_min_force_var"] == pytest.approx(max(float(history[2]["val_force_mse"]), 1e-6))
+    # Measured, not the default: an all-but-untrained model's val MSE is far above 1e-6.
+    assert saved["nll_min_energy_var"] > 1e-6 and saved["nll_min_force_var"] > 1e-6
 
 
 def test_checkpoint_selection_resets_at_the_loss_switch(tiny_gold, tmp_path):

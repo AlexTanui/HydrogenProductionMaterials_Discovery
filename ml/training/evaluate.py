@@ -53,6 +53,14 @@ assumption this rests on - provisional pending Dongxiao's sign-off
 `num_mc_samples` times more expensive for BLIP specifically. A model
 without `predict_distribution` is scored exactly as before: one forward
 pass, `E_var`/`F_var` stay `None`, and `uq_metrics` is `null`.
+
+The MC sample count is read once from the model's own `num_mc_samples`,
+passed to `predict_distribution` explicitly, and recorded as
+`num_mc_samples` (null for a deterministic model), so the benchmark can
+require one count across every stochastic run in a table (CLAUDE.md;
+SCRUM-49 sets the project value). A distribution model with no
+`num_mc_samples` is still scored, with a warning and a null count - the
+benchmark then refuses it.
 """
 from __future__ import annotations
 
@@ -272,6 +280,20 @@ def _score_checkpoint(
             f"scored on the {split!r} split, not 'test'. This is not a reportable "
             "number for the bake-off table."
         )
+    scores_distribution = model.supports_distribution
+    # Resolved once and passed explicitly, so the record states the count
+    # that actually ran. None for a deterministic model: nothing to count.
+    num_mc_samples = None
+    if scores_distribution:
+        num_mc_samples = getattr(model.model, "num_mc_samples", None)
+        if num_mc_samples is None:
+            warnings.append(
+                f"{type(model.model).__name__} scores a distribution but has no num_mc_samples, so the "
+                "MC sample count used is not recorded; benchmark.py refuses this run until it is "
+                "(SCRUM-49)."
+            )
+        else:
+            num_mc_samples = int(num_mc_samples)
     for warning in warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
 
@@ -282,7 +304,6 @@ def _score_checkpoint(
     accumulator = MetricAccumulator()
     uq_accumulator = UQAccumulator()
     reference_units = units or Units()
-    scores_distribution = model.supports_distribution
 
     model_seconds = 0.0
     n_batches = 0
@@ -307,7 +328,8 @@ def _score_checkpoint(
             model_start = time.perf_counter()
             if scores_distribution:
                 e_mean, e_var, f_mean, f_var = model.predict_distribution(
-                    batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch
+                    batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch,
+                    num_mc_samples=num_mc_samples,
                 )
                 energy, forces = e_mean.detach(), f_mean.detach()
                 energy_var, force_var = e_var.detach(), f_var.detach()
@@ -359,6 +381,8 @@ def _score_checkpoint(
         "model_config": checkpoint["model_config"],
         "energy_scaling": model.energy_scaling(),
         "seed": seed,
+        # Eval MC sample count actually used; null for a deterministic model.
+        "num_mc_samples": num_mc_samples,
         "n_parameters": int(sum(p.numel() for p in model.parameters())),
         "data": {
             "gold_path": str(resolved_gold),
