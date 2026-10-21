@@ -1,0 +1,337 @@
+{
+  "protocol": {
+    "date": "2026-10-15",
+    "seeds": [
+      42,
+      43,
+      44
+    ],
+    "new_seeds": [
+      43,
+      44
+    ],
+    "purpose": "Fine-tuning seed sensitivity from ONE shared pretrained checkpoint; not independent pretraining seeds.",
+    "fixed": "Gold splits, checkpoint, architecture, noise sigma 0.05, 20 epochs per arm, optimizer, validation MC streams and selection criterion.",
+    "changes": "Training batch shuffle seed and training noise seed only. Evaluation streams remain fixed across seeds.",
+    "stopping_rule": "Exactly two additional seed pairs. No hyperparameter search or test evaluation.",
+    "reporting": "Include all three seeds, paired differences and sample standard deviation; no significance claim."
+  },
+  "verification": [
+    {
+      "seed": 42,
+      "metrics_sha256": "79baa48192fe8c383f8370489ff11922f8256383c39b5a2d8cf6905036e05dc0"
+    },
+    {
+      "seed": 43,
+      "metrics_sha256": "e45d0ffac6075182c2a10c4c26e4cba62225744f3a09c98a9500a20158b10b74"
+    },
+    {
+      "seed": 44,
+      "metrics_sha256": "18d8e001d351cb0c482af42d10364ffb687623c34928afd1dac9bb09cb897b26"
+    }
+  ],
+  "rows": [
+    {
+      "seed": 42,
+      "arm": "deterministic",
+      "selected_epoch": 18,
+      "energy_mae": 1.128260239969251,
+      "force_mae": 1.1309401786987616,
+      "joint_mse": 241.52943564579553
+    },
+    {
+      "seed": 42,
+      "arm": "edge_gaussian",
+      "selected_epoch": 19,
+      "energy_mae": 0.4600429968417597,
+      "force_mae": 1.2703891897798274,
+      "joint_mse": 299.51335379423523
+    },
+    {
+      "seed": 43,
+      "arm": "deterministic",
+      "selected_epoch": 18,
+      "energy_mae": 0.837350875799972,
+      "force_mae": 1.1331793188567567,
+      "joint_mse": 241.9561187831755
+    },
+    {
+      "seed": 43,
+      "arm": "edge_gaussian",
+      "selected_epoch": 19,
+      "energy_mae": 1.5506704892891854,
+      "force_mae": 1.3039809657309875,
+      "joint_mse": 321.8540941596289
+    },
+    {
+      "seed": 44,
+      "arm": "deterministic",
+      "selected_epoch": 19,
+      "energy_mae": 0.7145318108262612,
+      "force_mae": 1.0960876931732972,
+      "joint_mse": 229.08385254804907
+    },
+    {
+      "seed": 44,
+      "arm": "edge_gaussian",
+      "selected_epoch": 17,
+      "energy_mae": 0.4261972466336882,
+      "force_mae": 1.2766966688018873,
+      "joint_mse": 314.8431464797506
+    }
+  ],
+  "aggregate": {
+    "deterministic": {
+      "energy_mae": {
+        "mean": 0.8933809755318282,
+        "sample_sd": 0.21247901620454848
+      },
+      "force_mae": {
+        "mean": 1.120069063576272,
+        "sample_sd": 0.020798630531005804
+      },
+      "joint_mse": {
+        "mean": 237.5231356590067,
+        "sample_sd": 7.31174665829596
+      }
+    },
+    "edge_gaussian": {
+      "energy_mae": {
+        "mean": 0.8123035775882111,
+        "sample_sd": 0.639668395282206
+      },
+      "force_mae": {
+        "mean": 1.2836889414375674,
+        "sample_sd": 0.017854152467899342
+      },
+      "joint_mse": {
+        "mean": 312.0701981445382,
+        "sample_sd": 11.425589782186318
+      }
+    }
+  },
+  "paired_differences_noise_minus_control": [
+    {
+      "seed": 42,
+      "energy_mae": -0.6682172431274913,
+      "force_mae": 0.13944901108106578,
+      "joint_mse": 57.9839181484397
+    },
+    {
+      "seed": 43,
+      "energy_mae": 0.7133196134892134,
+      "force_mae": 0.17080164687423083,
+      "joint_mse": 79.89797537645342
+    },
+    {
+      "seed": 44,
+      "energy_mae": -0.288334564192573,
+      "force_mae": 0.18060897562859002,
+      "joint_mse": 85.75929393170154
+    }
+  ],
+  "uncertainty": [
+    {
+      "seed": 42,
+      "energy_mae": 0.4600429968417597,
+      "force_mae": 1.2703891897798274,
+      "energy_mse": 0.34152845025279216,
+      "force_mse": 2.9917182534398243,
+      "uncertainty_available": true,
+      "energy_spearman": 0.12437697437697436,
+      "force_spearman": 0.347016497016497,
+      "rejection": [
+        {
+          "reject_fraction": 0.0,
+          "retained_count": 111,
+          "force_mae": 1.2703891897798278,
+          "random_mean": 1.2703891897798274,
+          "random_p05": 1.2703891897798272,
+          "random_p95": 1.2703891897798278
+        },
+        {
+          "reject_fraction": 0.1,
+          "retained_count": 99,
+          "force_mae": 1.2579443841655045,
+          "random_mean": 1.2714712033223021,
+          "random_p05": 1.2504649124269183,
+          "random_p95": 1.2882605727812113
+        },
+        {
+          "reject_fraction": 0.2,
+          "retained_count": 88,
+          "force_mae": 1.222245238932741,
+          "random_mean": 1.2707822457241735,
+          "random_p05": 1.2468346300602962,
+          "random_p95": 1.2938268681498646
+        },
+        {
+          "reject_fraction": 0.3,
+          "retained_count": 77,
+          "force_mae": 1.1912936585404992,
+          "random_mean": 1.2711521804053514,
+          "random_p05": 1.2289394412372552,
+          "random_p95": 1.3063063171869307
+        }
+      ],
+      "raw_energy_sample_interval_coverage": [
+        {
+          "nominal": 0.5,
+          "observed": 0.9279279279279279,
+          "mean_width": 2.080200800487587
+        },
+        {
+          "nominal": 0.8,
+          "observed": 1.0,
+          "mean_width": 3.7696385651021393
+        },
+        {
+          "nominal": 0.9,
+          "observed": 1.0,
+          "mean_width": 4.719638685009501
+        }
+      ],
+      "raw_interval_coverage_gap": 0.2426426426426426,
+      "same_retained_subset": {
+        "deterministic": 1.053853547677757,
+        "edge_gaussian": 1.1912936585404994
+      },
+      "retained_count": 77
+    },
+    {
+      "seed": 43,
+      "energy_mae": 1.5506704892891854,
+      "force_mae": 1.3039809657309875,
+      "energy_mse": 2.691221412081545,
+      "force_mse": 3.1916287274754738,
+      "uncertainty_available": true,
+      "energy_spearman": 0.04568269568269569,
+      "force_spearman": 0.35492277992277993,
+      "rejection": [
+        {
+          "reject_fraction": 0.0,
+          "retained_count": 111,
+          "force_mae": 1.3039809657309875,
+          "random_mean": 1.3039809657309878,
+          "random_p05": 1.303980965730987,
+          "random_p95": 1.303980965730988
+        },
+        {
+          "reject_fraction": 0.1,
+          "retained_count": 99,
+          "force_mae": 1.2901156077008475,
+          "random_mean": 1.3043436305627205,
+          "random_p05": 1.2818811412934876,
+          "random_p95": 1.3245998178061222
+        },
+        {
+          "reject_fraction": 0.2,
+          "retained_count": 88,
+          "force_mae": 1.2613346383783233,
+          "random_mean": 1.3042335841249788,
+          "random_p05": 1.2759921723359036,
+          "random_p95": 1.332632402018496
+        },
+        {
+          "reject_fraction": 0.3,
+          "retained_count": 77,
+          "force_mae": 1.2168415892833844,
+          "random_mean": 1.3025876922897088,
+          "random_p05": 1.2666997400201652,
+          "random_p95": 1.3337030500050602
+        }
+      ],
+      "raw_energy_sample_interval_coverage": [
+        {
+          "nominal": 0.5,
+          "observed": 0.16216216216216217,
+          "mean_width": 2.1008616049547455
+        },
+        {
+          "nominal": 0.8,
+          "observed": 0.6756756756756757,
+          "mean_width": 3.8066585158442603
+        },
+        {
+          "nominal": 0.9,
+          "observed": 0.9099099099099099,
+          "mean_width": 4.77502277289425
+        }
+      ],
+      "raw_interval_coverage_gap": 0.15735735735735737,
+      "same_retained_subset": {
+        "deterministic": 1.0565367051490508,
+        "edge_gaussian": 1.2168415892833844
+      },
+      "retained_count": 77
+    },
+    {
+      "seed": 44,
+      "energy_mae": 0.4261972466336882,
+      "force_mae": 1.2766966688018873,
+      "energy_mse": 0.3504031376408488,
+      "force_mse": 3.1449274334210977,
+      "uncertainty_available": true,
+      "energy_spearman": 0.11925236925236925,
+      "force_spearman": 0.3751316251316251,
+      "rejection": [
+        {
+          "reject_fraction": 0.0,
+          "retained_count": 111,
+          "force_mae": 1.276696668801887,
+          "random_mean": 1.2766966688018875,
+          "random_p05": 1.276696668801887,
+          "random_p95": 1.2766966688018877
+        },
+        {
+          "reject_fraction": 0.1,
+          "retained_count": 99,
+          "force_mae": 1.2502293217923472,
+          "random_mean": 1.2769262053738155,
+          "random_p05": 1.251985681478902,
+          "random_p95": 1.2972466592596192
+        },
+        {
+          "reject_fraction": 0.2,
+          "retained_count": 88,
+          "force_mae": 1.233300208393122,
+          "random_mean": 1.2768687578285214,
+          "random_p05": 1.248780357466505,
+          "random_p95": 1.3065061056884
+        },
+        {
+          "reject_fraction": 0.3,
+          "retained_count": 77,
+          "force_mae": 1.1947617902883096,
+          "random_mean": 1.2761916128312527,
+          "random_p05": 1.235389739531798,
+          "random_p95": 1.3213457292580135
+        }
+      ],
+      "raw_energy_sample_interval_coverage": [
+        {
+          "nominal": 0.5,
+          "observed": 0.9279279279279279,
+          "mean_width": 2.156901891704078
+        },
+        {
+          "nominal": 0.8,
+          "observed": 1.0,
+          "mean_width": 3.9258693623113206
+        },
+        {
+          "nominal": 0.9,
+          "observed": 1.0,
+          "mean_width": 4.914178639435553
+        }
+      ],
+      "raw_interval_coverage_gap": 0.2426426426426426,
+      "same_retained_subset": {
+        "deterministic": 1.0245257981741749,
+        "edge_gaussian": 1.1947617902883099
+      },
+      "retained_count": 77
+    }
+  ],
+  "test_evaluated": false
+}

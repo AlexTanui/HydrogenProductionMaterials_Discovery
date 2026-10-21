@@ -1,0 +1,396 @@
+{
+  "legacy_recomputed": [
+    {
+      "seed": 42,
+      "n_frames": 111,
+      "arms": {
+        "deterministic": {
+          "energy_mae": 1.128260239969251,
+          "force_mae": 1.1309401786987616,
+          "energy_mse": 1.5016710007043415,
+          "force_mse": 2.400277646450912,
+          "uncertainty_available": false,
+          "mc_samples": 1,
+          "max_energy_mc_std": null,
+          "prediction_sha256": "c21c3e369e22df0f66702ccc68402838362221bc27c81e4660cafbaa60779e02"
+        },
+        "edge_gaussian": {
+          "energy_mae": 0.4600429968417597,
+          "force_mae": 1.2703891897798274,
+          "energy_mse": 0.34152845025279216,
+          "force_mse": 2.9917182534398243,
+          "uncertainty_available": true,
+          "energy_spearman": 0.12437697437697436,
+          "force_spearman": 0.347016497016497,
+          "rejection": [
+            {
+              "reject_fraction": 0,
+              "retained_count": 111,
+              "force_mae": 1.2703891897798278,
+              "random_mean": 1.2703891897798274,
+              "random_p05": 1.2703891897798272,
+              "random_p95": 1.2703891897798278
+            },
+            {
+              "reject_fraction": 0.1,
+              "retained_count": 99,
+              "force_mae": 1.2579443841655045,
+              "random_mean": 1.2727617937920406,
+              "random_p05": 1.2542411501432977,
+              "random_p95": 1.2901147928794887
+            },
+            {
+              "reject_fraction": 0.2,
+              "retained_count": 88,
+              "force_mae": 1.222245238932741,
+              "random_mean": 1.273310864002519,
+              "random_p05": 1.2455831105312742,
+              "random_p95": 1.2979158474151233
+            },
+            {
+              "reject_fraction": 0.3,
+              "retained_count": 77,
+              "force_mae": 1.1912936585404992,
+              "random_mean": 1.2746519249056025,
+              "random_p05": 1.2401450677034975,
+              "random_p95": 1.307973816741447
+            }
+          ],
+          "raw_energy_sample_interval_coverage": [
+            {
+              "nominal": 0.5,
+              "observed": 0.9279279279279279,
+              "mean_width": 2.080200800487587
+            },
+            {
+              "nominal": 0.8,
+              "observed": 1.0,
+              "mean_width": 3.7696385651021393
+            },
+            {
+              "nominal": 0.9,
+              "observed": 1.0,
+              "mean_width": 4.719638685009501
+            }
+          ],
+          "raw_interval_coverage_gap": 0.2426426426426426,
+          "mc_samples": 32,
+          "max_energy_mc_std": 2.080466079583384,
+          "prediction_sha256": "0330661abbf21dbcb177b4f80c0c7eb64099ceada8dc30a1143556c823c49f23"
+        }
+      },
+      "force_mae_increase_percent": 12.330361384941968,
+      "alignment": "Shapes/order-producing code checked; prediction archive has no frame IDs, so independent ID matching is unavailable."
+    },
+    {
+      "seed": 43,
+      "n_frames": 111,
+      "arms": {
+        "deterministic": {
+          "energy_mae": 0.837350875799972,
+          "force_mae": 1.1331793188567567,
+          "energy_mse": 0.8208325039203695,
+          "force_mse": 2.411352862792551,
+          "uncertainty_available": false,
+          "mc_samples": 1,
+          "max_energy_mc_std": null,
+          "prediction_sha256": "0df8482ffe07bb40e17f3f6126ec2d9b976d4d99e954b346d7048940efd3a7f4"
+        },
+        "edge_gaussian": {
+          "energy_mae": 1.5506704892891854,
+          "force_mae": 1.3039809657309875,
+          "energy_mse": 2.691221412081545,
+          "force_mse": 3.1916287274754738,
+          "uncertainty_available": true,
+          "energy_spearman": 0.04568269568269569,
+          "force_spearman": 0.35492277992277993,
+          "rejection": [
+            {
+              "reject_fraction": 0,
+              "retained_count": 111,
+              "force_mae": 1.3039809657309875,
+              "random_mean": 1.3039809657309878,
+              "random_p05": 1.303980965730987,
+              "random_p95": 1.303980965730988
+            },
+            {
+              "reject_fraction": 0.1,
+              "retained_count": 99,
+              "force_mae": 1.2901156077008475,
+              "random_mean": 1.3057793406202032,
+              "random_p05": 1.2884238787969329,
+              "random_p95": 1.3258920395182519
+            },
+            {
+              "reject_fraction": 0.2,
+              "retained_count": 88,
+              "force_mae": 1.2613346383783233,
+              "random_mean": 1.3047056263169492,
+              "random_p05": 1.2735064087211494,
+              "random_p95": 1.3316211883110673
+            },
+            {
+              "reject_fraction": 0.3,
+              "retained_count": 77,
+              "force_mae": 1.2168415892833844,
+              "random_mean": 1.3098574201241535,
+              "random_p05": 1.2605777210195357,
+              "random_p95": 1.3466525224428543
+            }
+          ],
+          "raw_energy_sample_interval_coverage": [
+            {
+              "nominal": 0.5,
+              "observed": 0.16216216216216217,
+              "mean_width": 2.1008616049547455
+            },
+            {
+              "nominal": 0.8,
+              "observed": 0.6756756756756757,
+              "mean_width": 3.8066585158442603
+            },
+            {
+              "nominal": 0.9,
+              "observed": 0.9099099099099099,
+              "mean_width": 4.77502277289425
+            }
+          ],
+          "raw_interval_coverage_gap": 0.15735735735735737,
+          "mc_samples": 32,
+          "max_energy_mc_std": 2.1075342320865262,
+          "prediction_sha256": "240c966db8539b2a5aa77077d1e1a29236ff056ff323d200a7e78cb6c0a96216"
+        }
+      },
+      "force_mae_increase_percent": 15.072781865322904,
+      "alignment": "Shapes/order-producing code checked; prediction archive has no frame IDs, so independent ID matching is unavailable."
+    },
+    {
+      "seed": 44,
+      "n_frames": 111,
+      "arms": {
+        "deterministic": {
+          "energy_mae": 0.7145318108262612,
+          "force_mae": 1.0960876931732972,
+          "energy_mse": 0.6063871946951633,
+          "force_mse": 2.284774653533539,
+          "uncertainty_available": false,
+          "mc_samples": 1,
+          "max_energy_mc_std": null,
+          "prediction_sha256": "e40573ead1502ff3426a58921dd35b340f58341796a53f6b766555c6e228f366"
+        },
+        "edge_gaussian": {
+          "energy_mae": 0.4261972466336882,
+          "force_mae": 1.2766966688018873,
+          "energy_mse": 0.3504031376408488,
+          "force_mse": 3.1449274334210977,
+          "uncertainty_available": true,
+          "energy_spearman": 0.11925236925236925,
+          "force_spearman": 0.3751316251316251,
+          "rejection": [
+            {
+              "reject_fraction": 0,
+              "retained_count": 111,
+              "force_mae": 1.276696668801887,
+              "random_mean": 1.2766966688018877,
+              "random_p05": 1.2766966688018868,
+              "random_p95": 1.2766966688018877
+            },
+            {
+              "reject_fraction": 0.1,
+              "retained_count": 99,
+              "force_mae": 1.2502293217923472,
+              "random_mean": 1.2783499490456989,
+              "random_p05": 1.2542515805759737,
+              "random_p95": 1.296685053566328
+            },
+            {
+              "reject_fraction": 0.2,
+              "retained_count": 88,
+              "force_mae": 1.233300208393122,
+              "random_mean": 1.2783704427352003,
+              "random_p05": 1.2494852897001019,
+              "random_p95": 1.3060115615219825
+            },
+            {
+              "reject_fraction": 0.3,
+              "retained_count": 77,
+              "force_mae": 1.1947617902883096,
+              "random_mean": 1.2804747145130335,
+              "random_p05": 1.2402298988550464,
+              "random_p95": 1.3177234588912865
+            }
+          ],
+          "raw_energy_sample_interval_coverage": [
+            {
+              "nominal": 0.5,
+              "observed": 0.9279279279279279,
+              "mean_width": 2.156901891704078
+            },
+            {
+              "nominal": 0.8,
+              "observed": 1.0,
+              "mean_width": 3.9258693623113206
+            },
+            {
+              "nominal": 0.9,
+              "observed": 1.0,
+              "mean_width": 4.914178639435553
+            }
+          ],
+          "raw_interval_coverage_gap": 0.2426426426426426,
+          "mc_samples": 32,
+          "max_energy_mc_std": 2.1808291879736443,
+          "prediction_sha256": "c3af693a70aa9e8f1e0cc67575ed5a94985a724530542c88fcb21a936e4e93b2"
+        }
+      },
+      "force_mae_increase_percent": 16.477602727725802,
+      "alignment": "Shapes/order-producing code checked; prediction archive has no frame IDs, so independent ID matching is unavailable."
+    }
+  ],
+  "phase2_blip_committed": {
+    "molecule": "ethanol",
+    "theory": "dft",
+    "units": {
+      "energy": "kcal/mol",
+      "length": "Ang",
+      "force": "kcal/mol/Ang"
+    },
+    "energy": {
+      "n": 55509,
+      "coverage": {
+        "50%": 0.038155974706804305,
+        "80%": 0.07537516438775695,
+        "90%": 0.09965951467329623,
+        "95%": 0.12343944225260768
+      },
+      "ece": 0.7033424759948836,
+      "spearman_uncertainty_error": 0.004669765842538918,
+      "risk_coverage": [
+        {
+          "coverage": 0.1,
+          "n": 5551,
+          "mae": 0.15568844577553595
+        },
+        {
+          "coverage": 0.2,
+          "n": 11102,
+          "mae": 0.15612262993154385
+        },
+        {
+          "coverage": 0.3,
+          "n": 16653,
+          "mae": 0.15825977301387137
+        },
+        {
+          "coverage": 0.4,
+          "n": 22204,
+          "mae": 0.15735938625923257
+        },
+        {
+          "coverage": 0.5,
+          "n": 27754,
+          "mae": 0.15737202295164662
+        },
+        {
+          "coverage": 0.6,
+          "n": 33305,
+          "mae": 0.1569117343491968
+        },
+        {
+          "coverage": 0.7,
+          "n": 38856,
+          "mae": 0.15728929412445955
+        },
+        {
+          "coverage": 0.8,
+          "n": 44407,
+          "mae": 0.1568428823158511
+        },
+        {
+          "coverage": 0.9,
+          "n": 49958,
+          "mae": 0.1574546056187197
+        },
+        {
+          "coverage": 1.0,
+          "n": 55509,
+          "mae": 0.15767136297717488
+        }
+      ],
+      "nll_gaussian": 20.28768905432324,
+      "crps_gaussian": 0.1429401229927418,
+      "sharpness_mean_std": 0.027596393459418826
+    },
+    "force": {
+      "n": 1498743,
+      "coverage": {
+        "50%": 0.0545096791110951,
+        "80%": 0.1032585306486836,
+        "90%": 0.1322381489021133,
+        "95%": 0.15707229324840882
+      },
+      "ece": 0.6757303370224248,
+      "spearman_uncertainty_error": 0.2730471382034822,
+      "risk_coverage": [
+        {
+          "coverage": 0.1,
+          "n": 149874,
+          "mae": 0.12534992402806774
+        },
+        {
+          "coverage": 0.2,
+          "n": 299749,
+          "mae": 0.13445379801127333
+        },
+        {
+          "coverage": 0.3,
+          "n": 449623,
+          "mae": 0.14124340978974584
+        },
+        {
+          "coverage": 0.4,
+          "n": 599497,
+          "mae": 0.14776697775356853
+        },
+        {
+          "coverage": 0.5,
+          "n": 749372,
+          "mae": 0.15475421512368512
+        },
+        {
+          "coverage": 0.6,
+          "n": 899246,
+          "mae": 0.1622150190696037
+        },
+        {
+          "coverage": 0.7,
+          "n": 1049120,
+          "mae": 0.17053242382130102
+        },
+        {
+          "coverage": 0.8,
+          "n": 1198994,
+          "mae": 0.18009311905513395
+        },
+        {
+          "coverage": 0.9,
+          "n": 1348869,
+          "mae": 0.19119670325740587
+        },
+        {
+          "coverage": 1.0,
+          "n": 1498743,
+          "mae": 0.20646554294358654
+        }
+      ],
+      "nll_gaussian": 81.38150693622745,
+      "crps_gaussian": 0.19439040060710414,
+      "sharpness_mean_std": 0.0230915115462123
+    }
+  },
+  "phase2_blip_nll": {
+    "status": "not present in fetched run records; no checkpoint/raw draws available; not evaluated"
+  },
+  "checks": "Finite values, saved-array shapes, target IDs unique; shared ECE formula agrees with committed summary. No retraining.",
+  "mean_paired_force_increase_percent": 14.62691532599689
+}
