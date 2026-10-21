@@ -376,6 +376,9 @@ def test_config_trains_saves_and_is_scored_at_absolute_energy(name, tiny_gold, t
     # BLIP included, since evaluate_checkpoint scores under a fixed seed.
     saved = json.loads((run_dir / "test_metrics.json").read_text(encoding="utf-8"))
     assert saved["seed"] == result["seed"]
+    # The eval MC sample count actually used (SCRUM-49): BLIP's own, null otherwise.
+    expected_mc = int(model.model.num_mc_samples) if model.supports_distribution else None
+    assert saved["num_mc_samples"] == result["num_mc_samples"] == expected_mc
     assert saved["benchmark_row"]["energy_mae"] == pytest.approx(row["energy_mae"], rel=1e-6)
     assert saved["benchmark_row"]["force_mae"] == pytest.approx(row["force_mae"], rel=1e-6)
 

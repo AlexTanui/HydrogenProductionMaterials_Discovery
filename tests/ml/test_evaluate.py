@@ -457,6 +457,72 @@ def test_scoring_leaves_the_callers_rng_untouched(noisy_checkpoint):
     assert torch.equal(torch.rand(3), expected)
 
 
+class UncountedMCToyModel(ToyModel):
+    """Scored as an MC distribution, like BLIP, but exposes no `num_mc_samples`."""
+
+    calls: list = []  # the num_mc_samples each predict_distribution call received
+
+    def predict_distribution(self, z, pos, edge_index, edge_attr, batch=None, num_mc_samples=None):
+        type(self).calls.append(num_mc_samples)
+        draws = [self.predict_energy_and_forces(z, pos, edge_index, edge_attr, batch)
+                 for _ in range(num_mc_samples or 4)]
+        energies = torch.stack([e + torch.randn_like(e) for e, _ in draws])
+        forces = torch.stack([f for _, f in draws])
+        return energies.mean(0), energies.var(0), forces.mean(0), forces.var(0) + 1e-6
+
+
+class MCToyModel(UncountedMCToyModel):
+    def __init__(self, weight: float = 0.5, num_mc_samples: int = 3) -> None:
+        super().__init__(weight)
+        self.num_mc_samples = num_mc_samples
+
+    def config(self) -> dict:
+        return {**super().config(), "num_mc_samples": self.num_mc_samples}
+
+
+@pytest.fixture
+def mc_checkpoint(tmp_path, gold_file):
+    """factory(model) -> a saved checkpoint of that MC toy model, registered for the test."""
+    registered = []
+
+    def save(model):
+        phase = type(model).__name__.lower()
+        MODEL_REGISTRY[phase] = type(model)
+        registered.append(phase)
+        path = tmp_path / f"{phase}.pt"
+        save_checkpoint(path, ScaledEnergyModel(model), phase,
+                        data={"gold_path": str(gold_file), "molecule": "toy", "theory": "dft",
+                              "cutoff_radius": 5.0, "num_rbf": 16})
+        return path
+
+    yield save
+    for phase in registered:
+        MODEL_REGISTRY.pop(phase, None)
+
+
+def test_the_mc_sample_count_used_is_recorded(mc_checkpoint):
+    """SCRUM-49: every stochastic run in a table must share one eval MC count,
+    so the record states the count actually passed to predict_distribution."""
+    MCToyModel.calls = []
+    result = evaluate_checkpoint(mc_checkpoint(MCToyModel(num_mc_samples=3)), batch_size=4)
+    assert result["num_mc_samples"] == 3
+    assert MCToyModel.calls and set(MCToyModel.calls) == {3}
+    assert result["metrics"]["per_key"][0]["stochastic"] is True
+    assert json.loads(json.dumps(result))["num_mc_samples"] == 3
+
+
+def test_a_deterministic_model_records_no_mc_sample_count(checkpoint):
+    assert evaluate_checkpoint(checkpoint, batch_size=4)["num_mc_samples"] is None
+
+
+def test_a_distribution_model_without_a_count_is_scored_with_a_warning(mc_checkpoint):
+    UncountedMCToyModel.calls = []
+    result = evaluate_checkpoint(mc_checkpoint(UncountedMCToyModel()), batch_size=4)
+    assert result["num_mc_samples"] is None
+    assert set(UncountedMCToyModel.calls) == {None}  # the model's own default ran
+    assert any("no num_mc_samples" in warning for warning in result["warnings"])
+
+
 # --------------------------------------------------------------------------
 # 7. The scoring-data fingerprint
 # --------------------------------------------------------------------------

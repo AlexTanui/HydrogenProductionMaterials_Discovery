@@ -420,13 +420,28 @@ def test_markdown_names_the_protocol_keys_that_were_not_checked(tmp_path):
         assert key in claim, key
 
 
-@pytest.mark.xfail(strict=True, reason="pre-dates 48f10a4: the eval MC sample count is only in model_config, "
-                                       "which protocol_signature doesn't compare")
 def test_runs_scored_with_different_mc_sample_counts_are_refused(tmp_path):
-    # CLAUDE.md: same MC sample count across phases. evaluate.py uses the
-    # model's own num_mc_samples, recorded only under config.model / model_config.
+    # CLAUDE.md: same MC sample count across phases. evaluate.py records
+    # the count it actually used as test_metrics.json["num_mc_samples"].
     for name, n in (("a_blip", 20), ("b_blip", 5)):
-        _write_run(tmp_path, name, run_changes={"config.model": {"phase": "blip", "num_mc_samples": n}},
-                   test_changes={"model_config": {"num_mc_samples": n}})
-    with pytest.raises(ProtocolMismatch, match="num_mc_samples"):
+        _write_run(tmp_path, name, test_changes={"num_mc_samples": n})
+    with pytest.raises(ProtocolMismatch, match=r"num_mc_samples differs between stochastic runs \(a_blip=20, b_blip=5\)"):
         build(tmp_path)
+
+
+def test_a_deterministic_run_is_not_compared_on_mc_sample_count(tmp_path):
+    _write_run(tmp_path, "a_mpnn", test_changes={"num_mc_samples": None})
+    _write_run(tmp_path, "b_blip", test_changes={"num_mc_samples": 20})
+    _write_run(tmp_path, "c_blip", test_changes={"num_mc_samples": 20})
+    _, _, rows = build(tmp_path)
+    assert [row["run"] for row in rows] == ["a_mpnn", "b_blip", "c_blip"]
+
+
+def test_a_stochastic_run_with_no_recorded_mc_sample_count_is_refused(tmp_path):
+    # e.g. phase2_blip, scored before evaluate.py recorded the count.
+    path = _write_run(tmp_path, "a")
+    test = json.loads((path / "test_metrics.json").read_text(encoding="utf-8"))
+    test["metrics"]["per_key"][0]["stochastic"] = True
+    (path / "test_metrics.json").write_text(json.dumps(test), encoding="utf-8")
+    with pytest.raises(ValueError, match="a: scored as a distribution, but .* no eval MC sample count"):
+        load_runs(tmp_path)

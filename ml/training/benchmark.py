@@ -35,7 +35,10 @@ must match the first on all of:
 - the test scoring: split, molecule, theory, frame count, seed and batch
   size, and the **scoring-data fingerprint** (sha256 of the test indices
   and of z, R, E, F at them, recorded by evaluate.py), so a different gold
-  file of the same size cannot pass.
+  file of the same size cannot pass;
+- the eval MC sample count (`test_metrics.json["num_mc_samples"]`), across
+  the runs scored as a distribution only - a deterministic run has none,
+  and that is not a mismatch (CLAUDE.md; SCRUM-49 sets the value).
 
 Any remaining difference raises `ProtocolMismatch` naming the run and the
 setting. Runs that are not complete, reportable test-split results are
@@ -193,6 +196,12 @@ def load_runs(runs_dir: Path = RUNS_DIR, name_prefix: str = "") -> list[RunResul
                 f"{path.name}: test_metrics.json has no scoring-data fingerprint, so the data it was "
                 "scored on cannot be checked. Re-score it: python scripts/fingerprint_run_records.py"
             )
+        if test["metrics"]["per_key"][0].get("stochastic") and test.get("num_mc_samples") is None:
+            raise ValueError(
+                f"{path.name}: scored as a distribution, but test_metrics.json records no eval MC "
+                "sample count, so it cannot be checked against other stochastic runs (SCRUM-49). "
+                "Re-score it with the current evaluate.py."
+            )
         results.append(RunResult(path.name, path, run, test))
     return results
 
@@ -234,6 +243,16 @@ def check_same_protocol(results: list[RunResult]) -> dict[str, Any]:
                         f"{result.name}: {section}.{key} = {actual.get(key)!r}, but "
                         f"{results[0].name} has {expected.get(key)!r}"
                     )
+    # Not in protocol_signature: a deterministic run has no count, and that
+    # must not mismatch a stochastic one. Compared across the rest.
+    counts = {result.name: result.test.get("num_mc_samples") for result in results}
+    counts = {name: n for name, n in counts.items() if n is not None}
+    if len(set(counts.values())) > 1:
+        problems.append(
+            "test scoring.num_mc_samples differs between stochastic runs ("
+            + ", ".join(f"{name}={n}" for name, n in counts.items())
+            + ") - every stochastic run in one table must be scored with the same MC sample count"
+        )
     if problems:
         raise ProtocolMismatch(
             "these runs were not trained and scored under one protocol, so they cannot share "
