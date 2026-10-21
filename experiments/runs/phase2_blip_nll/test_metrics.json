@@ -1,0 +1,428 @@
+{
+  "schema_version": 1,
+  "checkpoint": "/Users/alextanui/Desktop/Hydrogen_production/experiments/checkpoints/phase2_blip_nll.pt",
+  "phase": "blip",
+  "model_config": {
+    "hidden_channels": 128,
+    "num_layers": 4,
+    "num_rbf": 50,
+    "cutoff": 5.0,
+    "num_mc_samples": 20,
+    "kl_weight": 0.01,
+    "train_num_mc_samples": 4,
+    "nll_warmup_epochs": 20
+  },
+  "energy_scaling": {
+    "shift_per_atom": -10799.53515625,
+    "scale_per_atom": 0.46550825238227844,
+    "unit": "kcal/mol",
+    "formula": "E = scale * E_model + n_atoms * shift; F = scale * F_model"
+  },
+  "seed": 0,
+  "n_parameters": 740953,
+  "data": {
+    "gold_path": "/Users/alextanui/Desktop/Hydrogen_production/data/gold/md17/ethanol_dft.npz",
+    "split": "test",
+    "molecule": "ethanol",
+    "theory": "dft",
+    "fingerprint": {
+      "algorithm": "sha256",
+      "sha256": "518af6e3d57bdb884dcd51e785b7330469395da40990764d4771ff099a198839",
+      "parts": {
+        "indices": "44ea226fe2e90fef7ed715064c4ede195505acf333f057e0275dba2b697c87a2",
+        "z": "ebff5f2055015a1a66fd07870566c96fd188082f96307d44406870cc55975a68",
+        "R": "5b902376a65b695184e09ced4d02ecf63150ffe2aecf013357379d4099c8a31e",
+        "E": "a02f7fb7ed62dba736e1683a3c9f8579488710daaa06ba37f02131e59ef7b424",
+        "F": "351696c300405940e591a6326d52f1632e93b56fea4d5b04e1af4f2f5e0c36b7"
+      },
+      "dtypes": {
+        "indices": "int64",
+        "z": "int64",
+        "R": "float32",
+        "E": "float32",
+        "F": "float32"
+      },
+      "shapes": {
+        "indices": [
+          55509
+        ],
+        "z": [
+          9
+        ],
+        "R": [
+          55509,
+          9,
+          3
+        ],
+        "E": [
+          55509
+        ],
+        "F": [
+          55509,
+          9,
+          3
+        ]
+      }
+    },
+    "cutoff_radius": 5.0,
+    "num_rbf": 16,
+    "n_configs": 55509,
+    "n_atoms_per_config": 9
+  },
+  "metrics": {
+    "schema_version": 1,
+    "conventions": {
+      "energy_normalisation": [
+        "total",
+        "per_atom"
+      ],
+      "force_mode": [
+        "component",
+        "atom_norm"
+      ]
+    },
+    "per_key": [
+      {
+        "molecule": "ethanol",
+        "theory": "dft",
+        "n_frames": 55509,
+        "n_atoms": 499581,
+        "stochastic": true,
+        "units": {
+          "energy": "kcal/mol",
+          "length": "Ang",
+          "force": "kcal/mol/Ang"
+        },
+        "energy_mae_total": 0.1721901234484498,
+        "energy_rmse_total": 0.18895626227018655,
+        "energy_mae_per_atom": 0.019132235938716657,
+        "energy_rmse_per_atom": 0.02099514025224294,
+        "force_mae_component": 0.19495017234791243,
+        "force_rmse_component": 0.2979746992697946,
+        "force_mae_atom_norm": 0.38993825378768754,
+        "force_rmse_atom_norm": 0.516107318505341,
+        "fields": {
+          "energy_mae_total": {
+            "quantity": "energy",
+            "statistic": "mae",
+            "normalisation": "total",
+            "unit": "kcal/mol"
+          },
+          "energy_rmse_total": {
+            "quantity": "energy",
+            "statistic": "rmse",
+            "normalisation": "total",
+            "unit": "kcal/mol"
+          },
+          "energy_mae_per_atom": {
+            "quantity": "energy",
+            "statistic": "mae",
+            "normalisation": "per_atom",
+            "unit": "kcal/mol/atom"
+          },
+          "energy_rmse_per_atom": {
+            "quantity": "energy",
+            "statistic": "rmse",
+            "normalisation": "per_atom",
+            "unit": "kcal/mol/atom"
+          },
+          "force_mae_component": {
+            "quantity": "force",
+            "statistic": "mae",
+            "mode": "component",
+            "unit": "kcal/mol/Ang"
+          },
+          "force_rmse_component": {
+            "quantity": "force",
+            "statistic": "rmse",
+            "mode": "component",
+            "unit": "kcal/mol/Ang"
+          },
+          "force_mae_atom_norm": {
+            "quantity": "force",
+            "statistic": "mae",
+            "mode": "atom_norm",
+            "unit": "kcal/mol/Ang"
+          },
+          "force_rmse_atom_norm": {
+            "quantity": "force",
+            "statistic": "rmse",
+            "mode": "atom_norm",
+            "unit": "kcal/mol/Ang"
+          }
+        }
+      }
+    ],
+    "overall": {
+      "n_keys": 1,
+      "n_frames": 55509,
+      "n_atoms": 499581,
+      "keys": [
+        {
+          "molecule": "ethanol",
+          "theory": "dft"
+        }
+      ],
+      "units": {
+        "energy": "kcal/mol",
+        "length": "Ang",
+        "force": "kcal/mol/Ang"
+      },
+      "excluded": {},
+      "force_mae_component": 0.19495017234791243,
+      "force_rmse_component": 0.2979746992697946,
+      "force_mae_atom_norm": 0.38993825378768754,
+      "force_rmse_atom_norm": 0.516107318505341,
+      "energy_mae_total": 0.1721901234484498,
+      "energy_rmse_total": 0.18895626227018655,
+      "energy_mae_per_atom": 0.019132235938716657,
+      "energy_rmse_per_atom": 0.02099514025224294,
+      "fields": {
+        "energy_mae_total": {
+          "quantity": "energy",
+          "statistic": "mae",
+          "normalisation": "total",
+          "unit": "kcal/mol"
+        },
+        "energy_rmse_total": {
+          "quantity": "energy",
+          "statistic": "rmse",
+          "normalisation": "total",
+          "unit": "kcal/mol"
+        },
+        "energy_mae_per_atom": {
+          "quantity": "energy",
+          "statistic": "mae",
+          "normalisation": "per_atom",
+          "unit": "kcal/mol/atom"
+        },
+        "energy_rmse_per_atom": {
+          "quantity": "energy",
+          "statistic": "rmse",
+          "normalisation": "per_atom",
+          "unit": "kcal/mol/atom"
+        },
+        "force_mae_component": {
+          "quantity": "force",
+          "statistic": "mae",
+          "mode": "component",
+          "unit": "kcal/mol/Ang"
+        },
+        "force_rmse_component": {
+          "quantity": "force",
+          "statistic": "rmse",
+          "mode": "component",
+          "unit": "kcal/mol/Ang"
+        },
+        "force_mae_atom_norm": {
+          "quantity": "force",
+          "statistic": "mae",
+          "mode": "atom_norm",
+          "unit": "kcal/mol/Ang"
+        },
+        "force_rmse_atom_norm": {
+          "quantity": "force",
+          "statistic": "rmse",
+          "mode": "atom_norm",
+          "unit": "kcal/mol/Ang"
+        }
+      },
+      "stochastic": true
+    }
+  },
+  "uq_metrics": {
+    "schema_version": 1,
+    "distribution_assumption": "Normal(mean, variance) per frame (energy) / per component (force), from ModelOutput.E_var/F_var - provisional, see this module's docstring and SCRUM-39 for Dongxiao's sign-off",
+    "coverage_levels": [
+      0.5,
+      0.8,
+      0.9,
+      0.95
+    ],
+    "risk_coverage_levels": [
+      0.1,
+      0.2,
+      0.3,
+      0.4,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9,
+      1.0
+    ],
+    "per_key": [
+      {
+        "molecule": "ethanol",
+        "theory": "dft",
+        "units": {
+          "energy": "kcal/mol",
+          "length": "Ang",
+          "force": "kcal/mol/Ang"
+        },
+        "energy": {
+          "n": 55509,
+          "coverage": {
+            "50%": 0.007764506656578213,
+            "80%": 0.014105820677727936,
+            "90%": 0.018699670323731286,
+            "95%": 0.022518870813741917
+          },
+          "ece": 0.7717277828820551,
+          "spearman_uncertainty_error": 0.002576066837816982,
+          "risk_coverage": [
+            {
+              "coverage": 0.1,
+              "n": 5551,
+              "mae": 0.16988633804719872
+            },
+            {
+              "coverage": 0.2,
+              "n": 11102,
+              "mae": 0.1712275941271843
+            },
+            {
+              "coverage": 0.3,
+              "n": 16653,
+              "mae": 0.17148233426409656
+            },
+            {
+              "coverage": 0.4,
+              "n": 22204,
+              "mae": 0.17191124065483696
+            },
+            {
+              "coverage": 0.5,
+              "n": 27754,
+              "mae": 0.17159435351661023
+            },
+            {
+              "coverage": 0.6,
+              "n": 33305,
+              "mae": 0.17134134326677675
+            },
+            {
+              "coverage": 0.7,
+              "n": 38856,
+              "mae": 0.17233342340951205
+            },
+            {
+              "coverage": 0.8,
+              "n": 44407,
+              "mae": 0.17200307665458148
+            },
+            {
+              "coverage": 0.9,
+              "n": 49958,
+              "mae": 0.17217181182193042
+            },
+            {
+              "coverage": 1.0,
+              "n": 55509,
+              "mae": 0.1721901234484498
+            }
+          ],
+          "nll_gaussian": 117.66586232303331,
+          "crps_gaussian": 0.16510579599520023,
+          "sharpness_mean_std": 0.012692008822610257
+        },
+        "force": {
+          "n": 1498743,
+          "coverage": {
+            "50%": 0.022756403199214275,
+            "80%": 0.043004037383327226,
+            "90%": 0.05506147484925701,
+            "95%": 0.06558496019664478
+          },
+          "ece": 0.7408982810928892,
+          "spearman_uncertainty_error": 0.29963611290146513,
+          "risk_coverage": [
+            {
+              "coverage": 0.1,
+              "n": 149874,
+              "mae": 0.11313383910579229
+            },
+            {
+              "coverage": 0.2,
+              "n": 299749,
+              "mae": 0.12100869384878464
+            },
+            {
+              "coverage": 0.3,
+              "n": 449623,
+              "mae": 0.12784923522128655
+            },
+            {
+              "coverage": 0.4,
+              "n": 599497,
+              "mae": 0.1344186233861449
+            },
+            {
+              "coverage": 0.5,
+              "n": 749372,
+              "mae": 0.14119761438578834
+            },
+            {
+              "coverage": 0.6,
+              "n": 899246,
+              "mae": 0.14850981326627571
+            },
+            {
+              "coverage": 0.7,
+              "n": 1049120,
+              "mae": 0.15699140674290235
+            },
+            {
+              "coverage": 0.8,
+              "n": 1198994,
+              "mae": 0.16687142236508748
+            },
+            {
+              "coverage": 0.9,
+              "n": 1348869,
+              "mae": 0.17803428136359933
+            },
+            {
+              "coverage": 1.0,
+              "n": 1498743,
+              "mae": 0.19495017234791243
+            }
+          ],
+          "nll_gaussian": 483.5993639085038,
+          "crps_gaussian": 0.19002614995541978,
+          "sharpness_mean_std": 0.009001295370931287
+        }
+      }
+    ]
+  },
+  "timing": {
+    "eval_wall_clock_s": 637.687418290996,
+    "model_inference_s": 632.9777360017179,
+    "inference_s_per_config": 0.011403155091998015,
+    "wall_clock_s_per_config": 0.011488000473634834,
+    "batch_size": 32,
+    "n_batches": 1735,
+    "train_wall_clock_s": 13882.171565041994
+  },
+  "environment": {
+    "device": "cpu",
+    "torch": "2.13.0",
+    "torch_num_threads": 4,
+    "python": "3.11.9",
+    "platform": "macOS-14.4-arm64-arm-64bit"
+  },
+  "benchmark_row": {
+    "phase": "blip",
+    "model": "BLIP",
+    "energy_mae": 0.1721901234484498,
+    "energy_mae_field": "energy_mae_total",
+    "energy_mae_unit": "kcal/mol",
+    "force_mae": 0.19495017234791243,
+    "force_mae_field": "force_mae_component",
+    "force_mae_unit": "kcal/mol/Ang",
+    "ece": 0.7717277828820551,
+    "uncertainty_correlation": 0.002576066837816982,
+    "uncertainty_note": "computed under ml.utils.uq_metrics's provisional definition (Normal distribution assumed from E_var/F_var) - not yet Dongxiao's confirmed definition; see that module's docstring and SCRUM-39"
+  },
+  "warnings": []
+}
