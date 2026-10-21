@@ -108,6 +108,9 @@ def _write_run(runs_dir: Path, name: str, run_changes=None, test_changes=None) -
     ("run", "config.data.theory", "ccsd_t", "data.theory"),
     ("run", "config.data.gold_path", "data/gold/md17/ethanol_ccsd_t.npz", "data.gold_path"),
     ("run", "protocol.grad_clip_norm", 1.0, "training loop.grad_clip_norm"),
+    # Still must-match after 48f10a4 exempted MODEL_SPECIFIC_PROTOCOL_KEYS.
+    ("run", "protocol.optimizer.lr", 0.001, "training loop.optimizer"),
+    ("run", "protocol.force_loss_weight", 10.0, "training loop.force_loss_weight"),
     ("run", "subsets.train.gold_indices_sha256", "d" * 64, "train frames.sha256"),
     ("test", "seed", 1, "test scoring.seed"),
     ("test", "timing.batch_size", 1, "test scoring.batch_size"),
@@ -301,3 +304,116 @@ def test_main_writes_both_files(tmp_path):
     csv_text = out.with_suffix(".csv").read_text(encoding="utf-8")
     assert _assert_csv_reproduces_records(csv_text, runs) == 1
     assert out.with_suffix(".md").read_text(encoding="utf-8").startswith("# Phase 1 benchmark")
+
+
+# --------------------------------------------------------------------------
+# 3. Model-specific protocol keys (48f10a4, SCRUM-62 review)
+# --------------------------------------------------------------------------
+# xfail(strict=True) marks a defect the review found: the test states the
+# behaviour we want, so fixing the defect turns it into an XPASS failure
+# and the marker has to come off.
+
+# train.py's own protocol.loss text on the MSE path - what every real record carries.
+_MSE_LOSS = ("energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E, plus kl_weight * "
+             "model.kl_divergence() / n_batches when the model defines kl_weight (BLIP only; see "
+             "ml/models/blip.py)")
+
+
+def _md_cell(md_text: str, run: str, header: str) -> str:
+    """One cell of the main Markdown table (the first table row for `run`)."""
+    row = next(line for line in md_text.splitlines() if line.startswith(f"| {run} |"))
+    cells = [cell.strip() for cell in row.strip().strip("|").split("|")]
+    return cells[[h for _, h in benchmark.COLUMNS].index(header)]
+
+
+@pytest.mark.xfail(strict=True, reason="48f10a4 exempts protocol.loss as a whole, so the base loss is unchecked")
+@pytest.mark.parametrize("other_loss", [
+    # PhysNet's own trainer (ml/training/train_physnet.py) uses L1 - SCRUM-40.
+    _MSE_LOSS.replace("MSE(E)", "L1(E)").replace("MSE(F)", "L1(F)"),
+    _MSE_LOSS.replace("absolute E", "per-atom E"),
+], ids=["l1", "per_atom"])
+def test_a_different_base_loss_is_refused(tmp_path, other_loss):
+    _write_run(tmp_path, "a_reference", run_changes={"protocol.loss": _MSE_LOSS})
+    _write_run(tmp_path, "b_different", run_changes={"protocol.loss": other_loss})
+    with pytest.raises(ProtocolMismatch, match=r"b_different: training loop.loss ="):
+        build(tmp_path)
+
+
+def test_a_run_recorded_before_the_nll_hooks_shares_a_table_with_one_after(tmp_path):
+    # The phase1_* records predate train_num_mc_samples/nll_warmup_epochs
+    # (3fe964c); a model retrained today records them at their "off" values.
+    # Retraining one model must not force a retrain of the rest.
+    _write_run(tmp_path, "a_old", run_changes={"protocol.loss": _MSE_LOSS, "protocol.kl_weight": 0.0})
+    _write_run(tmp_path, "b_new", run_changes={"protocol.loss": _MSE_LOSS, "protocol.kl_weight": 0.0,
+                                               "protocol.train_num_mc_samples": 1,
+                                               "protocol.nll_warmup_epochs": 0})
+    csv_text, _, rows = build(tmp_path)
+    assert [row["run"] for row in rows] == ["a_old", "b_new"]
+    # Copied from the records, not normalised: absent -> blank, recorded -> its value.
+    cells = {row["run"]: row for row in csv.DictReader(io.StringIO(csv_text))}
+    assert (cells["a_old"]["train_num_mc_samples"], cells["a_old"]["nll_warmup_epochs"]) == ("", "")
+    assert (cells["b_new"]["train_num_mc_samples"], cells["b_new"]["nll_warmup_epochs"]) == ("1", "0")
+
+
+def test_mpnn_and_blip_with_different_kl_weights_share_a_table(tmp_path):
+    _write_run(tmp_path, "phase1_baseline", run_changes={"model": "MPNN", "phase": "mpnn",
+                                                         "protocol.kl_weight": 0.0})
+    _write_run(tmp_path, "phase2_blip", run_changes={"model": "BLIP", "phase": "blip",
+                                                     "protocol.kl_weight": 0.01})
+    csv_text, md_text, _ = build(tmp_path)
+    cells = {row["run"]: row for row in csv.DictReader(io.StringIO(csv_text))}
+    assert float(cells["phase1_baseline"]["kl_weight"]) == 0.0
+    assert float(cells["phase2_blip"]["kl_weight"]) == 0.01
+    assert _md_cell(md_text, "phase1_baseline", "KL weight") == "0.0000"
+    assert _md_cell(md_text, "phase2_blip", "KL weight") == "0.0100"
+
+
+@pytest.mark.xfail(strict=True, reason="_md_value's 4-dp float format prints a kl_weight below 5e-5 as 0.0000")
+def test_a_small_kl_weight_is_distinguishable_from_zero_in_the_markdown(tmp_path):
+    _write_run(tmp_path, "a", run_changes={"protocol.kl_weight": 0.0})
+    _write_run(tmp_path, "b", run_changes={"protocol.kl_weight": 1e-5})
+    _, md_text, _ = build(tmp_path)
+    assert _md_cell(md_text, "a", "KL weight") != _md_cell(md_text, "b", "KL weight")
+
+
+@pytest.mark.xfail(strict=True, reason="a protocol key in neither list silently becomes must-match (SCRUM-61 trap)")
+def test_an_unclassified_protocol_key_is_refused_with_a_message_to_classify_it(tmp_path):
+    # A future per-model hook that train.py records but nobody adds to
+    # MODEL_SPECIFIC_PROTOCOL_KEYS: today the old record clashes with the
+    # new one on values, which reads like a real protocol difference.
+    _write_run(tmp_path, "a_old")
+    _write_run(tmp_path, "b_new", run_changes={"protocol.ensemble_size": 1})
+    with pytest.raises(ValueError, match=r"ensemble_size.*classif"):
+        build(tmp_path)
+
+
+@pytest.mark.xfail(strict=True, reason="loss is exempt, so a run with no recorded loss is tabulated, not refused")
+def test_a_run_with_no_recorded_loss_is_refused(tmp_path):
+    _write_run(tmp_path, "a")
+    path = _write_run(tmp_path, "b")
+    run = json.loads((path / "run.json").read_text(encoding="utf-8"))
+    del run["protocol"]["loss"]
+    (path / "run.json").write_text(json.dumps(run), encoding="utf-8")
+    with pytest.raises(ProtocolMismatch, match=r"b: training loop.loss = None"):
+        build(tmp_path)
+
+
+@pytest.mark.xfail(strict=True, reason="the 'checked to share one protocol' line doesn't name the exempt keys")
+def test_markdown_names_the_protocol_keys_that_were_not_checked(tmp_path):
+    _write_run(tmp_path, "a")
+    _, md_text, _ = build(tmp_path)
+    claim = next(line for line in md_text.splitlines() if "checked to share one protocol" in line)
+    for key in benchmark.MODEL_SPECIFIC_PROTOCOL_KEYS:
+        assert key in claim, key
+
+
+@pytest.mark.xfail(strict=True, reason="pre-dates 48f10a4: the eval MC sample count is only in model_config, "
+                                       "which protocol_signature doesn't compare")
+def test_runs_scored_with_different_mc_sample_counts_are_refused(tmp_path):
+    # CLAUDE.md: same MC sample count across phases. evaluate.py uses the
+    # model's own num_mc_samples, recorded only under config.model / model_config.
+    for name, n in (("a_blip", 20), ("b_blip", 5)):
+        _write_run(tmp_path, name, run_changes={"config.model": {"phase": "blip", "num_mc_samples": n}},
+                   test_changes={"model_config": {"num_mc_samples": n}})
+    with pytest.raises(ProtocolMismatch, match="num_mc_samples"):
+        build(tmp_path)
