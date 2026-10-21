@@ -39,7 +39,9 @@ must match the first on all of:
 
 Any remaining difference raises `ProtocolMismatch` naming the run and the
 setting. Runs that are not complete, reportable test-split results are
-refused too.
+refused too, and so are runs not trained from a clean commit (`git_dirty`
+must be false): accepted results must come from one (SCRUM-48), or the
+recorded commit does not fully describe the run.
 
 Numbers are copied from the records, never recomputed: the CSV keeps them
 at full precision (so tests can check them exactly), the Markdown rounds
@@ -165,6 +167,12 @@ def load_runs(runs_dir: Path = RUNS_DIR, name_prefix: str = "") -> list[RunResul
             raise ValueError(
                 f"{path.name}: status={run.get('status')!r}, reportable={run.get('reportable')!r}. "
                 "Only complete, reportable runs go in a benchmark table."
+            )
+        if run.get("git_dirty") is not False:
+            # True, or None (git unavailable): either way, no clean commit on record.
+            raise ValueError(
+                f"{path.name}: git_dirty={run.get('git_dirty')!r} at commit {str(run.get('git_commit'))[:7]}. "
+                "Accepted results must come from a clean commit (SCRUM-48) - retrain it from one."
             )
         test_path = path / "test_metrics.json"
         if not test_path.is_file():

@@ -147,6 +147,9 @@ def test_runs_under_one_protocol_are_tabulated(tmp_path):
     ({}, {"data.split": "val"}, "not the test split"),
     ({}, {"metrics.per_key.0.units.energy": "eV"}, "kcal/mol"),
     ({"n_parameters": 11}, {}, "parameter count"),
+    # SCRUM-48: accepted results come from a clean commit; None means git couldn't say.
+    ({"git_dirty": True}, {}, "a: git_dirty=True .*clean commit"),
+    ({"git_dirty": None}, {}, "a: git_dirty=None .*clean commit"),
 ])
 def test_records_that_are_not_comparable_results_are_refused(tmp_path, run_changes, test_changes, match):
     if test_changes.get("metrics.per_key.0.units.energy"):
