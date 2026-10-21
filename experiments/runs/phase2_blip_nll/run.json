@@ -95,7 +95,11 @@
     "formula": "E = scale * E_model + n_atoms * shift; F = scale * F_model"
   },
   "protocol": {
-    "loss": "Gaussian NLL(E) + Gaussian NLL(F) on the train_num_mc_samples-sample mean/variance from predict_training_distribution, weighted by energy_loss_weight/force_loss_weight, plus kl_weight * model.kl_divergence() / n_batches when the model defines kl_weight (BLIP only; see ml/models/blip.py)",
+    "loss": "energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E, plus kl_weight * model.kl_divergence() / n_batches when the model defines kl_weight (BLIP only; see ml/models/blip.py)",
+    "loss_override": "after nll_warmup_epochs epochs of the base loss, Gaussian NLL(E) + Gaussian NLL(F) on the train_num_mc_samples-sample mean/variance from predict_training_distribution replace the MSE terms, weighted by energy_loss_weight/force_loss_weight; variance floor (added, not clamped) = the last warmup epoch's validation MSE, or 1e-6 with no warmup; best-val selection and the LR scheduler reset at the first NLL epoch",
+    "nll_min_energy_var": 21.781623257193594,
+    "nll_min_force_var": 7.361692723195264,
+    "nll_min_var_epoch": 20,
     "energy_loss_weight": 1.0,
     "force_loss_weight": 100.0,
     "kl_weight": 0.01,
