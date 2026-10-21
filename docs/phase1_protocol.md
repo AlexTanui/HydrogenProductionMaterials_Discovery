@@ -31,10 +31,10 @@ the six configs' `data:` and `train:` blocks drift apart.
 | Epochs and early stopping | Up to 200 epochs; stop after 20 without val improvement; keep the lowest-val-loss checkpoint | Model selection sees the val subset only, never test. |
 | Batch | 32 | The glossary §6 default, the same for every model; SchNet's earlier batch of 256 was dropped for parity. |
 | Seeds and batch order | `torch.manual_seed(42)` before the model is built; training batches shuffled by their own `torch.Generator(42)` | Every model sees the same batches in the same order, however much of the global RNG its initialisation consumes. |
-| Hardware | CPU only: Intel64 Family 6 Model 198, 24 torch threads; torch 2.13.0+cpu, PyG 2.8.0.post1, Python 3.11.9, Windows 10.0.26200 | Recorded in every run record. Wall-clock times are comparable only on this machine, and its speed varied by about 2× between sessions on 15–16 Oct. |
+| Hardware | CPU only: Apple arm64, macOS 14.4, 4 torch threads; torch 2.13.0, PyG 2.8.0.post1, Python 3.11.9 | Recorded in every run record. All five runs trained on this machine on 18–19 Oct (UTC), so their wall-clock times are comparable with each other only. The first v1 runs (15–16 Oct) used a 24-thread Windows x86 CPU. |
 | Test scoring | Once per model, after training, by `ml/training/evaluate.py`: all 55,509 test frames, batch 32, RNG seed 0 | Training never opens the test split. The fixed seed makes a stochastic model's score reproducible; deterministic models are unaffected. |
 | Scoring-data fingerprint | Every score records sha256 of the test indices and of z, R, E, F at them; all five runs share `518af6e3…` | Molecule, theory and frame count cannot tell a different gold file of the same size apart; `benchmark.py` refuses runs whose fingerprints differ. |
-| Provenance | Each run records its git commit and a dirty-tree flag; every run was clean. SchNet, MPNN, PaiNN and PhysNet ran at `d9f3814`, DimeNet++ at `ff3e914` | The only change between those two commits is DimeNet++'s `model:` block. |
+| Provenance | Each run records its git commit and a dirty-tree flag; every run was clean. MPNN ran at `755d57f`; SchNet, PaiNN, PhysNet and DimeNet++ at `b1c2d89` | Those two commits differ only in run records, not in code. |
 
 **DimeNet++ size.** DimeNet++ uses hidden 64, out_emb 128, int_emb 32,
 basis_emb 8, 2 blocks, 7 spherical and 6 radial basis functions: 278,982
@@ -46,14 +46,14 @@ for the mid size.
 
 **Reproducibility of scoring.** Scoring on a multithreaded CPU is not
 bit-reproducible: the force backward pass sums in a thread-dependent order,
-so the same checkpoint scores slightly differently from run to run (energies
-were bit-identical here). The five runs were scored before evaluate.py
-recorded fingerprints, so each checkpoint was re-scored
-(`scripts/fingerprint_run_records.py`, seed 0, batch 32) to add one, from
-the clean commit `549e6dd`. An earlier re-score from an uncommitted tree
-gave the same picture and was replaced. The re-score reproduced every stored
-metric to within the differences recorded in each run's `test_metrics.json`
-under `rescore`: at most 2.3 × 10⁻⁸ relative (MPNN; PaiNN 3.8 × 10⁻¹¹). The
+so the same checkpoint scores slightly differently from run to run. The
+five current runs were scored by evaluate.py with their fingerprints
+recorded at scoring time, so none needed a re-score, and none has been
+re-scored yet (the report's last column). The first v1 runs, scored before
+evaluate.py recorded fingerprints, were re-scored
+(`scripts/fingerprint_run_records.py`, seed 0, batch 32) from the clean
+commit `549e6dd`, which reproduced every stored metric to within 2.3 × 10⁻⁸
+relative (energies bit-identical). The
 documented tolerance is
 **10⁻⁵ relative**, which leaves room for re-scoring on another machine or
 thread count (about 1.2 × 10⁻⁶ measured) and is about 100 times below the 4
@@ -65,21 +65,24 @@ split.
 ## Limitations
 
 1. **One seed per model.** There is no estimate of seed-to-seed variation.
-   Models whose errors are close (energy MAE 0.0531 for PaiNN, 0.0567 for
-   DimeNet++, 0.0590 for PhysNet) cannot be ranked against each other
-   without repeated runs.
-2. **Every model hit the 200-epoch cap while still improving.** None stopped
-   early; the best epochs were 198–200, each model's val loss improved
-   5–7 times in its last 20 epochs, and the learning rate had decayed to
-   3.9 × 10⁻⁶ – 1.6 × 10⁻⁵. These are results at 200 epochs, not converged
-   ones. Longer training would probably lower every error and could change
-   the ordering.
+   Models whose errors are close (energy MAE 0.0537 for DimeNet++, 0.0557
+   for PaiNN, 0.0611 for PhysNet) cannot be ranked against each other
+   without repeated runs. Retraining all five with the same configs and
+   seeds on another machine (19 Oct) moved SchNet's energy MAE from 0.1173
+   to 0.1714 and swapped PaiNN and DimeNet++ on energy MAE.
+2. **Every model hit the 200-epoch cap.** None stopped early. Four were
+   still improving: best epochs 199–200, val loss improved 6–12 times in
+   their last 20 epochs, and the learning rate had decayed to
+   3.9 × 10⁻⁶ – 1.6 × 10⁻⁵. DimeNet++ last improved at epoch 191 (3 times
+   in its last 20), with its learning rate down to 4.9 × 10⁻⁷. These are
+   results at 200 epochs, not converged ones. Longer training would
+   probably lower every error and could change the ordering.
 3. **Parameter counts differ.** They range from 61,569 (SchNet) to 808,746
    (PhysNet), with DimeNet++ at 278,982. Each model is compared at its own
    configured size, not at matched capacity.
-4. **Train/val loss gaps of 1.3–3.8× on 10,000 training frames.** At each
-   model's best epoch, val loss divided by train loss was 1.27 (SchNet),
-   1.77 (PhysNet), 2.60 (DimeNet++), 3.45 (PaiNN) and 3.77 (MPNN). Train
+4. **Train/val loss gaps of 1.2–3.5× on 10,000 training frames.** At each
+   model's best epoch, val loss divided by train loss was 1.23 (SchNet),
+   1.77 (PhysNet), 2.81 (MPNN), 3.45 (DimeNet++) and 3.53 (PaiNN). Train
    loss is the epoch's mean over batches in training mode, so the ratio is
    approximate. Higher-capacity models fit the 10,000 training frames much
    better than they generalise, so more data or regularisation could change
