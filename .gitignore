@@ -61,3 +61,7 @@ frontend/.vite/
 
 # Reports
 reports/*.pdf
+
+# Local scratch
+*.patch
+Claude outputs/
