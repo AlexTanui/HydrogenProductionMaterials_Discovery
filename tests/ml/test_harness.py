@@ -416,6 +416,29 @@ def test_run_record_carries_the_provenance(tiny_gold, tmp_path):
     assert subsets["train"]["gold_indices_sha256"] == record["subsets"]["train"]["gold_indices_sha256"]
 
 
+def test_cpu_environment_has_no_gpu_fields():
+    """CPU run records keep the keys they always had; the GPU fields are cuda-only."""
+    env = train_module.environment(torch.device("cpu"))
+    assert not [key for key in env if key.startswith(("cuda", "cudnn"))]
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a CUDA GPU")
+def test_cuda_run_records_the_gpu_and_trains_in_full_fp32(tiny_gold, tmp_path, monkeypatch):
+    # TF32 switched on beforehand, as a caller or a future default might.
+    monkeypatch.setattr(torch.backends.cuda.matmul, "allow_tf32", True)
+    monkeypatch.setattr(torch.backends.cudnn, "allow_tf32", True)
+    record = train(_tiny_config("phase1_schnet", tiny_gold.path, device="cuda"), output_root=tmp_path)
+
+    assert record["status"] == "complete" and "test" in record  # trained and scored on cuda
+    env = record["environment"]
+    assert env["device"] == "cuda"
+    assert env["cuda_device_name"] == torch.cuda.get_device_name(0)
+    assert env["cuda_version"] == torch.version.cuda
+    assert env["cudnn_version"] == torch.backends.cudnn.version()
+    assert env["cuda_matmul_allow_tf32"] is False and env["cudnn_allow_tf32"] is False
+    assert not torch.backends.cuda.matmul.allow_tf32 and not torch.backends.cudnn.allow_tf32
+
+
 def test_training_opens_train_and_val_only(tiny_gold, tmp_path, monkeypatch):
     """The test split is constructed by evaluate.py alone - never on the training path."""
     opened = []

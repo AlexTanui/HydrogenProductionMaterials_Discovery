@@ -380,7 +380,7 @@ def git_state(root: Path = ROOT_DIR) -> dict[str, Any]:
 
 
 def environment(device: torch.device) -> dict[str, Any]:
-    return {
+    env = {
         "device": str(device),
         "torch": torch.__version__,
         "torch_geometric": torch_geometric.__version__,
@@ -390,6 +390,18 @@ def environment(device: torch.device) -> dict[str, Any]:
         "platform": platform.platform(),
         "processor": platform.processor() or platform.machine(),
     }
+    if device.type == "cuda":
+        # Which GPU and CUDA stack, and the TF32 flags actually in force
+        # (train() turns both off), recorded rather than assumed. CPU
+        # records keep their existing keys.
+        env.update({
+            "cuda_device_name": torch.cuda.get_device_name(device),
+            "cuda_version": torch.version.cuda,
+            "cudnn_version": torch.backends.cudnn.version(),
+            "cuda_matmul_allow_tf32": torch.backends.cuda.matmul.allow_tf32,
+            "cudnn_allow_tf32": torch.backends.cudnn.allow_tf32,
+        })
+    return env
 
 
 def _display_path(path: Path) -> str:
@@ -452,6 +464,14 @@ def train(
     device = torch.device(cfg.train.device)
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("train.device is cuda but torch.cuda.is_available() is False")
+    if device.type == "cuda":
+        # Full FP32 on the GPU. TF32 rounds matmul inputs to a 10-bit
+        # mantissa, and the forces come from a double backward pass through
+        # those matmuls. PyTorch's default leaves matmul TF32 off but cuDNN's
+        # on; set both, so neither a default nor an earlier caller can turn
+        # it on. Nothing in training or scoring uses autocast or half precision.
+        torch.backends.cuda.matmul.allow_tf32 = False
+        torch.backends.cudnn.allow_tf32 = False
     gold_path = resolve_gold_path(cfg)
     if not gold_path.exists():
         raise FileNotFoundError(
