@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, HashRouter as Router, Routes } from "react-router-dom";
-import { IconChart, IconFlask, IconHome, IconMoon, IconSun } from "./components/icons";
+import { IconChart, IconFlask, IconHome, IconMoon, IconShield, IconSun } from "./components/icons";
 import Benchmarks from "./pages/Benchmarks";
 import Dashboard from "./pages/Dashboard";
+import Ethics from "./pages/Ethics";
 import Predict from "./pages/Predict";
 
 type Theme = "light" | "dark";
@@ -51,6 +52,9 @@ export default function App() {
             <NavLink to="/benchmarks" className={navClass}>
               <IconChart /> Benchmarks
             </NavLink>
+            <NavLink to="/ethics" className={navClass}>
+              <IconShield /> Ethics &amp; Safety
+            </NavLink>
           </nav>
 
           <div className="sidebar-footer">
@@ -66,6 +70,7 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/predict" element={<Predict />} />
             <Route path="/benchmarks" element={<Benchmarks />} />
+            <Route path="/ethics" element={<Ethics />} />
           </Routes>
         </main>
       </div>

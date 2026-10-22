@@ -22,6 +22,8 @@ export default function Predict() {
   const [result, setResult] = useState<PredictionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [comparison, setComparison] = useState<Record<string, PredictionResponse | string> | null>(null);
+  const [comparing, setComparing] = useState(false);
 
   useEffect(() => {
     fetchMolecules()
@@ -41,6 +43,7 @@ export default function Predict() {
     if (!molecule) return;
     setLoading(true);
     setError(null);
+    setComparison(null);
     try {
       setResult(await predict(molecule, frameIndex, phase));
     } catch (err) {
@@ -48,6 +51,28 @@ export default function Predict() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // The actual research question ("where should uncertainty live?") on one
+  // frame, side by side: same molecule, same frame, three phases, three
+  // real checkpoints - not a canned comparison, a live one.
+  async function handleCompare() {
+    if (!molecule) return;
+    setComparing(true);
+    setError(null);
+    setResult(null);
+    const phases = Object.keys(PHASE_LABELS);
+    const entries = await Promise.all(
+      phases.map(async (p) => {
+        try {
+          return [p, await predict(molecule, frameIndex, p)] as const;
+        } catch (err) {
+          return [p, (err as Error).message] as const;
+        }
+      }),
+    );
+    setComparison(Object.fromEntries(entries));
+    setComparing(false);
   }
 
   return (
@@ -98,11 +123,21 @@ export default function Predict() {
                 </option>
               ))}
             </select>
-            <button className="btn btn-primary" type="submit" disabled={loading || !molecule}>
+            <button className="btn btn-primary" type="submit" disabled={loading || comparing || !molecule}>
               {loading ? "Predicting…" : "Predict"}
             </button>
           </div>
         </form>
+
+        <button
+          className="btn"
+          type="button"
+          onClick={handleCompare}
+          disabled={loading || comparing || !molecule}
+          style={{ marginTop: 10 }}
+        >
+          {comparing ? "Comparing all 3 phases…" : "Compare all 3 phases on this frame"}
+        </button>
 
         {error && <div className="error-block">{error}</div>}
 
@@ -163,6 +198,60 @@ export default function Predict() {
           </div>
         )}
       </div>
+
+      {comparison && (
+        <div className="card">
+          <p className="card-title">
+            The research question, live: same frame, three phases
+          </p>
+          <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--ink-secondary)" }}>
+            <code>{molecule}</code>, frame {frameIndex} — same structure, scored by three separately
+            trained checkpoints that differ only in where stochasticity lives.
+          </p>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Phase</th>
+                  <th>Predicted energy</th>
+                  <th>Error vs. real DFT</th>
+                  <th>Uncertainty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(PHASE_LABELS).map(([phaseKey, label]) => {
+                  const entry = comparison[phaseKey];
+                  if (typeof entry === "string") {
+                    return (
+                      <tr key={phaseKey}>
+                        <td>{label}</td>
+                        <td colSpan={3} style={{ color: "var(--status-critical)" }}>
+                          {entry}
+                        </td>
+                      </tr>
+                    );
+                  }
+                  const errorAbs =
+                    entry.true_energy !== null ? Math.abs(entry.predicted_energy - entry.true_energy) : null;
+                  return (
+                    <tr key={phaseKey}>
+                      <td>{label}</td>
+                      <td>{entry.predicted_energy.toFixed(2)} kcal/mol</td>
+                      <td>{errorAbs !== null ? errorAbs.toFixed(4) : "—"}</td>
+                      <td>{entry.uncertainty === null ? "— (deterministic)" : entry.uncertainty.toFixed(4)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--ink-muted)" }}>
+            Phase 2 and 3 both report real uncertainty — but neither is well-calibrated yet: Phase 2
+            tends toward overconfidence, Phase 3's first draft toward the opposite (honestly uncertain
+            to the point of being uninformative). See Benchmarks for the full picture.
+          </p>
+        </div>
+      )}
     </>
   );
 }

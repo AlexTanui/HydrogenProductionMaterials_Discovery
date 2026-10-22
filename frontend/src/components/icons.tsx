@@ -82,6 +82,15 @@ export function IconScales({ size = 18 }: IconProps) {
   );
 }
 
+export function IconShield({ size = 17 }: IconProps) {
+  return (
+    <svg {...base(size)}>
+      <path d="M12 3.5 19 6.3v5.4c0 4.6-3.2 7.4-7 8.8-3.8-1.4-7-4.2-7-8.8V6.3Z" />
+      <path d="M9 12.2 11.2 14.4 15.4 10" />
+    </svg>
+  );
+}
+
 export function IconLayers({ size = 18 }: IconProps) {
   return (
     <svg {...base(size)} stroke="white">

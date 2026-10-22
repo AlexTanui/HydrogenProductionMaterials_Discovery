@@ -111,9 +111,13 @@ export default function Dashboard() {
           <b style={{ color: "var(--ink-primary)" }}>Predict</b> — pick an MD17 molecule and
           trajectory frame to see predicted energy, force magnitude, and uncertainty.
         </p>
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "var(--ink-secondary)" }}>
+        <p style={{ margin: "0 0 8px", fontSize: 14, lineHeight: 1.6, color: "var(--ink-secondary)" }}>
           <b style={{ color: "var(--ink-primary)" }}>Benchmarks</b> — compares all three phases as
           each is trained and evaluated.
+        </p>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "var(--ink-secondary)" }}>
+          <b style={{ color: "var(--ink-primary)" }}>Ethics &amp; Safety</b> — what this sprint's own
+          findings mean for trusting a model's confidence, and what that requires before deployment.
         </p>
       </div>
     </>
