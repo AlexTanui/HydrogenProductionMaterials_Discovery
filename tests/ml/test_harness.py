@@ -821,3 +821,34 @@ def test_v2_subsets_are_spread_over_the_train_block_and_never_val_or_test(gold_s
     for name, chosen in selected.items():
         np.testing.assert_array_equal(chosen["train"]["gold_indices"], info["gold_indices"], err_msg=name)
         np.testing.assert_array_equal(chosen["val"]["gold_indices"], v1_val, err_msg=name)
+
+
+# --------------------------------------------------------------------------
+# 10. Full-scale MPNN (phase1v3_baseline): the backbone baseline for BLIP and Phase 3
+# --------------------------------------------------------------------------
+
+# The only train: values phase1v3_baseline changes from phase1_baseline.
+V3_TRAIN_CHANGES = {"batch_size": 256, "train_subset": None, "device": "cuda"}
+
+
+def test_phase1v3_baseline_differs_from_phase1_baseline_only_in_its_train_budget():
+    name, v1 = "phase1v3_baseline", "phase1_baseline"
+    cfg = _load(name)
+    assert cfg.name == name and not name.startswith("phase1_")
+    for block in ("data", "model"):
+        assert _config_block(name, block) == _config_block(v1, block), (
+            f"{name}.yaml's {block}: block differs from {v1}.yaml's"
+        )
+    resolved = cfg.to_dict()
+    assert resolved["data"] == LOCKED_DATA
+    assert resolved["model"] == _load(v1).to_dict()["model"]
+    assert resolved["train"] == {**LOCKED_TRAIN, **V3_TRAIN_CHANGES}
+    assert {key for key in LOCKED_TRAIN if resolved["train"][key] != LOCKED_TRAIN[key]} == set(V3_TRAIN_CHANGES)
+
+
+def test_phase1v3_baseline_trains_on_the_whole_train_block(gold_splits):
+    selected = select_subsets(_load("phase1v3_baseline"))
+    np.testing.assert_array_equal(selected["train"]["gold_indices"], gold_splits["train"])
+    np.testing.assert_array_equal(
+        selected["val"]["gold_indices"], select_subsets(_load("phase1_baseline"))["val"]["gold_indices"]
+    )
