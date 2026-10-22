@@ -23,6 +23,18 @@ export interface BenchmarkResult {
   force_mae: number;
   ece: number | null;
   uncertainty_correlation: number | null;
+  energy_rmse: number | null;
+  force_rmse: number | null;
+  force_ece: number | null;
+  force_uncertainty_correlation: number | null;
+  energy_coverage_90: number | null;
+  force_coverage_90: number | null;
+  energy_sharpness: number | null;
+  force_sharpness: number | null;
+  energy_nll_gaussian: number | null;
+  force_nll_gaussian: number | null;
+  energy_crps: number | null;
+  force_crps: number | null;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {

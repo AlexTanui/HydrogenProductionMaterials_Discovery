@@ -3,7 +3,8 @@ import { fetchMolecules, MoleculeInfo, predict, PredictionResponse } from "../ap
 
 const PHASE_LABELS: Record<string, string> = {
   phase1_deterministic: "Phase 1 — deterministic MPNN",
-  phase2_blip: "Phase 2 — BLIP (weight-space UQ)",
+  phase2_blip_k1: "Phase 2 — BLIP (K=1, MSE)",
+  phase2_blip: "Phase 2 — BLIP (K=4, NLL fix)",
   phase3_graph_stochastic: "Phase 3 — graph-space UQ",
 };
 

@@ -10,24 +10,38 @@ from app.models.schemas import BenchmarkResult
 router = APIRouter(prefix="/benchmarks", tags=["benchmarks"])
 
 
+def _uq_field(payload: dict, key: str, field: str):
+    """One number out of uq_metrics.per_key[0][key][field] - None for a
+    deterministic model (`uq_metrics` itself is `None`, not just absent -
+    see ml/utils/uq_metrics.py/evaluate.py) or if a results file predates
+    some field being added."""
+    uq_metrics = payload.get("uq_metrics") or {}
+    per_key = uq_metrics.get("per_key") or []
+    if not per_key:
+        return None
+    return (per_key[0].get(key) or {}).get(field)
+
+
 @router.get("", response_model=list[BenchmarkResult])
 def list_benchmarks() -> list[BenchmarkResult]:
-    """One row per project phase (Phase 1/2/3) - the same three checkpoints
-    /predictions serves (app.core.config.PHASE_CHECKPOINTS) - read from
-    each one's own scored results file, never recomputed here.
+    """One row per project phase - the checkpoints /predictions serves
+    (app.core.config.PHASE_CHECKPOINTS, now four: Phase 1, BLIP at K=1,
+    BLIP at K=4/NLL, Phase 3) - read from each one's own scored results
+    file, never recomputed here. The four summary fields (energy_mae,
+    force_mae, ece, uncertainty_correlation) come from `benchmark_row`,
+    the same row ml/training/evaluate.py computes; everything else comes
+    from that same file's `metrics`/`uq_metrics` blocks directly, for a
+    caller that wants more than the four-number summary (see
+    BenchmarkResult's own comment for why each one is there).
 
     Not one row per architecture or per run file: a results file's own
-    `phase` field is the model *registry* key (e.g. "blip"), which is the
-    same for phase2_blip and phase2_blip_nll even though they are two
-    different runs - reading that field directly, as the previous version
-    of this endpoint did, would have produced duplicate, ambiguous rows
-    (and crashed outright: it also read `payload["model"]`/`payload["metrics"]`,
-    which do not exist in the real results schema - `payload["benchmark_row"]`
-    does, see ml/training/evaluate.py).
+    `phase` field is the model *registry* key (e.g. "blip"), the same for
+    every BLIP run regardless of which checkpoint - reading it directly
+    would produce duplicate, ambiguous rows. PHASE_CHECKPOINTS's keys are
+    the unambiguous labels this endpoint (and /predictions) actually use.
 
     Skips a phase whose checkpoint has never been trained/scored - an
-    absent row, not a crash - so the table degrades gracefully instead of
-    failing outright if e.g. Phase 3 hasn't been scored yet.
+    absent row, not a crash.
     """
     results = []
     for phase, checkpoint_path in PHASE_CHECKPOINTS.items():
@@ -37,6 +51,7 @@ def list_benchmarks() -> list[BenchmarkResult]:
         with open(results_path) as f:
             payload = json.load(f)
         row = payload["benchmark_row"]
+        per_key = (payload.get("metrics", {}).get("per_key") or [{}])[0]
         results.append(
             BenchmarkResult(
                 phase=phase,
@@ -45,6 +60,18 @@ def list_benchmarks() -> list[BenchmarkResult]:
                 force_mae=row["force_mae"],
                 ece=row["ece"],
                 uncertainty_correlation=row["uncertainty_correlation"],
+                energy_rmse=per_key.get("energy_rmse_total"),
+                force_rmse=per_key.get("force_rmse_component"),
+                force_ece=_uq_field(payload, "force", "ece"),
+                force_uncertainty_correlation=_uq_field(payload, "force", "spearman_uncertainty_error"),
+                energy_coverage_90=((_uq_field(payload, "energy", "coverage") or {}).get("90%")),
+                force_coverage_90=((_uq_field(payload, "force", "coverage") or {}).get("90%")),
+                energy_sharpness=_uq_field(payload, "energy", "sharpness_mean_std"),
+                force_sharpness=_uq_field(payload, "force", "sharpness_mean_std"),
+                energy_nll_gaussian=_uq_field(payload, "energy", "nll_gaussian"),
+                force_nll_gaussian=_uq_field(payload, "force", "nll_gaussian"),
+                energy_crps=_uq_field(payload, "energy", "crps_gaussian"),
+                force_crps=_uq_field(payload, "force", "crps_gaussian"),
             )
         )
     return results

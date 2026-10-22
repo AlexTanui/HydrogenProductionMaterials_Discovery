@@ -108,6 +108,10 @@ export default function Dashboard() {
       <div className="card">
         <p className="card-title">Try it</p>
         <p style={{ margin: "0 0 8px", fontSize: 14, lineHeight: 1.6, color: "var(--ink-secondary)" }}>
+          <b style={{ color: "var(--ink-primary)" }}>EDA</b> — the real exploratory analysis this
+          project is built on: distributions, cutoff-radius check, split-integrity check.
+        </p>
+        <p style={{ margin: "0 0 8px", fontSize: 14, lineHeight: 1.6, color: "var(--ink-secondary)" }}>
           <b style={{ color: "var(--ink-primary)" }}>Predict</b> — pick an MD17 molecule and
           trajectory frame to see predicted energy, force magnitude, and uncertainty.
         </p>

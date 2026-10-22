@@ -82,6 +82,17 @@ export function IconScales({ size = 18 }: IconProps) {
   );
 }
 
+export function IconGrid({ size = 17 }: IconProps) {
+  return (
+    <svg {...base(size)}>
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.2" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.2" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.2" />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.2" />
+    </svg>
+  );
+}
+
 export function IconShield({ size = 17 }: IconProps) {
   return (
     <svg {...base(size)}>

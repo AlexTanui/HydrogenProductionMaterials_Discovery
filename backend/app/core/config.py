@@ -27,15 +27,18 @@ GOLD_DIR = ROOT_DIR / "data" / "gold" / "md17"
 # app.services.inference (live predictions) and app.api.benchmarks (the
 # three-phase table) read - one mapping, not two that could drift apart.
 #
-# Phase 2 serves phase2_blip_nll.pt, not phase2_blip.pt: it's the
-# clean-tree run after SCRUM-61's numerical-stability fix. phase2_blip.pt
-# predates that fix and was trained from a dirty tree (see
-# docs/phase2_remaining_work.md) - still a real result, just not the one
-# a live demo should be built on. The reported `phase` label is
-# "phase2_blip" either way; that is the project-level Phase 2, not one
-# specific run name.
+# Two BLIP entries, deliberately: phase2_blip_k1 is the original run
+# (train_num_mc_samples=1, plain MSE); phase2_blip is phase2_blip_nll.pt,
+# the K=4/NLL run after SCRUM-61's numerical-stability fix. Both are real,
+# scored results - showing them side by side is the actual point (does
+# more MC samples + a likelihood loss improve calibration? measured
+# answer: no, slightly worse - see docs/model_cards and SCRUM-61). The
+# K=1 run was trained from a dirty tree (docs/phase2_remaining_work.md);
+# labelled honestly in the UI, not hidden. "phase2_blip" (unqualified)
+# keeps meaning the current/default BLIP for anything that only wants one.
 PHASE_CHECKPOINTS: dict[str, Path] = {
     "phase1_deterministic": CHECKPOINTS_DIR / "phase1_baseline.pt",
+    "phase2_blip_k1": CHECKPOINTS_DIR / "phase2_blip.pt",
     "phase2_blip": CHECKPOINTS_DIR / "phase2_blip_nll.pt",
     "phase3_graph_stochastic": CHECKPOINTS_DIR / "phase3_graph_stochastic.pt",
 }

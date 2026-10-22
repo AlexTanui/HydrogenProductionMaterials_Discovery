@@ -5,7 +5,8 @@ import { BenchmarkResult, fetchBenchmarks } from "../api/client";
 
 const PHASE_LABELS: Record<string, string> = {
   phase1_deterministic: "Phase 1",
-  phase2_blip: "Phase 2 (BLIP)",
+  phase2_blip_k1: "Phase 2 (BLIP, K=1)",
+  phase2_blip: "Phase 2 (BLIP, K=4 NLL)",
   phase3_graph_stochastic: "Phase 3 (graph-space)",
 };
 
@@ -150,7 +151,14 @@ export default function Benchmarks() {
           </div>
 
           <div className="card">
-            <p className="card-title">All metrics</p>
+            <p className="card-title">Full metrics — every number ml/utils/uq_metrics.py checks</p>
+            <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--ink-muted)" }}>
+              Coverage@90% shows which direction a model is miscalibrated in (below 0.90 =
+              overconfident, above = overcautious) — ECE alone collapses that away. Sharpness is the
+              model's own typical predicted uncertainty, for reading coverage against how wide its
+              intervals actually are. NLL/CRPS are proper scoring rules — lower is better, unlike ECE/
+              Spearman.
+            </p>
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
@@ -158,7 +166,21 @@ export default function Benchmarks() {
                     <th>Phase</th>
                     <th>Model</th>
                     <th>Energy MAE</th>
+                    <th>Energy RMSE</th>
                     <th>Force MAE</th>
+                    <th>Force RMSE</th>
+                    <th>Energy ECE</th>
+                    <th>Force ECE</th>
+                    <th>Energy Spearman</th>
+                    <th>Force Spearman</th>
+                    <th>Energy cov@90%</th>
+                    <th>Force cov@90%</th>
+                    <th>Energy sharpness</th>
+                    <th>Force sharpness</th>
+                    <th>Energy NLL</th>
+                    <th>Force NLL</th>
+                    <th>Energy CRPS</th>
+                    <th>Force CRPS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -167,7 +189,21 @@ export default function Benchmarks() {
                       <td>{PHASE_LABELS[r.phase] ?? r.phase}</td>
                       <td>{r.model}</td>
                       <td>{r.energy_mae.toFixed(4)}</td>
+                      <td>{r.energy_rmse?.toFixed(4) ?? "—"}</td>
                       <td>{r.force_mae.toFixed(4)}</td>
+                      <td>{r.force_rmse?.toFixed(4) ?? "—"}</td>
+                      <td>{r.ece?.toFixed(4) ?? "—"}</td>
+                      <td>{r.force_ece?.toFixed(4) ?? "—"}</td>
+                      <td>{r.uncertainty_correlation?.toFixed(4) ?? "—"}</td>
+                      <td>{r.force_uncertainty_correlation?.toFixed(4) ?? "—"}</td>
+                      <td>{r.energy_coverage_90 !== null ? `${(r.energy_coverage_90 * 100).toFixed(1)}%` : "—"}</td>
+                      <td>{r.force_coverage_90 !== null ? `${(r.force_coverage_90 * 100).toFixed(1)}%` : "—"}</td>
+                      <td>{r.energy_sharpness?.toFixed(4) ?? "—"}</td>
+                      <td>{r.force_sharpness?.toFixed(4) ?? "—"}</td>
+                      <td>{r.energy_nll_gaussian?.toFixed(3) ?? "—"}</td>
+                      <td>{r.force_nll_gaussian?.toFixed(3) ?? "—"}</td>
+                      <td>{r.energy_crps?.toFixed(4) ?? "—"}</td>
+                      <td>{r.force_crps?.toFixed(4) ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>

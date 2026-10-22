@@ -53,6 +53,7 @@ def test_molecules_catalog_is_read_from_the_real_gold_files():
         (None, False),  # default
         ("phase1_deterministic", False),
         ("phase1", False),
+        ("phase2_blip_k1", True),
         ("phase2_blip", True),
         ("phase2", True),
         ("phase3_graph_stochastic", True),
@@ -127,9 +128,17 @@ def test_benchmarks_returns_one_row_per_project_phase_not_per_architecture():
     for row in rows:
         assert row["energy_mae"] > 0
         assert row["force_mae"] > 0
+        assert row["energy_rmse"] >= row["energy_mae"]  # RMSE >= MAE always
+        assert row["force_rmse"] >= row["force_mae"]
         if row["phase"] == "phase1_deterministic":
             assert row["ece"] is None
             assert row["uncertainty_correlation"] is None
+            assert row["force_ece"] is None
+            assert row["energy_sharpness"] is None
         else:
-            # Phase 2/3 have real (if poorly calibrated) UQ metrics once scored.
-            assert row["ece"] is None or row["ece"] >= 0
+            # Phase 2/3 have real (if poorly calibrated) UQ metrics once scored -
+            # for both energy and force, not just the energy summary pair.
+            assert row["ece"] is not None and row["ece"] >= 0
+            assert row["force_ece"] is not None and row["force_ece"] >= 0
+            assert row["energy_coverage_90"] is not None
+            assert row["energy_sharpness"] is not None and row["energy_sharpness"] > 0
