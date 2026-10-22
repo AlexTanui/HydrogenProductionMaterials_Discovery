@@ -13,6 +13,9 @@ ml/models/scaling.py. What a pass here guarantees about the benchmark:
 3. **One set of frames.** All seven train and select on exactly the same
    frames, spread over their whole blocks, and none is a test frame.
 
+Protocol v2 (section 9) is a second, separate lock: the five Phase 1
+models on 111,000 frames for 50 epochs, in their own table.
+
 Real-data tests skip if data/gold/md17/ethanol_dft.npz is absent (run
 `python -m ml.data.preprocessing`). The training tests use a tiny gold file
 built from 80 real ethanol frames, every one from the real train block, so
@@ -746,3 +749,75 @@ def test_checkpoint_selection_resets_at_the_loss_switch(tiny_gold, tmp_path):
         for row in csv.DictReader((tmp_path / "runs" / cfg.name / "history.csv").open(encoding="utf-8"))
     }
     assert int(history[3]["improved"]) == 1, "first NLL epoch (warmup=2) must reset-and-improve by construction"
+
+
+# --------------------------------------------------------------------------
+# 9. Protocol v2: the Phase 1 five on 111,000 frames for 50 epochs
+# --------------------------------------------------------------------------
+
+# v2 config -> its v1 counterpart. A second lock, separate from CONFIG_NAMES
+# above: v2 is its own table (docs/phase1_protocol.md, "Protocol v2"). The
+# names don't start with "phase1_", so benchmark.py's default Phase 1 report
+# never reads these runs.
+V2_CONFIGS = {
+    "phase1v2_baseline": "phase1_baseline",
+    "phase1v2_schnet": "phase1_schnet",
+    "phase1v2_painn": "phase1_painn",
+    "phase1v2_physnet": "phase1_physnet",
+    "phase1v2_dimenet": "phase1_dimenet",
+}
+# The only values v2 changes. Anything else that differs from v1 fails below.
+V2_TRAIN_CHANGES = {"epochs": 50, "train_subset": 111_000}
+
+
+def _config_block(name: str, block: str) -> str:
+    return _top_level_block((CONFIGS / f"{name}.yaml").read_text(encoding="utf-8"), block)
+
+
+@pytest.mark.parametrize("name, v1", V2_CONFIGS.items())
+def test_v2_data_and_model_blocks_equal_their_v1_counterparts(name, v1):
+    assert not name.startswith("phase1_")
+    cfg = _load(name)
+    assert cfg.name == name
+    for block in ("data", "model"):
+        assert _config_block(name, block) == _config_block(v1, block), (
+            f"{name}.yaml's {block}: block differs from {v1}.yaml's"
+        )
+    assert cfg.to_dict()["data"] == LOCKED_DATA
+    assert cfg.to_dict()["model"] == _load(v1).to_dict()["model"]
+
+
+def test_v2_train_blocks_are_byte_identical_to_each_other():
+    texts = {name: _config_block(name, "train") for name in V2_CONFIGS}
+    for name, text in texts.items():
+        assert text == texts["phase1v2_baseline"], (
+            f"{name}.yaml's train: block differs from phase1v2_baseline.yaml's - change it in all "
+            "five v2 configs or none"
+        )
+
+
+@pytest.mark.parametrize("name", V2_CONFIGS)
+def test_v2_train_differs_from_v1_only_in_epochs_and_train_subset(name):
+    resolved = _load(name).to_dict()["train"]
+    assert resolved == {**LOCKED_TRAIN, **V2_TRAIN_CHANGES}
+    assert {key for key in LOCKED_TRAIN if resolved[key] != LOCKED_TRAIN[key]} == set(V2_TRAIN_CHANGES)
+
+
+def test_v2_subsets_are_spread_over_the_train_block_and_never_val_or_test(gold_splits):
+    selected = {name: select_subsets(_load(name)) for name in V2_CONFIGS}
+    info = selected["phase1v2_baseline"]["train"]
+    positions, stride = info["positions"], info["stride"]
+    n = len(gold_splits["train"])
+    assert len(np.unique(positions)) == len(positions) == 111_000
+    assert stride == 4 and np.all(np.diff(positions) == stride)
+    # stride = 444,074 // 111,000 = 4, so only the block's last 74 frames
+    # (444,074 - 4 x 111,000) lie outside every stride window.
+    assert (positions[-1] - positions[0] + stride) / n > 0.99
+    assert np.isin(info["gold_indices"], gold_splits["train"]).all()
+    assert not np.isin(info["gold_indices"], gold_splits["val"]).any()
+    assert not np.isin(info["gold_indices"], gold_splits["test"]).any()
+    # Every v2 model trains on the same frames; val is v1's 5,000 frames, unchanged.
+    v1_val = select_subsets(_load("phase1_baseline"))["val"]["gold_indices"]
+    for name, chosen in selected.items():
+        np.testing.assert_array_equal(chosen["train"]["gold_indices"], info["gold_indices"], err_msg=name)
+        np.testing.assert_array_equal(chosen["val"]["gold_indices"], v1_val, err_msg=name)
