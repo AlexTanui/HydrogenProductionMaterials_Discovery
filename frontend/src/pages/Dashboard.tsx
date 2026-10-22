@@ -79,9 +79,9 @@ export default function Dashboard() {
         <div className="stat-tile">
           <p className="stat-label">Serving model</p>
           <p className="stat-value" style={{ fontSize: 16 }}>
-            <span className="badge badge-warning">
+            <span className="badge badge-good">
               <span className="badge-dot" />
-              Phase 1 (preview)
+              Phase 1–3 (live)
             </span>
           </p>
         </div>

@@ -7,6 +7,8 @@ export interface PredictionResponse {
   predicted_force_rms: number;
   uncertainty: number | null;
   phase: string;
+  true_energy: number | null;
+  true_force_rms: number | null;
 }
 
 export interface MoleculeInfo {
@@ -29,15 +31,29 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (!response.ok) {
-    throw new Error(`Request to ${path} failed: ${response.status}`);
+    // FastAPI's error body is {"detail": "..."} - that message is the
+    // whole point (e.g. "no trained checkpoint for 'aspirin' yet"), so
+    // surface it instead of just the status code.
+    let detail = `${response.status}`;
+    try {
+      const body = await response.json();
+      if (typeof body?.detail === "string") detail = body.detail;
+    } catch {
+      // body wasn't JSON (or was empty) - fall back to the status code above.
+    }
+    throw new Error(detail);
   }
   return response.json();
 }
 
-export function predict(molecule: string, frameIndex: number): Promise<PredictionResponse> {
+export function predict(
+  molecule: string,
+  frameIndex: number,
+  phase?: string,
+): Promise<PredictionResponse> {
   return request<PredictionResponse>("/predictions", {
     method: "POST",
-    body: JSON.stringify({ molecule, frame_index: frameIndex }),
+    body: JSON.stringify({ molecule, frame_index: frameIndex, phase: phase ?? null }),
   });
 }
 

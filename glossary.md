@@ -254,12 +254,22 @@ Liveness check. Response:
 
 Predict energy, force magnitude, and (for stochastic phases) uncertainty
 for one MD17 configuration. Every call is logged for later analysis.
+**Implemented** (`backend/app/services/inference.py`) against real
+trained checkpoints for `ethanol` (DFT) only — every other catalog entry
+in `GET /molecules` has real gold data but no trained model, and is
+refused with a clear error (503) rather than scored out-of-distribution.
 
 Request:
 
 ```json
-{ "molecule": "aspirin", "frame_index": 0 }
+{ "molecule": "aspirin", "frame_index": 0, "phase": "phase2_blip" }
 ```
+
+`frame_index` indexes the gold file's held-out **test** split, not the
+raw trajectory — `[0, n_test_frames - 1]`, refused with a 422 outside that
+range. `phase` is optional (default `"phase1_deterministic"`); accepts
+the three canonical phase names below or the short aliases `"phase1"` /
+`"phase2"` / `"phase3"`, refused with a 422 if unrecognised.
 
 Response:
 
@@ -270,7 +280,9 @@ Response:
   "predicted_energy": -406234.5,
   "predicted_force_rms": 12.3,
   "uncertainty": 0.08,
-  "phase": "phase1_deterministic"
+  "phase": "phase1_deterministic",
+  "true_energy": -406234.1,
+  "true_force_rms": 12.1
 }
 ```
 
@@ -278,11 +290,26 @@ Response:
 mean-square over all atoms — the per-atom force vector field itself isn't
 serialized here, only its summary magnitude). `uncertainty` is `null` for
 the Phase 1 deterministic model, which has none by construction.
+`true_energy`/`true_force_rms` are the real DFT values at that exact
+frame, read from the gold file's test split — not predicted — so a caller
+can see how far off a live prediction actually is. `phase` in the
+response is always one of the three canonical names, even when the
+request used a short alias; Phase 2 is served by whichever BLIP
+checkpoint is the current clean/fixed run (see
+`app.core.config.PHASE_CHECKPOINTS`'s own comment for which one and why),
+not necessarily the first BLIP run ever trained.
 
 ### `GET /molecules`
 
 The fixed catalog of MD17 molecules available to predict on — a static
 reference list, not a live database (MD17's molecule set doesn't change).
+**Implemented**: read straight from `data/gold/md17/*.npz` at startup
+(`app.services.inference.MD17_MOLECULES_CATALOG`), not hand-maintained —
+it reflects whatever gold files actually exist, so it can't name a
+molecule with no data or omit one that has it. When a molecule has more
+than one theory level (only `ethanol` does), DFT wins, since that's the
+theory every trained checkpoint uses; this endpoint has no theory field
+either way.
 
 ```json
 [
@@ -294,14 +321,20 @@ reference list, not a live database (MD17's molecule set doesn't change).
 
 ### `GET /benchmarks`
 
-Every entry from `experiments/results/*.json` — the Three-Phase Technical
-Summary, in the shape the report table (§6 of the proposal) needs directly:
+One row per project phase (Phase 1/2/3), read from each phase's own
+checkpoint's scored results file (`experiments/results/*.json`'s
+`benchmark_row`) - **implemented** (`backend/app/api/benchmarks.py`),
+sharing one source of truth (`app.core.config.PHASE_CHECKPOINTS`) with
+`POST /predictions` for which checkpoint serves which phase. Not one row
+per `experiments/runs/` entry or per Phase 1 bake-off architecture: a
+phase whose checkpoint hasn't been trained/scored yet is simply absent
+from the list, not a crash:
 
 ```json
 [
   {
     "phase": "phase1_deterministic",
-    "model": "mpnn",
+    "model": "MPNN",
     "energy_mae": 0.42,
     "force_mae": 1.15,
     "ece": null,
@@ -309,7 +342,7 @@ Summary, in the shape the report table (§6 of the proposal) needs directly:
   },
   {
     "phase": "phase2_blip",
-    "model": "blip_mpnn",
+    "model": "BLIP",
     "energy_mae": 0.39,
     "force_mae": 1.08,
     "ece": 0.05,

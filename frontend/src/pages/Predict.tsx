@@ -7,10 +7,18 @@ const PHASE_LABELS: Record<string, string> = {
   phase3_graph_stochastic: "Phase 3 — graph-space UQ",
 };
 
+const PHASE_OPTIONS = Object.entries(PHASE_LABELS);
+
+// Only ethanol has a trained checkpoint right now (backend/app/services/
+// inference.py) - every other molecule in the catalog has real MD17 data
+// but no model trained on it, and the API refuses to guess.
+const TRAINED_MOLECULE = "ethanol";
+
 export default function Predict() {
   const [molecules, setMolecules] = useState<MoleculeInfo[]>([]);
   const [molecule, setMolecule] = useState("");
   const [frameIndex, setFrameIndex] = useState(0);
+  const [phase, setPhase] = useState<string>("phase1_deterministic");
   const [result, setResult] = useState<PredictionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -19,7 +27,11 @@ export default function Predict() {
     fetchMolecules()
       .then((list) => {
         setMolecules(list);
-        if (list.length > 0) setMolecule(list[0].molecule);
+        // Default to the one molecule that actually has a trained model,
+        // if it's in the catalog, rather than whichever happens to sort first.
+        const preferred = list.find((m) => m.molecule === TRAINED_MOLECULE);
+        if (preferred) setMolecule(preferred.molecule);
+        else if (list.length > 0) setMolecule(list[0].molecule);
       })
       .catch((err) => setError(err.message));
   }, []);
@@ -30,7 +42,7 @@ export default function Predict() {
     setLoading(true);
     setError(null);
     try {
-      setResult(await predict(molecule, frameIndex));
+      setResult(await predict(molecule, frameIndex, phase));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -43,9 +55,10 @@ export default function Predict() {
       <div className="page-header">
         <h1>Predict energy &amp; forces</h1>
         <p>
-          Pick an MD17 molecule and a trajectory frame to predict total potential energy and force
-          magnitude. This is a live interface preview — predictive accuracy activates once a phase
-          has been trained.
+          Pick a trajectory frame from the held-out MD17 test split and a trained phase to predict
+          total potential energy and force magnitude against. Only <code>ethanol</code> (DFT) has a
+          trained checkpoint right now — every other molecule below has real MD17 data but no model
+          trained on it yet, so predicting on it is refused rather than guessed.
         </p>
       </div>
 
@@ -60,7 +73,7 @@ export default function Predict() {
             >
               {molecules.map((m) => (
                 <option key={m.molecule} value={m.molecule}>
-                  {m.molecule} ({m.num_atoms} atoms)
+                  {m.molecule} ({m.num_atoms} atoms){m.molecule !== TRAINED_MOLECULE ? " — not trained" : ""}
                 </option>
               ))}
             </select>
@@ -73,6 +86,18 @@ export default function Predict() {
               placeholder="Frame index"
               style={{ flex: 1 }}
             />
+            <select
+              className="input"
+              value={phase}
+              onChange={(e) => setPhase(e.target.value)}
+              style={{ flex: 2 }}
+            >
+              {PHASE_OPTIONS.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
             <button className="btn btn-primary" type="submit" disabled={loading || !molecule}>
               {loading ? "Predicting…" : "Predict"}
             </button>
@@ -95,6 +120,12 @@ export default function Predict() {
                 <p className="result-value" style={{ fontSize: 20, margin: 0 }}>
                   {result.predicted_energy.toFixed(2)} <span style={{ fontSize: 13, color: "var(--ink-muted)" }}>kcal/mol</span>
                 </p>
+                {result.true_energy !== null && (
+                  <p className="stat-label" style={{ margin: "2px 0 0", fontSize: 12 }}>
+                    real DFT value: {result.true_energy.toFixed(2)} (off by{" "}
+                    {Math.abs(result.predicted_energy - result.true_energy).toFixed(4)})
+                  </p>
+                )}
               </div>
               <div>
                 <p className="stat-label" style={{ margin: "0 0 2px" }}>
@@ -103,6 +134,12 @@ export default function Predict() {
                 <p className="result-value" style={{ fontSize: 20, margin: 0 }}>
                   {result.predicted_force_rms.toFixed(2)} <span style={{ fontSize: 13, color: "var(--ink-muted)" }}>kcal/mol/Å</span>
                 </p>
+                {result.true_force_rms !== null && (
+                  <p className="stat-label" style={{ margin: "2px 0 0", fontSize: 12 }}>
+                    real DFT value: {result.true_force_rms.toFixed(2)} (off by{" "}
+                    {Math.abs(result.predicted_force_rms - result.true_force_rms).toFixed(4)})
+                  </p>
+                )}
               </div>
               <div>
                 <p className="stat-label" style={{ margin: "0 0 2px" }}>
@@ -111,6 +148,11 @@ export default function Predict() {
                 <p className="result-value" style={{ fontSize: 20, margin: 0 }}>
                   {result.uncertainty === null ? "—" : result.uncertainty.toFixed(4)}
                 </p>
+                {result.uncertainty === null && (
+                  <p className="stat-label" style={{ margin: "2px 0 0", fontSize: 12 }}>
+                    deterministic — no uncertainty by construction
+                  </p>
+                )}
               </div>
             </div>
 

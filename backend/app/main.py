@@ -8,11 +8,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import benchmarks, molecules, predictions
 from app.core.config import settings
 from app.models.db import init_db
+from app.services.inference import warm_up
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # Load every phase's checkpoint now, not on whichever request hits it
+    # first - so a missing/broken checkpoint shows up in the startup log
+    # before a live demo, not mid-click.
+    print("Warming up model checkpoints:", flush=True)
+    for line in warm_up():
+        print(line, flush=True)
     yield
 
 
