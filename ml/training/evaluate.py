@@ -61,12 +61,22 @@ require one count across every stochastic run in a table (CLAUDE.md;
 SCRUM-49 sets the project value). A distribution model with no
 `num_mc_samples` is still scored, with a warning and a null count - the
 benchmark then refuses it.
+
+Optionally (`predictions_out`, CLI `--save-predictions PATH`; off by
+default) the per-frame predictions are written to one `.npz` for plotting:
+each frame's gold index, E_ref/E_pred, F_ref/F_pred per atom, and E_var/
+F_var for a stochastic model, plus a JSON `metadata` entry (checkpoint and
+its sha256, scoring-data fingerprint, split, seed, num_mc_samples, batch
+size, units). They are the exact tensors the accumulator was given, kept
+during the one scoring pass - nothing is recomputed, so a plot made from
+them cannot disagree with the scores. Off, the output is unchanged.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import os
 import platform
 import sys
 import time
@@ -89,6 +99,9 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 RESULTS_DIR = ROOT_DIR / "experiments" / "results"
 
 SCHEMA_VERSION = 1
+
+# Version of the optional per-frame predictions .npz (see the module docstring).
+PREDICTIONS_SCHEMA_VERSION = 1
 
 # Seed for the scoring pass's RNG. Only stochastic models consume it.
 DEFAULT_SEED = 0
@@ -194,6 +207,49 @@ def scoring_data_fingerprint(dataset: MD17Dataset, gold_path: Path, split: str) 
     }
 
 
+def _collect_predictions(collected: dict[str, list[np.ndarray]], prediction: ModelOutput,
+                         reference: ReferenceData, n_atoms: int) -> None:
+    """Keep one batch's accumulator inputs, as they were handed to it: energies
+    per frame, forces (and variances) as (frames, atoms, 3)."""
+    n_frames = reference.n_frames
+    # The reshape below is only right if atoms are grouped frame by frame,
+    # n_atoms each, in batch order - check it rather than assume it.
+    expected = torch.arange(n_frames, device=reference.batch.device).repeat_interleave(n_atoms)
+    if not torch.equal(reference.batch, expected):
+        raise ValueError("batch atoms are not grouped frame by frame; cannot export per-atom predictions")
+
+    def per_frame(t: torch.Tensor) -> np.ndarray:
+        return t.detach().cpu().numpy()
+
+    def per_atom(t: torch.Tensor) -> np.ndarray:
+        return t.detach().cpu().numpy().reshape(n_frames, n_atoms, 3)
+
+    collected["E_ref"].append(per_frame(reference.E))
+    collected["E_pred"].append(per_frame(prediction.E))
+    collected["F_ref"].append(per_atom(reference.F))
+    collected["F_pred"].append(per_atom(prediction.F))
+    if prediction.E_var is not None:
+        collected["E_var"].append(per_frame(prediction.E_var))
+    if prediction.F_var is not None:
+        collected["F_var"].append(per_atom(prediction.F_var))
+
+
+def _write_predictions(path: Path, gold_index: np.ndarray, collected: dict[str, list[np.ndarray]],
+                       metadata: dict[str, Any]) -> str:
+    """One .npz at exactly `path`, written atomically. Returns its sha256."""
+    arrays = {name: np.concatenate(chunks) for name, chunks in collected.items() if chunks}
+    if any(len(array) != len(gold_index) for array in arrays.values()):
+        raise ValueError(f"collected {len(arrays['E_ref'])} frames but the split has {len(gold_index)}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_name(path.name + ".partial")
+    # A file object, not a path: np.savez would append ".npz" to a path without it.
+    with open(partial, "wb") as f:
+        np.savez_compressed(f, gold_index=gold_index, **arrays,
+                            metadata=np.array(json.dumps(metadata, sort_keys=True)))
+    os.replace(partial, path)
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def evaluate_checkpoint(
     checkpoint_path: str | Path,
     gold_path: Optional[str | Path] = None,
@@ -203,10 +259,15 @@ def evaluate_checkpoint(
     num_workers: int = 0,
     units: Optional[Units] = None,
     seed: int = DEFAULT_SEED,
+    predictions_out: Optional[str | Path] = None,
 ) -> dict[str, Any]:
     """Score one checkpoint and return the full result record.
 
     Args:
+        predictions_out: if set, also write the per-frame predictions to this
+            .npz (module docstring) and add `predictions` (path, sha256) to
+            the result. Default None: nothing is written and the result is
+            unchanged.
         seed: seeds torch's RNG for the scoring pass, inside a forked RNG
             state so the caller's RNG is left exactly as it was. A
             stochastic model (BLIP draws fresh weight noise on every
@@ -235,7 +296,8 @@ def evaluate_checkpoint(
     cuda_devices = list(range(torch.cuda.device_count())) if torch.cuda.is_available() else []
     with torch.random.fork_rng(devices=cuda_devices):
         return _score_checkpoint(
-            checkpoint_path, gold_path, split, batch_size, device, num_workers, units, seed
+            checkpoint_path, gold_path, split, batch_size, device, num_workers, units, seed,
+            predictions_out,
         )
 
 
@@ -248,6 +310,7 @@ def _score_checkpoint(
     num_workers: int,
     units: Optional[Units],
     seed: int,
+    predictions_out: Optional[str | Path] = None,
 ) -> dict[str, Any]:
     """evaluate_checkpoint's body; always called inside its forked RNG state."""
     checkpoint_path = Path(checkpoint_path)
@@ -304,6 +367,12 @@ def _score_checkpoint(
     accumulator = MetricAccumulator()
     uq_accumulator = UQAccumulator()
     reference_units = units or Units()
+    # Per-frame export, opt-in: filled from the same objects the accumulator
+    # gets, inside this one pass. None (the default) skips it entirely.
+    collected: Optional[dict[str, list[np.ndarray]]] = (
+        {name: [] for name in ("E_ref", "E_pred", "E_var", "F_ref", "F_pred", "F_var")}
+        if predictions_out is not None else None
+    )
 
     model_seconds = 0.0
     n_batches = 0
@@ -360,6 +429,8 @@ def _score_checkpoint(
             accumulator.update(prediction, reference)
             if prediction.is_stochastic:
                 uq_accumulator.update(prediction, reference)
+            if collected is not None:
+                _collect_predictions(collected, prediction, reference, int(dataset.z.shape[0]))
             n_batches += 1
 
     wall_seconds = time.perf_counter() - wall_start
@@ -373,8 +444,9 @@ def _score_checkpoint(
     benchmark_correlation = (
         uq_record["energy"]["spearman_uncertainty_error"] if uq_record and uq_record["energy"] else None
     )
+    fingerprint = scoring_data_fingerprint(dataset, resolved_gold, split)
 
-    return {
+    result = {
         "schema_version": SCHEMA_VERSION,
         "checkpoint": str(checkpoint_path),
         "phase": checkpoint["phase"],
@@ -389,7 +461,7 @@ def _score_checkpoint(
             "split": split,
             "molecule": dataset.molecule,
             "theory": dataset.theory,
-            "fingerprint": scoring_data_fingerprint(dataset, resolved_gold, split),
+            "fingerprint": fingerprint,
             "cutoff_radius": cutoff_radius,
             "num_rbf": num_rbf,
             "n_configs": n_configs,
@@ -436,6 +508,38 @@ def _score_checkpoint(
         "warnings": warnings,
     }
 
+    if collected is not None:
+        predictions_path = Path(predictions_out)
+        # Scoring order is the split's own order (shuffle=False), so frame k
+        # is the k-th entry of {split}_idx - the same array the fingerprint hashes.
+        with np.load(resolved_gold, allow_pickle=False) as gold:
+            gold_index = np.asarray(gold[f"{split}_idx"], dtype=np.int64)
+        energy_unit, force_unit = record["units"]["energy"], record["units"]["force"]
+        metadata = {
+            "schema_version": PREDICTIONS_SCHEMA_VERSION,
+            "checkpoint": str(checkpoint_path),
+            "checkpoint_sha256": hashlib.sha256(checkpoint_path.read_bytes()).hexdigest(),
+            "phase": checkpoint["phase"],
+            "molecule": dataset.molecule,
+            "theory": dataset.theory,
+            "split": split,
+            "seed": seed,
+            "num_mc_samples": num_mc_samples,
+            "batch_size": batch_size,
+            "units": record["units"],
+            "data_fingerprint": fingerprint,
+            "arrays": {
+                "gold_index": f"index into the gold file's arrays ({split}_idx), in scoring order",
+                "E_ref, E_pred": f"total energy per frame, {energy_unit}",
+                "E_var": f"predicted energy variance per frame, ({energy_unit})^2 - stochastic models only",
+                "F_ref, F_pred": f"force per atom and component, (frames, atoms, 3), {force_unit}",
+                "F_var": f"predicted force variance, (frames, atoms, 3), ({force_unit})^2 - stochastic models only",
+            },
+        }
+        sha = _write_predictions(predictions_path, gold_index, collected, metadata)
+        result["predictions"] = {"path": str(predictions_path), "sha256": sha}
+    return result
+
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
@@ -459,6 +563,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         default=None,
         help="default experiments/results/<checkpoint stem>.json",
     )
+    parser.add_argument("--save-predictions", metavar="PATH", default=None,
+                        help="also write per-frame predictions to this .npz (off by default)")
     args = parser.parse_args(argv)
 
     result = evaluate_checkpoint(
@@ -469,6 +575,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         device=args.device,
         num_workers=args.num_workers,
         seed=args.seed,
+        predictions_out=args.save_predictions,
     )
 
     default_output = RESULTS_DIR / f"{Path(args.checkpoint).stem}.json"
@@ -492,6 +599,8 @@ def main(argv: Optional[list[str]] = None) -> int:
               if row["uncertainty_correlation"] is not None
               else f"{row['ece']:.4g} / n/a")
     print(f"  written to {output}")
+    if "predictions" in result:
+        print(f"  per-frame predictions written to {result['predictions']['path']}")
     return 0
 
 
