@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, HashRouter as Router, Routes } from "react-router-dom";
-import { IconChart, IconFlask, IconGrid, IconHome, IconMoon, IconShield, IconSun } from "./components/icons";
+import { IconBolt, IconChart, IconFlask, IconGrid, IconHome, IconMoon, IconShield, IconSun } from "./components/icons";
 import Benchmarks from "./pages/Benchmarks";
 import Dashboard from "./pages/Dashboard";
 import EDA from "./pages/EDA";
 import Ethics from "./pages/Ethics";
 import Predict from "./pages/Predict";
+import Train from "./pages/Train";
 
 type Theme = "light" | "dark";
 
@@ -56,6 +57,9 @@ export default function App() {
             <NavLink to="/benchmarks" className={navClass}>
               <IconChart /> Benchmarks
             </NavLink>
+            <NavLink to="/train" className={navClass}>
+              <IconBolt /> Train
+            </NavLink>
             <NavLink to="/ethics" className={navClass}>
               <IconShield /> Ethics &amp; Safety
             </NavLink>
@@ -75,6 +79,7 @@ export default function App() {
             <Route path="/eda" element={<EDA />} />
             <Route path="/predict" element={<Predict />} />
             <Route path="/benchmarks" element={<Benchmarks />} />
+            <Route path="/train" element={<Train />} />
             <Route path="/ethics" element={<Ethics />} />
           </Routes>
         </main>

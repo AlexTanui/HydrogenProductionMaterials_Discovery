@@ -22,6 +22,12 @@ if str(ROOT_DIR) not in sys.path:
 CHECKPOINTS_DIR = ROOT_DIR / "experiments" / "checkpoints"
 RESULTS_DIR = ROOT_DIR / "experiments" / "results"
 GOLD_DIR = ROOT_DIR / "data" / "gold" / "md17"
+BRONZE_DIR = ROOT_DIR / "data" / "bronze" / "md17"
+SILVER_DIR = ROOT_DIR / "data" / "silver" / "md17"
+CONFIGS_DIR = ROOT_DIR / "experiments" / "configs"
+JOB_CONFIGS_DIR = CONFIGS_DIR / "jobs"
+RUNS_DIR = ROOT_DIR / "experiments" / "runs"
+JOB_LOGS_DIR = ROOT_DIR / "experiments" / "job_logs"
 
 # The checkpoint that serves each project phase, and the one file both
 # app.services.inference (live predictions) and app.api.benchmarks (the
@@ -61,6 +67,23 @@ PHASE_ALIASES: dict[str, str] = {"phase1": "phase1_deterministic", "phase2": "ph
 # app.services.inference.MD17_MOLECULES_CATALOG for the real catalog, read
 # from data/gold/md17/*.npz rather than hand-maintained.
 TRAINED_MOLECULE = "ethanol"
+
+# Registry phase (ml/models/registry.py key) -> the vetted config a new
+# training job's generated config is derived from (app.services.jobs).
+# Only data: molecule/theory/gold_path/use_literature_split and name are
+# overridden - every model/train kwarg stays exactly what that phase's
+# own maintainer already tuned on ethanol, so launching a job on a new
+# molecule can never silently diverge into an unvetted architecture or
+# training setting.
+JOB_TEMPLATE_CONFIGS: dict[str, Path] = {
+    "mpnn": CONFIGS_DIR / "phase1_baseline.yaml",
+    "schnet": CONFIGS_DIR / "phase1_schnet.yaml",
+    "painn": CONFIGS_DIR / "phase1_painn.yaml",
+    "physnet": CONFIGS_DIR / "phase1_physnet.yaml",
+    "dimenet": CONFIGS_DIR / "phase1_dimenet.yaml",
+    "blip": CONFIGS_DIR / "phase2_blip_nll.yaml",
+    "graph_stochastic": CONFIGS_DIR / "phase3_graph_stochastic.yaml",
+}
 
 
 class Settings(BaseSettings):

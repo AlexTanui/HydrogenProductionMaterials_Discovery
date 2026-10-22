@@ -5,10 +5,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import benchmarks, molecules, predictions
+from app.api import benchmarks, data, jobs, molecules, predictions
 from app.core.config import settings
 from app.models.db import init_db
 from app.services.inference import warm_up
+from app.services.jobs import recover_jobs
 
 
 @asynccontextmanager
@@ -20,6 +21,9 @@ async def lifespan(app: FastAPI):
     print("Warming up model checkpoints:", flush=True)
     for line in warm_up():
         print(line, flush=True)
+    recovered = recover_jobs()
+    if recovered:
+        print(f"Recovered {len(recovered)} training job(s) from a previous run: {recovered}", flush=True)
     yield
 
 
@@ -35,6 +39,8 @@ app.add_middleware(
 app.include_router(predictions.router)
 app.include_router(molecules.router)
 app.include_router(benchmarks.router)
+app.include_router(jobs.router)
+app.include_router(data.router)
 
 
 @app.get("/health")

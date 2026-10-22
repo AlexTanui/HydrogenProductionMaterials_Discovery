@@ -63,3 +63,45 @@ class BenchmarkResult(BaseModel):
     force_nll_gaussian: float | None = None
     energy_crps: float | None = None
     force_crps: float | None = None
+
+
+class TrainJobRequest(BaseModel):
+    molecule: str
+    # Registry phase to train (mpnn/schnet/painn/physnet/dimenet/blip/
+    # graph_stochastic) - GET /jobs/phases lists the real set.
+    phase: str
+    # Optional; must match the molecule's own catalogued theory if given -
+    # see app.services.jobs.start_job for why only one theory per molecule
+    # is launchable through this endpoint right now.
+    theory: str | None = None
+    # Overrides the template config's epoch count (normally 200) - for a
+    # quick demo run or a fast test, not a locked-protocol result.
+    epochs: int | None = None
+
+
+class TrainJobStatus(BaseModel):
+    id: str
+    molecule: str
+    theory: str
+    phase: str
+    config_name: str
+    started_at: str
+    status: str  # "running" | "complete" | "failed"
+    epochs_run: int | None = None
+    max_epochs: int | None = None
+    best_epoch: int | None = None
+    best_val_loss: float | None = None
+    last_val_loss: float | None = None
+    stop_reason: str | None = None
+    checkpoint_ready: bool
+    log_tail: str
+
+
+class DataUploadResponse(BaseModel):
+    molecule: str
+    theory: str
+    gold_path: str
+    n_train: int
+    n_val: int
+    n_test: int
+    used_literature_split: bool

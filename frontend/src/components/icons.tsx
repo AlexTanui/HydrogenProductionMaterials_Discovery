@@ -93,6 +93,14 @@ export function IconGrid({ size = 17 }: IconProps) {
   );
 }
 
+export function IconBolt({ size = 17 }: IconProps) {
+  return (
+    <svg {...base(size)}>
+      <path d="M13 3 5 13.5h5.5L10 21l8-10.5h-5.5Z" />
+    </svg>
+  );
+}
+
 export function IconShield({ size = 17 }: IconProps) {
   return (
     <svg {...base(size)}>

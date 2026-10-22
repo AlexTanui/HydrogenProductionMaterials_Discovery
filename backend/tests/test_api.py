@@ -11,10 +11,14 @@ a fresh checkout can satisfy on its own.
 """
 from __future__ import annotations
 
+import io
+import time
+
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.config import PHASE_CHECKPOINTS
+from app.core.config import GOLD_DIR, PHASE_CHECKPOINTS
 from app.main import app
 
 ANY_CHECKPOINT_TRAINED = any(path.exists() for path in PHASE_CHECKPOINTS.values())
@@ -150,3 +154,147 @@ def test_benchmarks_returns_one_row_per_checkpoint_with_a_unique_phase_key():
             assert row["force_ece"] is not None and row["force_ece"] >= 0
             assert row["energy_coverage_90"] is not None
             assert row["energy_sharpness"] is not None and row["energy_sharpness"] > 0
+
+
+# --------------------------------------------------------------------------
+# Training jobs and data upload (train the rest of the molecules; add new
+# data through the real bronze -> silver -> gold pipeline)
+# --------------------------------------------------------------------------
+
+def test_jobs_phases_lists_every_registered_architecture():
+    response = client.get("/jobs/phases")
+    assert response.status_code == 200
+    assert set(response.json()) == {"mpnn", "schnet", "painn", "physnet", "dimenet", "blip", "graph_stochastic"}
+
+
+def test_jobs_train_rejects_an_unknown_molecule():
+    response = client.post("/jobs/train", json={"molecule": "not_a_real_molecule", "phase": "mpnn"})
+    assert response.status_code == 404
+
+
+def test_jobs_train_rejects_an_unknown_phase():
+    response = client.post("/jobs/train", json={"molecule": "aspirin", "phase": "not_a_real_phase"})
+    assert response.status_code == 422
+
+
+def test_jobs_train_rejects_a_mismatched_theory():
+    response = client.post("/jobs/train", json={"molecule": "aspirin", "phase": "mpnn", "theory": "dft"})
+    assert response.status_code == 422
+    assert "ccsd" in response.json()["detail"]
+
+
+@pytest.mark.skipif(not (GOLD_DIR / "aspirin_ccsd.npz").exists(), reason="aspirin gold data not present")
+def test_launching_and_predicting_against_a_real_training_job():
+    """End to end: launch a real (tiny, 2-epoch) subprocess training job on
+    a molecule that has no fixed checkpoint, poll it to completion, then
+    predict against its own checkpoint via phase="job:<id>" - the actual
+    mechanism this feature is for, not a mock of it."""
+    response = client.post("/jobs/train", json={"molecule": "aspirin", "phase": "mpnn", "epochs": 2})
+    assert response.status_code == 200
+    job = response.json()
+    assert job["status"] == "running"
+    job_id = job["id"]
+    config_name = job["config_name"]
+
+    try:
+        deadline = time.time() + 90
+        status = job
+        while time.time() < deadline:
+            status = client.get(f"/jobs/{job_id}").json()
+            if status["status"] != "running":
+                break
+            time.sleep(2)
+        assert status["status"] == "complete", f"job did not complete in time: {status}"
+        assert status["checkpoint_ready"] is True
+        assert status["epochs_run"] == 2
+
+        predict_response = client.post(
+            "/predictions", json={"molecule": "aspirin", "frame_index": 0, "phase": f"job:{job_id}"}
+        )
+        assert predict_response.status_code == 200
+        body = predict_response.json()
+        assert body["phase"] == f"job:{job_id}"
+        assert body["true_energy"] is not None
+
+        # A job trained on aspirin must refuse to predict a different molecule.
+        mismatch = client.post(
+            "/predictions", json={"molecule": "ethanol", "frame_index": 0, "phase": f"job:{job_id}"}
+        )
+        assert mismatch.status_code == 422
+    finally:
+        # Real training artifacts this test produced - clean up so repeat
+        # runs don't accumulate fake jobs that GET /jobs (and a server
+        # restart's recover_jobs) would then show during a real demo.
+        from app.core.config import CHECKPOINTS_DIR, JOB_CONFIGS_DIR, JOB_LOGS_DIR, RESULTS_DIR, RUNS_DIR
+
+        import shutil
+
+        (JOB_CONFIGS_DIR / f"{config_name}.yaml").unlink(missing_ok=True)
+        (CHECKPOINTS_DIR / f"{config_name}.pt").unlink(missing_ok=True)
+        (JOB_LOGS_DIR / f"{config_name}.log").unlink(missing_ok=True)
+        (RESULTS_DIR / f"{config_name}.json").unlink(missing_ok=True)
+        shutil.rmtree(RUNS_DIR / config_name, ignore_errors=True)
+
+
+def test_predict_rejects_an_unknown_job_id():
+    response = client.post(
+        "/predictions", json={"molecule": "ethanol", "frame_index": 0, "phase": "job:does_not_exist"}
+    )
+    assert response.status_code == 404
+
+
+def _synthetic_md17_npz(molecule: str, theory: str, n_atoms: int = 3, n_configs: int = 20) -> bytes:
+    rng = np.random.default_rng(0)
+    buf = io.BytesIO()
+    np.savez(
+        buf,
+        z=np.array([1, 6, 8][:n_atoms], dtype=np.int64),
+        R=rng.normal(size=(n_configs, n_atoms, 3)).astype(np.float32),
+        E=rng.normal(loc=-1000.0, size=n_configs).astype(np.float32),
+        F=rng.normal(size=(n_configs, n_atoms, 3)).astype(np.float32),
+        name=molecule,
+    )
+    buf.seek(0)
+    return buf.read()
+
+
+def test_data_upload_runs_the_real_bronze_to_gold_pipeline_and_appears_in_molecules():
+    molecule, theory = "zzz_test_molecule", "dft"
+    npz_bytes = _synthetic_md17_npz(molecule, theory)
+
+    response = client.post(
+        "/data/upload",
+        files={"file": (f"{molecule}.npz", npz_bytes, "application/octet-stream")},
+        data={"molecule": molecule, "theory": theory},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["molecule"] == molecule
+    assert body["theory"] == theory
+    assert body["n_train"] + body["n_val"] + body["n_test"] == 20
+    assert body["used_literature_split"] is False
+
+    try:
+        catalog = {m["molecule"]: m["num_atoms"] for m in client.get("/molecules").json()}
+        assert catalog.get(molecule) == 3
+    finally:
+        # Test-only data; clean up rather than leaving a permanent fake
+        # molecule in the shared gold/bronze/silver directories.
+        from app.core.config import BRONZE_DIR, GOLD_DIR, SILVER_DIR
+
+        (GOLD_DIR / f"{molecule}_{theory}.npz").unlink(missing_ok=True)
+        (SILVER_DIR / f"{molecule}_{theory}.npz").unlink(missing_ok=True)
+        for leftover in BRONZE_DIR.glob(f"*{molecule}*"):
+            leftover.unlink(missing_ok=True)
+
+        from app.services.inference import refresh_catalog
+
+        refresh_catalog()
+
+
+def test_data_upload_rejects_an_unsupported_file_type():
+    response = client.post(
+        "/data/upload",
+        files={"file": ("data.txt", b"not a real dataset", "text/plain")},
+    )
+    assert response.status_code == 422
