@@ -27,6 +27,14 @@ GOLD_DIR = ROOT_DIR / "data" / "gold" / "md17"
 # app.services.inference (live predictions) and app.api.benchmarks (the
 # three-phase table) read - one mapping, not two that could drift apart.
 #
+# "phase1_deterministic" stays MPNN specifically: it's the shared backbone
+# BLIP and GraphStochastic both extend, so it's the one Phase 1 result
+# that's directly comparable to Phase 2/3 (same architecture, different
+# stochasticity). The other four Phase 1 bake-off architectures
+# (SchNet/PaiNN/PhysNet/DimeNet++ - same data, same loss, same budget,
+# different architecture only) get their own keys so the full bake-off
+# shows up in GET /benchmarks too, not just MPNN.
+#
 # Two BLIP entries, deliberately: phase2_blip_k1 is the original run
 # (train_num_mc_samples=1, plain MSE); phase2_blip is phase2_blip_nll.pt,
 # the K=4/NLL run after SCRUM-61's numerical-stability fix. Both are real,
@@ -38,6 +46,10 @@ GOLD_DIR = ROOT_DIR / "data" / "gold" / "md17"
 # keeps meaning the current/default BLIP for anything that only wants one.
 PHASE_CHECKPOINTS: dict[str, Path] = {
     "phase1_deterministic": CHECKPOINTS_DIR / "phase1_baseline.pt",
+    "phase1_schnet": CHECKPOINTS_DIR / "phase1_schnet.pt",
+    "phase1_painn": CHECKPOINTS_DIR / "phase1_painn.pt",
+    "phase1_physnet": CHECKPOINTS_DIR / "phase1_physnet.pt",
+    "phase1_dimenet": CHECKPOINTS_DIR / "phase1_dimenet.pt",
     "phase2_blip_k1": CHECKPOINTS_DIR / "phase2_blip.pt",
     "phase2_blip": CHECKPOINTS_DIR / "phase2_blip_nll.pt",
     "phase3_graph_stochastic": CHECKPOINTS_DIR / "phase3_graph_stochastic.pt",

@@ -113,24 +113,32 @@ def test_predict_rejects_an_unknown_phase():
     assert "phase99" in response.json()["detail"]
 
 
-def test_benchmarks_returns_one_row_per_project_phase_not_per_architecture():
+def test_benchmarks_returns_one_row_per_checkpoint_with_a_unique_phase_key():
     response = client.get("/benchmarks")
     assert response.status_code == 200
     rows = response.json()
 
     phases_present = {row["phase"] for row in rows}
-    # Each phase appears at most once - the bug this replaced could emit
-    # five "phase1_deterministic"-ish rows (one per bake-off architecture)
+    # Each phase key appears at most once, even though five of these rows
+    # share the registry phase "mpnn"/"schnet"/etc. is not what's checked -
+    # PHASE_CHECKPOINTS's keys are what must stay unique. The bug this
+    # replaced could emit duplicate, ambiguous rows for two runs of the
+    # same registry phase (phase2_blip vs phase2_blip_nll, both "blip"),
     # or crash outright reading the wrong JSON keys.
     assert len(phases_present) == len(rows)
     assert phases_present <= set(PHASE_CHECKPOINTS)
+    # The full Phase 1 bake-off (5 architectures) plus both BLIP runs plus
+    # Phase 3 - every trained checkpoint, not a collapsed subset.
+    assert {"phase1_deterministic", "phase1_schnet", "phase1_painn", "phase1_physnet", "phase1_dimenet"} <= phases_present
 
     for row in rows:
         assert row["energy_mae"] > 0
         assert row["force_mae"] > 0
         assert row["energy_rmse"] >= row["energy_mae"]  # RMSE >= MAE always
         assert row["force_rmse"] >= row["force_mae"]
-        if row["phase"] == "phase1_deterministic":
+        if row["phase"].startswith("phase1_"):
+            # Every Phase 1 architecture is deterministic - none has a
+            # predict_distribution, so none has UQ metrics, not just MPNN.
             assert row["ece"] is None
             assert row["uncertainty_correlation"] is None
             assert row["force_ece"] is None

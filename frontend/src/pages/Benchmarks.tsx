@@ -1,14 +1,24 @@
 import { useEffect, useState } from "react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { IconChart } from "../components/icons";
 import { BenchmarkResult, fetchBenchmarks } from "../api/client";
 
 const PHASE_LABELS: Record<string, string> = {
-  phase1_deterministic: "Phase 1",
-  phase2_blip_k1: "Phase 2 (BLIP, K=1)",
-  phase2_blip: "Phase 2 (BLIP, K=4 NLL)",
-  phase3_graph_stochastic: "Phase 3 (graph-space)",
+  phase1_deterministic: "Phase 1 — MPNN",
+  phase1_schnet: "Phase 1 — SchNet",
+  phase1_painn: "Phase 1 — PaiNN",
+  phase1_physnet: "Phase 1 — PhysNet",
+  phase1_dimenet: "Phase 1 — DimeNet++",
+  phase2_blip_k1: "Phase 2 — BLIP (K=1)",
+  phase2_blip: "Phase 2 — BLIP (K=4 NLL)",
+  phase3_graph_stochastic: "Phase 3 — graph-space",
 };
+
+// Phase 1's five architectures are a separate comparison from Phase 2/3
+// (different question: "which deterministic backbone is most accurate?"
+// vs. "where should stochasticity live?") - kept visually distinct so a
+// reader doesn't average them into one "Phase 1" bar.
+const PHASE1_KEYS = ["phase1_deterministic", "phase1_schnet", "phase1_painn", "phase1_physnet", "phase1_dimenet"];
 
 function CustomTooltip({ active, payload, label, unit }: any) {
   if (!active || !payload?.length) return null;
@@ -25,37 +35,55 @@ function CustomTooltip({ active, payload, label, unit }: any) {
   );
 }
 
+// Phase 1's five architectures in one colour, Phase 2/3 in another - two
+// different questions (best deterministic backbone vs. where should
+// stochasticity live) sharing one chart should not look like one group.
+function colorForPhase(phase: string): string {
+  return PHASE1_KEYS.includes(phase) ? "var(--series-blue)" : "var(--series-orange)";
+}
+
 function MetricChart({
   title,
   data,
   dataKey,
   unit,
-  color,
 }: {
   title: string;
   data: BenchmarkResult[];
   dataKey: "energy_mae" | "force_mae";
   unit: string;
-  color: string;
 }) {
   const chartData = data.map((r) => ({ ...r, label: PHASE_LABELS[r.phase] ?? r.phase }));
   return (
     <div className="card">
       <p className="card-title">{title}</p>
-      <ResponsiveContainer width="100%" height={200}>
+      <ResponsiveContainer width="100%" height={220}>
         <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid vertical={false} stroke="var(--gridline)" />
           <XAxis
             dataKey="label"
-            tick={{ fill: "var(--ink-muted)", fontSize: 12 }}
+            tick={{ fill: "var(--ink-muted)", fontSize: 11 }}
             axisLine={{ stroke: "var(--baseline)" }}
             tickLine={false}
+            angle={-20}
+            textAnchor="end"
+            height={50}
           />
           <YAxis tick={{ fill: "var(--ink-muted)", fontSize: 12 }} axisLine={false} tickLine={false} width={44} />
           <Tooltip content={<CustomTooltip unit={unit} />} cursor={{ fill: "var(--gridline)", opacity: 0.4 }} />
-          <Bar dataKey={dataKey} fill={color} radius={[4, 4, 0, 0]} maxBarSize={40} />
+          <Bar dataKey={dataKey} radius={[4, 4, 0, 0]} maxBarSize={40}>
+            {chartData.map((r) => (
+              <Cell key={r.phase} fill={colorForPhase(r.phase)} />
+            ))}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
+      <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--ink-muted)" }}>
+        <span style={{ color: "var(--series-blue)" }}>■</span> Phase 1 bake-off (five architectures, same
+        data/loss/budget — which backbone is most accurate) &nbsp;
+        <span style={{ color: "var(--series-orange)" }}>■</span> Phase 2/3 (same MPNN backbone — where
+        should stochasticity live)
+      </p>
     </div>
   );
 }
@@ -102,23 +130,28 @@ export default function Benchmarks() {
 
       {!error && results && results.length > 0 && (
         <>
-          <MetricChart
-            title="Energy MAE by phase"
-            data={results}
-            dataKey="energy_mae"
-            unit="kcal/mol"
-            color="var(--series-blue)"
-          />
-          <MetricChart
-            title="Force MAE by phase"
-            data={results}
-            dataKey="force_mae"
-            unit="kcal/mol/Å"
-            color="var(--series-blue)"
-          />
+          <div className="card">
+            <p className="card-title">What these charts are comparing</p>
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "var(--ink-secondary)" }}>
+              Two separate questions share this page. <b>Phase 1</b> (blue) is a bake-off: five
+              architectures trained under one identical protocol — same data, same loss, same budget —
+              so any difference is architecture, not conditions. <b>Phase 2/3</b> (orange) all extend
+              the same MPNN backbone and ask a different question: where should stochasticity live, in
+              the weights (BLIP) or the graph representations (Phase 3)? Lower is better on every chart
+              below.
+            </p>
+          </div>
+
+          <MetricChart title="Energy MAE by phase" data={results} dataKey="energy_mae" unit="kcal/mol" />
+          <MetricChart title="Force MAE by phase" data={results} dataKey="force_mae" unit="kcal/mol/Å" />
 
           <div className="card">
             <p className="card-title">Uncertainty quantification</p>
+            <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--ink-secondary)" }}>
+              Phase 1 has no uncertainty by construction (deterministic — one forward pass, no sampled
+              distribution to compute a confidence interval from), so it has no rows here. ECE closer to
+              0 is better calibrated; Spearman closer to 1 means uncertainty actually tracks error.
+            </p>
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
