@@ -1,0 +1,159 @@
+{
+  "name": "phase3_graph_stochastic",
+  "phase": "graph_stochastic",
+  "model": "GraphStochastic",
+  "reportable": true,
+  "overrides": {},
+  "status": "complete",
+  "git_commit": "fdc23536f078f5be892602209f3cbe4750330dcc",
+  "git_dirty": false,
+  "git_dirty_ignores": [
+    "experiments/runs/"
+  ],
+  "config_path": "experiments/configs/phase3_graph_stochastic.yaml",
+  "config_sha256": "fb752222ed512a49abb6223a126a6ef1c67cb44e9d8dcfde1ed1b16913fe91a6",
+  "config": {
+    "name": "phase3_graph_stochastic",
+    "data": {
+      "dataset": "md17",
+      "molecule": "ethanol",
+      "theory": "dft",
+      "gold_path": "data/gold/md17/ethanol_dft.npz",
+      "cutoff_radius": 5.0,
+      "train_split": 0.8,
+      "val_split": 0.1,
+      "test_split": 0.1,
+      "use_literature_split": false,
+      "num_rbf": 16,
+      "seed": 42
+    },
+    "model": {
+      "phase": "graph_stochastic",
+      "hidden_channels": 128,
+      "num_layers": 4,
+      "num_rbf": 50,
+      "num_mc_samples": 20,
+      "kl_weight": 0.01
+    },
+    "train": {
+      "epochs": 200,
+      "batch_size": 32,
+      "lr": 0.0005,
+      "energy_loss_weight": 1.0,
+      "force_loss_weight": 100.0,
+      "patience": 20,
+      "device": "cpu",
+      "train_subset": 10000,
+      "train_subset_seed": 42,
+      "val_subset": 5000
+    }
+  },
+  "model_config": {
+    "hidden_channels": 128,
+    "num_layers": 4,
+    "num_rbf": 50,
+    "cutoff": 5.0,
+    "num_mc_samples": 20,
+    "kl_weight": 0.01
+  },
+  "n_parameters": 385925,
+  "subsets": {
+    "train": {
+      "size": 10000,
+      "of": 444074,
+      "seed": 42,
+      "stride": 44,
+      "offset": 3,
+      "gold_indices_sha256": "7240883e6938bd7c5f27195567accb40a7147a7b7a0673e516597d2e8bf9fa0d",
+      "first_gold_index": 3,
+      "last_gold_index": 439959
+    },
+    "val": {
+      "size": 5000,
+      "of": 55509,
+      "seed": 42,
+      "stride": 11,
+      "offset": 0,
+      "gold_indices_sha256": "9ca1c1b6fdf48a5c1805ad0b9b019b09987f1abb4c04b3d6f12f015c27b36da3",
+      "first_gold_index": 444074,
+      "last_gold_index": 499063
+    }
+  },
+  "energy_statistics": {
+    "computed_on": "train subset",
+    "n_frames": 10000,
+    "energy_mean": -97195.8193421875,
+    "energy_std": 4.189574263572231,
+    "n_atoms": 9,
+    "shift_per_atom": -10799.53515625,
+    "scale_per_atom": 0.46550825238227844,
+    "unit": "kcal/mol",
+    "formula": "E = scale * E_model + n_atoms * shift; F = scale * F_model"
+  },
+  "protocol": {
+    "loss": "energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E, plus kl_weight * model.kl_divergence() / n_batches when the model defines kl_weight (BLIP only; see ml/models/blip.py)",
+    "loss_override": null,
+    "nll_min_energy_var": null,
+    "nll_min_force_var": null,
+    "nll_min_var_epoch": null,
+    "energy_loss_weight": 1.0,
+    "force_loss_weight": 100.0,
+    "kl_weight": 0.01,
+    "train_num_mc_samples": 1,
+    "nll_warmup_epochs": 0,
+    "optimizer": {
+      "name": "Adam",
+      "lr": 0.0005,
+      "weight_decay": 1e-06
+    },
+    "scheduler": {
+      "name": "ReduceLROnPlateau",
+      "factor": 0.5,
+      "patience": 5
+    },
+    "grad_clip_norm": 10.0,
+    "batch_size": 32,
+    "max_epochs": 200,
+    "patience": 20,
+    "max_batches_per_epoch": null,
+    "shuffle": "torch.Generator seeded with data.seed",
+    "selection": "lowest val loss on the val subset"
+  },
+  "environment": {
+    "device": "cpu",
+    "torch": "2.13.0",
+    "torch_geometric": "2.8.0.post1",
+    "numpy": "2.4.6",
+    "torch_num_threads": 4,
+    "python": "3.11.9",
+    "platform": "macOS-14.4-arm64-arm-64bit",
+    "processor": "arm"
+  },
+  "setup_s": 0.5732711250893772,
+  "started_at": "2026-10-22T08:00:43+00:00",
+  "checkpoint": "experiments/checkpoints/phase3_graph_stochastic.pt",
+  "history_csv": "experiments/runs/phase3_graph_stochastic/history.csv",
+  "epochs_run": 200,
+  "best_epoch": 197,
+  "best_val_loss": 34.20228800196556,
+  "stop_reason": "max_epochs",
+  "wall_clock_s": 2641.6503847499844,
+  "finished_at": "2026-10-22T08:44:45+00:00",
+  "checkpoint_sha256": "9412d66409d10c67da4a48a16f5d40565da03ec560281688b4553caa16b4991f",
+  "test": {
+    "metrics_json": "test_metrics.json",
+    "benchmark_row": {
+      "phase": "graph_stochastic",
+      "model": "GraphStochastic",
+      "energy_mae": 0.0897160257796033,
+      "energy_mae_field": "energy_mae_total",
+      "energy_mae_unit": "kcal/mol",
+      "force_mae": 0.20882165299395306,
+      "force_mae_field": "force_mae_component",
+      "force_mae_unit": "kcal/mol/Ang",
+      "ece": 0.15375276982111005,
+      "uncertainty_correlation": 0.002088680944834243,
+      "uncertainty_note": "computed under ml.utils.uq_metrics's provisional definition (Normal distribution assumed from E_var/F_var) - not yet Dongxiao's confirmed definition; see that module's docstring and SCRUM-39"
+    }
+  }
+}

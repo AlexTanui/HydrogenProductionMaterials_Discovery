@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "checkpoint": "/Users/alextanui/Desktop/Hydrogen_production/experiments/checkpoints/phase2_blip_nll.pt",
+  "checkpoint": "experiments/checkpoints/phase2_blip_nll.pt",
   "phase": "blip",
   "model_config": {
     "hidden_channels": 128,
@@ -19,6 +19,7 @@
     "formula": "E = scale * E_model + n_atoms * shift; F = scale * F_model"
   },
   "seed": 0,
+  "num_mc_samples": 20,
   "n_parameters": 740953,
   "data": {
     "gold_path": "/Users/alextanui/Desktop/Hydrogen_production/data/gold/md17/ethanol_dft.npz",
@@ -97,10 +98,10 @@
         "energy_rmse_total": 0.18895626227018655,
         "energy_mae_per_atom": 0.019132235938716657,
         "energy_rmse_per_atom": 0.02099514025224294,
-        "force_mae_component": 0.19495017234791243,
-        "force_rmse_component": 0.2979746992697946,
-        "force_mae_atom_norm": 0.38993825378768754,
-        "force_rmse_atom_norm": 0.516107318505341,
+        "force_mae_component": 0.1949501723476937,
+        "force_rmse_component": 0.2979746992690971,
+        "force_mae_atom_norm": 0.38993825378683256,
+        "force_rmse_atom_norm": 0.5161073185041329,
         "fields": {
           "energy_mae_total": {
             "quantity": "energy",
@@ -169,10 +170,10 @@
         "force": "kcal/mol/Ang"
       },
       "excluded": {},
-      "force_mae_component": 0.19495017234791243,
-      "force_rmse_component": 0.2979746992697946,
-      "force_mae_atom_norm": 0.38993825378768754,
-      "force_rmse_atom_norm": 0.516107318505341,
+      "force_mae_component": 0.1949501723476937,
+      "force_rmse_component": 0.2979746992690971,
+      "force_mae_atom_norm": 0.38993825378683256,
+      "force_rmse_atom_norm": 0.5161073185041329,
       "energy_mae_total": 0.1721901234484498,
       "energy_rmse_total": 0.18895626227018655,
       "energy_mae_per_atom": 0.019132235938716657,
@@ -335,71 +336,71 @@
             "95%": 0.06558496019664478
           },
           "ece": 0.7408982810928892,
-          "spearman_uncertainty_error": 0.29963611290146513,
+          "spearman_uncertainty_error": 0.2996361128199903,
           "risk_coverage": [
             {
               "coverage": 0.1,
               "n": 149874,
-              "mae": 0.11313383910579229
+              "mae": 0.1131338391034061
             },
             {
               "coverage": 0.2,
               "n": 299749,
-              "mae": 0.12100869384878464
+              "mae": 0.12100869384798923
             },
             {
               "coverage": 0.3,
               "n": 449623,
-              "mae": 0.12784923522128655
+              "mae": 0.12784923522393787
             },
             {
               "coverage": 0.4,
               "n": 599497,
-              "mae": 0.1344186233861449
+              "mae": 0.13441862338833224
             },
             {
               "coverage": 0.5,
               "n": 749372,
-              "mae": 0.14119761438578834
+              "mae": 0.14119761438833361
             },
             {
               "coverage": 0.6,
               "n": 899246,
-              "mae": 0.14850981326627571
+              "mae": 0.14850981326879445
             },
             {
               "coverage": 0.7,
               "n": 1049120,
-              "mae": 0.15699140674290235
+              "mae": 0.15699140674449313
             },
             {
               "coverage": 0.8,
               "n": 1198994,
-              "mae": 0.16687142236508748
+              "mae": 0.1668714223666783
             },
             {
               "coverage": 0.9,
               "n": 1348869,
-              "mae": 0.17803428136359933
+              "mae": 0.17803428136565408
             },
             {
               "coverage": 1.0,
               "n": 1498743,
-              "mae": 0.19495017234791243
+              "mae": 0.1949501723476937
             }
           ],
-          "nll_gaussian": 483.5993639085038,
-          "crps_gaussian": 0.19002614995541978,
-          "sharpness_mean_std": 0.009001295370931287
+          "nll_gaussian": 483.59936381931533,
+          "crps_gaussian": 0.19002614995414963,
+          "sharpness_mean_std": 0.009001295373042596
         }
       }
     ]
   },
   "timing": {
-    "eval_wall_clock_s": 637.687418290996,
-    "model_inference_s": 632.9777360017179,
-    "inference_s_per_config": 0.011403155091998015,
-    "wall_clock_s_per_config": 0.011488000473634834,
+    "eval_wall_clock_s": 732.2966187499696,
+    "model_inference_s": 726.3019175636582,
+    "inference_s_per_config": 0.01308439924271124,
+    "wall_clock_s_per_config": 0.013192394363976465,
     "batch_size": 32,
     "n_batches": 1735,
     "train_wall_clock_s": 13882.171565041994
@@ -417,7 +418,7 @@
     "energy_mae": 0.1721901234484498,
     "energy_mae_field": "energy_mae_total",
     "energy_mae_unit": "kcal/mol",
-    "force_mae": 0.19495017234791243,
+    "force_mae": 0.1949501723476937,
     "force_mae_field": "force_mae_component",
     "force_mae_unit": "kcal/mol/Ang",
     "ece": 0.7717277828820551,
