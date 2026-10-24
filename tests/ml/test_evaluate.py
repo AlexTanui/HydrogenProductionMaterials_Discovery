@@ -18,6 +18,7 @@ real 229 MB ethanol data, so these run in seconds and need no LFS.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 
@@ -28,7 +29,7 @@ from torch import nn
 
 from ml.models.registry import MODEL_REGISTRY, load_model, save_checkpoint
 from ml.models.scaling import ScaledEnergyModel
-from ml.training.evaluate import evaluate_checkpoint
+from ml.training.evaluate import evaluate_checkpoint, main
 
 _Z = [6, 6, 8, 1, 1, 1, 1, 1, 1]
 
@@ -694,3 +695,110 @@ def test_rng_fork_covers_every_cuda_device(tmp_path, gold_file, monkeypatch):
     monkeypatch.setattr(torch.random, "fork_rng", spy)
     evaluate_checkpoint(path, batch_size=4, device="cpu")
     assert forked == [[0, 1, 2]]
+
+
+# --------------------------------------------------------------------------
+# 10. Opt-in per-frame predictions export (SCRUM-50, SCRUM-63)
+# --------------------------------------------------------------------------
+
+_WALL_CLOCK = ("eval_wall_clock_s", "model_inference_s", "inference_s_per_config", "wall_clock_s_per_config")
+
+
+def _without_wall_clock(result: dict) -> dict:
+    """Everything but wall-clock timings, which differ between any two scorings."""
+    out = {key: value for key, value in result.items() if key != "predictions"}
+    out["timing"] = {k: v for k, v in result["timing"].items() if k not in _WALL_CLOCK}
+    return out
+
+
+def _accumulated_maes(predictions) -> tuple[float, float]:
+    """MetricAccumulator's own arithmetic, on the saved arrays alone: the
+    float32 difference cast to float64, summed per batch (the batch size is
+    in the metadata), batch sums added as Python floats, one division."""
+    batch_size = json.loads(str(predictions["metadata"]))["batch_size"]
+    n_frames, n_atoms = predictions["F_ref"].shape[:2]
+    e_total = f_total = 0.0
+    for start in range(0, n_frames, batch_size):
+        frames = slice(start, start + batch_size)
+        d_e = (torch.from_numpy(predictions["E_pred"][frames]) - torch.from_numpy(predictions["E_ref"][frames])).double()
+        d_f = (torch.from_numpy(predictions["F_pred"][frames]) - torch.from_numpy(predictions["F_ref"][frames])).double()
+        e_total += float(d_e.abs().sum())
+        f_total += float(d_f.reshape(-1, 3).abs().sum())
+    return e_total / n_frames, f_total / (3 * n_frames * n_atoms)
+
+
+@pytest.mark.parametrize("batch_size", [4, N_TEST_CONFIGS])  # three batches (one short), and one
+def test_mae_from_the_saved_predictions_equals_the_reported_mae_exactly(checkpoint, gold_file, tmp_path,
+                                                                        batch_size):
+    out = tmp_path / "predictions.npz"
+    result = evaluate_checkpoint(checkpoint, batch_size=batch_size, predictions_out=out)
+    record = result["metrics"]["per_key"][0]
+    with np.load(out, allow_pickle=False) as predictions, np.load(gold_file, allow_pickle=False) as gold:
+        energy_mae, force_mae = _accumulated_maes(predictions)
+        assert energy_mae == record["energy_mae_total"]
+        assert force_mae == record["force_mae_component"]
+        # Any other summation order agrees to float64 rounding - subtracting the
+        # stored float32 values first, as the accumulator does.
+        d_e = (predictions["E_pred"] - predictions["E_ref"]).astype(np.float64)
+        assert np.abs(d_e).mean() == pytest.approx(record["energy_mae_total"], rel=1e-12)
+        # The gold indices are the scored frames: the references are the gold file's values at them.
+        assert np.array_equal(predictions["gold_index"], gold["test_idx"])
+        assert np.array_equal(predictions["E_ref"], gold["E"][predictions["gold_index"]])
+        assert np.array_equal(predictions["F_ref"], gold["F"][predictions["gold_index"]])
+        assert predictions["F_ref"].shape == (N_TEST_CONFIGS, len(_Z), 3)
+        # Deterministic: no variances to save.
+        assert "E_var" not in predictions.files and "F_var" not in predictions.files
+
+
+def test_without_predictions_out_nothing_is_written_and_the_result_is_unchanged(checkpoint, tmp_path,
+                                                                                 monkeypatch):
+    monkeypatch.chdir(tmp_path)  # a stray relative write would land here
+    before = set(tmp_path.rglob("*"))
+    plain = evaluate_checkpoint(checkpoint, batch_size=4)
+    assert "predictions" not in plain
+    assert set(tmp_path.rglob("*")) == before
+    # Exporting changes nothing else either: same scores, same record.
+    exported = evaluate_checkpoint(checkpoint, batch_size=4, predictions_out=tmp_path / "p.npz")
+    assert _without_wall_clock(exported) == _without_wall_clock(plain)
+
+
+def test_a_stochastic_model_also_saves_its_variances(mc_checkpoint, tmp_path):
+    path = mc_checkpoint(MCToyModel(num_mc_samples=3))
+    plain = evaluate_checkpoint(path, batch_size=4)
+    out = tmp_path / "mc.npz"
+    exported = evaluate_checkpoint(path, batch_size=4, predictions_out=out)
+    # Collecting draws no random numbers: the scores, UQ ones included, are unchanged.
+    assert _without_wall_clock(exported) == _without_wall_clock(plain)
+    with np.load(out, allow_pickle=False) as predictions:
+        assert predictions["E_var"].shape == predictions["E_ref"].shape == (N_TEST_CONFIGS,)
+        assert predictions["F_var"].shape == predictions["F_ref"].shape
+        assert json.loads(str(predictions["metadata"]))["num_mc_samples"] == 3
+        # They are the variances the UQ metrics were scored on.
+        std = np.sqrt(predictions["E_var"].astype(np.float64))
+        assert std.mean() == pytest.approx(plain["uq_metrics"]["per_key"][0]["energy"]["sharpness_mean_std"],
+                                           rel=1e-12)
+
+
+def test_the_predictions_file_carries_its_provenance(checkpoint, tmp_path):
+    out = tmp_path / "nested" / "preds"  # no .npz suffix: written at exactly this path
+    result = evaluate_checkpoint(checkpoint, batch_size=4, seed=5, predictions_out=out)
+    assert out.is_file() and not list(out.parent.glob("*.npz")) and not list(out.parent.glob("*.partial"))
+    assert result["predictions"] == {"path": str(out), "sha256": hashlib.sha256(out.read_bytes()).hexdigest()}
+    with np.load(out, allow_pickle=False) as predictions:
+        meta = json.loads(str(predictions["metadata"]))
+    assert meta["checkpoint"] == str(checkpoint)
+    assert meta["checkpoint_sha256"] == hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+    assert meta["data_fingerprint"] == result["data"]["fingerprint"]
+    assert (meta["split"], meta["seed"], meta["num_mc_samples"], meta["batch_size"]) == ("test", 5, None, 4)
+    assert meta["units"] == result["metrics"]["per_key"][0]["units"]
+
+
+def test_cli_save_predictions(checkpoint, tmp_path):
+    results = tmp_path / "result.json"
+    assert main(["--checkpoint", str(checkpoint), "--batch-size", "4", "--output", str(results)]) == 0
+    assert "predictions" not in json.loads(results.read_text(encoding="utf-8"))
+    assert not list(tmp_path.rglob("*.npz.partial")) and not (tmp_path / "p.npz").exists()
+    assert main(["--checkpoint", str(checkpoint), "--batch-size", "4", "--output", str(results),
+                 "--save-predictions", str(tmp_path / "p.npz")]) == 0
+    assert json.loads(results.read_text(encoding="utf-8"))["predictions"]["path"] == str(tmp_path / "p.npz")
+    assert (tmp_path / "p.npz").is_file()

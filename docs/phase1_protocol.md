@@ -62,6 +62,31 @@ reproduces numbers already reported and tunes or selects nothing, so the
 "test scored once" rule still holds: no decision was made from the test
 split.
 
+**Per-frame predictions.** For parity, residual or uncertainty-vs-error
+plots, score the checkpoint with `--save-predictions` (off by default):
+
+```bash
+python -m ml.training.evaluate --checkpoint experiments/checkpoints/phase1_painn.pt \
+    --save-predictions experiments/results/phase1_painn_predictions.npz
+```
+
+The `.npz` holds, per test frame in scoring order, `gold_index` (into the
+gold file), `E_ref`/`E_pred` (kcal/mol) and `F_ref`/`F_pred` as
+(frames, atoms, 3) (kcal/mol/Å), plus `E_var`/`F_var` for a stochastic
+model. `metadata` is a JSON string with the checkpoint path and sha256, the
+scoring-data fingerprint, split, seed, MC sample count, batch size and
+units: `json.loads(str(np.load(path)["metadata"]))`. The arrays are the
+exact values the metrics were computed from, collected in the same pass, so
+a plot made from them agrees with the reported numbers: energy MAE is the
+mean of |E_pred − E_ref|, subtracted in the stored float32. Without the
+flag nothing is written and the scores are unchanged. Like the re-score
+above, this reports numbers already reported and selects nothing.
+`experiments/results/` is gitignored; a full ethanol test split is about
+12 MB. Absolute energies are float32, so at ethanol's ~97,000 kcal/mol they sit
+on a 0.0078 kcal/mol grid: per-frame energy errors come in steps of that
+size, which shows as banding in a residual plot (the means over 55,509
+frames are not affected).
+
 ## Limitations
 
 1. **One seed per model.** There is no estimate of seed-to-seed variation.
