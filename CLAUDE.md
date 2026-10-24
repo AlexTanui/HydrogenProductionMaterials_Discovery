@@ -16,10 +16,21 @@ be pointed at real catalyst screening. This supersedes any earlier framing
 around `catalytic_activity`, `stability`, or causal ML — those are no
 longer part of the technical plan.
 
-**Current state:** `ml/data/` is implemented and verified; `ml/models/`,
-`ml/training/`, and `ml/utils/` are still empty placeholders; `backend/`
-and `frontend/` are at interface-preview stage (real code, stub
-predictions).
+**Current state (25 Oct 2026):** `ml/data/`, `ml/models/`, `ml/training/`
+and `ml/utils/` are all implemented. Phase 1 is complete — five models
+(MPNN, SchNet, PaiNN, DimeNet++, PhysNet) trained and scored under one
+protocol on ethanol (DFT). Phase 2 (BLIP) has two scored runs —
+`phase2_blip_nll` (clean) and `phase2_blip` (refused, below) — and Phase 3
+(graph-space) has one. `backend/` and `frontend/` are wired to real
+checkpoints, not stubs (SCRUM-42/43).
+
+Two caveats that matter when reading any result: `phase2_blip` was
+trained from a **dirty tree** and is therefore refused by the benchmark
+harness's clean-commit guard (SCRUM-48), and its record has no eval MC
+sample count either — it needs retraining from a clean commit before it
+can appear in any table. And **no run has been
+re-scored**; every record reads "not re-scored", so reproducibility is
+recorded but unverified until the golden-run guard (SCRUM-38) lands.
 
 Team structure, full architecture, folder-by-folder ownership, API
 contracts, data schema, and experiment config schema all live in one place:
@@ -128,6 +139,7 @@ harness** (agreed by the team, 15 Oct 2026):
 | Experiment config schema | `ml/config.py` |
 | Model registry, checkpoint contract, energy scale-and-shift wrapper | `ml/models/registry.py`, `ml/models/scaling.py` |
 | Metric implementations | `ml/utils/metrics.py` |
+| UQ metric definitions and implementation (UQ protocol v1.0) | `ml/utils/uq_metrics.py` |
 | Checkpoint scoring | `ml/training/evaluate.py` |
 | Three-phase comparison harness | `ml/training/benchmark.py` |
 | `ml/` unit tests | `tests/` |
@@ -146,12 +158,25 @@ Does **not** own: the data pipeline (`ml/data/*` — Shijin) or
 backend/frontend implementation (Alex). When work touches those, propose
 the change to the owner rather than editing directly.
 
-**Dongxiao owns UQ metric *definitions*** — ECE, uncertainty–error Spearman
-correlation, and the calibration analysis built on them. Fazin implements
-against those definitions and wires them into the benchmark harness, but
-doesn't unilaterally decide binning strategy, correlation choice, or what
-counts as calibrated. Confirm the definition with Dongxiao before
-implementing, and cite it in the docstring.
+**Fazin owns UQ metric *definitions*** — ECE, uncertainty–error Spearman
+correlation, and the calibration analysis built on them — assigned to him
+by Dongxiao on 23 Oct 2026, who owned them until then. The definitions in
+`ml/utils/uq_metrics.py` are ratified as **UQ protocol v1.0**: the choices
+already implemented there (binning strategy, correlation convention, and
+the Normal(mean, variance) predictive assumption) were adopted unchanged,
+so every run scored before that date stands as scored — a re-score is
+expected to reproduce it, though none has been run yet (see "no run has
+been re-scored" above). Records written before 23 Oct carry a note
+calling the definition "provisional pending Dongxiao's sign-off"; that
+note is historical and not a live caveat.
+
+Changing any v1.0 choice is a **v2.0** and breaks cross-run
+comparability, so it requires re-scoring every stochastic run in the same
+commit. ECE and Spearman are reported **per quantity (energy and force
+separately), never pooled** — on the same checkpoint force Spearman is
+roughly 100× energy Spearman (ethanol DFT: ~0.3 against ~0.003) and ECE
+differs by up to ~2×, so one unqualified figure misreports whichever
+quantity it isn't.
 
 The harness must enforce a **fair comparison**: same molecule, same theory,
 same gold splits, same MC sample count across phases. That fairness check
