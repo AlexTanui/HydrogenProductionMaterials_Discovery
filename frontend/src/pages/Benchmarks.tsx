@@ -243,6 +243,66 @@ export default function Benchmarks() {
               </table>
             </div>
           </div>
+
+          {results.some((r) => r.energy_ece_calibrated !== null) && (
+            <div className="card">
+              <p className="card-title">Post-hoc calibration (SCRUM-68)</p>
+              <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--ink-secondary)" }}>
+                A single conformal scale factor, fit offline on the held-out validation split
+                (<code>ml/training/calibrate.py</code>), multiplied onto every predicted std at test
+                time — no retraining. Shown as before/after rather than replacing the raw numbers
+                above, since this is a correction on top of each model's own uncertainty, not a
+                different model.
+              </p>
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Phase</th>
+                      <th>Energy ECE (raw → calibrated)</th>
+                      <th>Force ECE (raw → calibrated)</th>
+                      <th>Energy cov@90% (raw → calibrated)</th>
+                      <th>Force cov@90% (raw → calibrated)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results
+                      .filter((r) => r.energy_ece_calibrated !== null)
+                      .map((r) => (
+                        <tr key={r.phase}>
+                          <td>{PHASE_LABELS[r.phase] ?? r.phase}</td>
+                          <td>
+                            {r.ece?.toFixed(4) ?? "—"} → {r.energy_ece_calibrated?.toFixed(4) ?? "—"}
+                          </td>
+                          <td>
+                            {r.force_ece?.toFixed(4) ?? "—"} → {r.force_ece_calibrated?.toFixed(4) ?? "—"}
+                          </td>
+                          <td>
+                            {r.energy_coverage_90 !== null ? `${(r.energy_coverage_90 * 100).toFixed(1)}%` : "—"} →{" "}
+                            {r.energy_coverage_90_calibrated !== null
+                              ? `${(r.energy_coverage_90_calibrated * 100).toFixed(1)}%`
+                              : "—"}
+                          </td>
+                          <td>
+                            {r.force_coverage_90 !== null ? `${(r.force_coverage_90 * 100).toFixed(1)}%` : "—"} →{" "}
+                            {r.force_coverage_90_calibrated !== null
+                              ? `${(r.force_coverage_90_calibrated * 100).toFixed(1)}%`
+                              : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--ink-muted)" }}>
+                Coverage lands near 98–100% rather than exactly 90% after calibration — plausibly
+                because MD17's contiguous-trajectory-block splits (required to avoid leaking
+                near-duplicate frames, see CLAUDE.md) violate the exchangeability assumption
+                conformal prediction relies on between the validation calibration set and test set.
+                Reported honestly rather than claimed as a perfect fix — see SCRUM-68.
+              </p>
+            </div>
+          )}
         </>
       )}
     </>

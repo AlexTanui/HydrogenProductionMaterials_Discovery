@@ -189,6 +189,16 @@ export default function Predict() {
                     deterministic — no uncertainty by construction
                   </p>
                 )}
+                {result.uncertainty_calibrated !== null && (
+                  <p className="stat-label" style={{ margin: "2px 0 0", fontSize: 12 }}>
+                    calibrated (SCRUM-68): {result.uncertainty_calibrated.toFixed(4)}
+                  </p>
+                )}
+                {result.uncertainty !== null && result.uncertainty_calibrated === null && (
+                  <p className="stat-label" style={{ margin: "2px 0 0", fontSize: 12 }}>
+                    not yet calibrated for this checkpoint
+                  </p>
+                )}
               </div>
             </div>
 
@@ -216,7 +226,8 @@ export default function Predict() {
                   <th>Phase</th>
                   <th>Predicted energy</th>
                   <th>Error vs. real DFT</th>
-                  <th>Uncertainty</th>
+                  <th>Uncertainty (raw)</th>
+                  <th>Uncertainty (calibrated)</th>
                 </tr>
               </thead>
               <tbody>
@@ -226,7 +237,7 @@ export default function Predict() {
                     return (
                       <tr key={phaseKey}>
                         <td>{label}</td>
-                        <td colSpan={3} style={{ color: "var(--status-critical)" }}>
+                        <td colSpan={4} style={{ color: "var(--status-critical)" }}>
                           {entry}
                         </td>
                       </tr>
@@ -240,6 +251,9 @@ export default function Predict() {
                       <td>{entry.predicted_energy.toFixed(2)} kcal/mol</td>
                       <td>{errorAbs !== null ? errorAbs.toFixed(4) : "—"}</td>
                       <td>{entry.uncertainty === null ? "— (deterministic)" : entry.uncertainty.toFixed(4)}</td>
+                      <td>
+                        {entry.uncertainty_calibrated === null ? "—" : entry.uncertainty_calibrated.toFixed(4)}
+                      </td>
                     </tr>
                   );
                 })}
@@ -247,9 +261,11 @@ export default function Predict() {
             </table>
           </div>
           <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--ink-muted)" }}>
-            Phase 2 and 3 both report real uncertainty — but neither is well-calibrated yet: Phase 2
-            tends toward overconfidence, Phase 3's first draft toward the opposite (honestly uncertain
-            to the point of being uninformative). See Benchmarks for the full picture.
+            Phase 2 and 3's raw uncertainty is miscalibrated out of the box — Phase 2 tends toward
+            overconfidence, Phase 3's first draft toward the opposite (honestly uncertain to the point
+            of being uninformative). The calibrated column applies a post-hoc conformal scale
+            (SCRUM-68), fit offline on the held-out validation split, which closes most of that gap —
+            see Benchmarks for the full before/after picture.
           </p>
         </div>
       )}

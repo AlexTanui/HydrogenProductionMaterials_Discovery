@@ -26,6 +26,12 @@ class PredictionResponse(BaseModel):
     # in practice these are always populated by a successful response).
     true_energy: float | None = None
     true_force_rms: float | None = None
+    # SCRUM-68: `uncertainty` scaled by a post-hoc conformal correction
+    # fit offline on the held-out validation split - None when this
+    # checkpoint was never calibrated (ml/training/calibrate.py hasn't
+    # been run against it, e.g. a molecule just trained live). Additive -
+    # `uncertainty` keeps its original, uncalibrated meaning.
+    uncertainty_calibrated: float | None = None
 
 
 class MoleculeOut(BaseModel):
@@ -63,6 +69,16 @@ class BenchmarkResult(BaseModel):
     force_nll_gaussian: float | None = None
     energy_crps: float | None = None
     force_crps: float | None = None
+
+    # SCRUM-68: post-hoc conformal calibration (ml/training/calibrate.py,
+    # fit offline on the held-out validation split) - None for a row with
+    # no calibration report yet.
+    energy_ece_calibrated: float | None = None
+    force_ece_calibrated: float | None = None
+    energy_coverage_90_calibrated: float | None = None
+    force_coverage_90_calibrated: float | None = None
+    energy_sharpness_calibrated: float | None = None
+    force_sharpness_calibrated: float | None = None
 
 
 class TrainJobRequest(BaseModel):

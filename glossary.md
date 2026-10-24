@@ -282,7 +282,8 @@ Response:
   "uncertainty": 0.08,
   "phase": "phase1_deterministic",
   "true_energy": -406234.1,
-  "true_force_rms": 12.1
+  "true_force_rms": 12.1,
+  "uncertainty_calibrated": 0.21
 }
 ```
 
@@ -298,6 +299,15 @@ request used a short alias; Phase 2 is served by whichever BLIP
 checkpoint is the current clean/fixed run (see
 `app.core.config.PHASE_CHECKPOINTS`'s own comment for which one and why),
 not necessarily the first BLIP run ever trained.
+
+`uncertainty_calibrated` (SCRUM-68, additive) is `uncertainty` scaled by a
+post-hoc conformal correction fit offline on the held-out validation
+split (`ml/training/calibrate.py`), loaded from
+`reports/calibration/*.json` by `backend/app/services/calibration.py`.
+`null` whenever `uncertainty` is `null`, and also `null` when this
+checkpoint has never been calibrated (e.g. a molecule just trained live
+through `POST /jobs/train`) — `uncertainty` always keeps its original,
+uncalibrated meaning regardless.
 
 ### `GET /molecules`
 
@@ -353,6 +363,19 @@ from the list, not a crash:
 
 `ece` and `uncertainty_correlation` are `null` for the deterministic phase
 (no uncertainty to calibrate).
+
+Six further fields (SCRUM-68, additive) carry the same post-hoc
+calibration as `POST /predictions`'s `uncertainty_calibrated`, applied to
+the metrics suite instead of one prediction: `energy_ece_calibrated`,
+`force_ece_calibrated`, `energy_coverage_90_calibrated`,
+`force_coverage_90_calibrated`, `energy_sharpness_calibrated`,
+`force_sharpness_calibrated` — each the "after" counterpart of the
+existing uncalibrated field of the same name, read from
+`reports/calibration/*.json`. `null` for every row with no calibration
+report yet (currently Phase 1, which has no uncertainty to calibrate in
+the first place). Deliberately shown alongside the raw numbers rather
+than replacing them, so a caller can see both the model's own raw
+uncertainty and the effect of the post-hoc fix.
 
 ### Auth
 

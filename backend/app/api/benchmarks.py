@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from app.core.config import PHASE_CHECKPOINTS, RESULTS_DIR
 from app.models.schemas import BenchmarkResult
+from app.services import calibration as calibration_module
 
 router = APIRouter(prefix="/benchmarks", tags=["benchmarks"])
 
@@ -20,6 +21,16 @@ def _uq_field(payload: dict, key: str, field: str):
     if not per_key:
         return None
     return (per_key[0].get(key) or {}).get(field)
+
+
+def _calibrated_field(calibration: dict | None, quantity: str, field: str):
+    """SCRUM-68: one number out of a calibration report's "after" block -
+    same shape as _uq_field's source (both ultimately built by
+    ml.utils.uq_metrics._quantity_block), just a different top-level
+    path. None when this checkpoint was never calibrated."""
+    if calibration is None:
+        return None
+    return calibration.get("after", {}).get(quantity, {}).get(field)
 
 
 @router.get("", response_model=list[BenchmarkResult])
@@ -52,6 +63,7 @@ def list_benchmarks() -> list[BenchmarkResult]:
             payload = json.load(f)
         row = payload["benchmark_row"]
         per_key = (payload.get("metrics", {}).get("per_key") or [{}])[0]
+        calibration = calibration_module.get_calibration(checkpoint_path)
         results.append(
             BenchmarkResult(
                 phase=phase,
@@ -72,6 +84,16 @@ def list_benchmarks() -> list[BenchmarkResult]:
                 force_nll_gaussian=_uq_field(payload, "force", "nll_gaussian"),
                 energy_crps=_uq_field(payload, "energy", "crps_gaussian"),
                 force_crps=_uq_field(payload, "force", "crps_gaussian"),
+                # SCRUM-68: post-hoc conformal calibration, fit offline on
+                # the held-out validation split (ml/training/calibrate.py) -
+                # None for every row with no report yet (currently: Phase 1,
+                # which has no uncertainty to calibrate in the first place).
+                energy_ece_calibrated=_calibrated_field(calibration, "energy", "ece"),
+                force_ece_calibrated=_calibrated_field(calibration, "force", "ece"),
+                energy_coverage_90_calibrated=(_calibrated_field(calibration, "energy", "coverage") or {}).get("90%"),
+                force_coverage_90_calibrated=(_calibrated_field(calibration, "force", "coverage") or {}).get("90%"),
+                energy_sharpness_calibrated=_calibrated_field(calibration, "energy", "sharpness_mean_std"),
+                force_sharpness_calibrated=_calibrated_field(calibration, "force", "sharpness_mean_std"),
             )
         )
     return results

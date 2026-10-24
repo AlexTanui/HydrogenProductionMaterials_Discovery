@@ -21,6 +21,7 @@ import numpy as np
 from fastapi import HTTPException
 
 from app.core.config import DEFAULT_PHASE, GOLD_DIR, PHASE_ALIASES, PHASE_CHECKPOINTS, TRAINED_MOLECULE
+from app.services import calibration as calibration_module
 
 from ml.data.datasets import MD17Dataset
 from ml.models.registry import load_model
@@ -210,16 +211,27 @@ class InferenceService:
             predicted_energy = float(e_mean.item())
             uncertainty = float(e_var.clamp_min(0).sqrt().item())
             force_rms = float(f_mean.pow(2).sum(dim=-1).mean().sqrt().item())
+
+            # SCRUM-68: a post-hoc conformal scale, fit once offline
+            # (ml/training/calibrate.py) on the held-out validation split -
+            # None when this checkpoint was never calibrated (e.g. a job
+            # trained live on another molecule). Additive: `uncertainty`
+            # keeps meaning exactly what it always has (the model's raw,
+            # uncalibrated std), `uncertainty_calibrated` is new.
+            calibration = calibration_module.get_calibration(checkpoint_path)
+            uncertainty_calibrated = uncertainty * calibration["q_energy"] if calibration else None
         else:
             energy, forces = model.predict_energy_and_forces(data.x, data.pos, data.edge_index, data.edge_attr, None)
             predicted_energy = float(energy.item())
             uncertainty = None
+            uncertainty_calibrated = None
             force_rms = float(forces.pow(2).sum(dim=-1).mean().sqrt().item())
 
         return {
             "predicted_energy": predicted_energy,
             "predicted_force_rms": force_rms,
             "uncertainty": uncertainty,
+            "uncertainty_calibrated": uncertainty_calibrated,
             "phase": resolved_phase,
             "true_energy": float(data.y.item()),
             "true_force_rms": float(data.force.pow(2).sum(dim=-1).mean().sqrt().item()),

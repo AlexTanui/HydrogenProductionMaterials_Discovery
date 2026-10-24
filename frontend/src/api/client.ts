@@ -9,6 +9,11 @@ export interface PredictionResponse {
   phase: string;
   true_energy: number | null;
   true_force_rms: number | null;
+  // SCRUM-68: `uncertainty` scaled by a post-hoc conformal correction fit
+  // offline on the held-out validation split - null when this checkpoint
+  // was never calibrated. Additive: `uncertainty` keeps its original,
+  // uncalibrated meaning.
+  uncertainty_calibrated: number | null;
 }
 
 export interface MoleculeInfo {
@@ -35,6 +40,15 @@ export interface BenchmarkResult {
   force_nll_gaussian: number | null;
   energy_crps: number | null;
   force_crps: number | null;
+  // SCRUM-68: post-hoc conformal calibration (ml/training/calibrate.py,
+  // fit offline on the held-out validation split) - null for a row with
+  // no calibration report yet (e.g. every Phase 1 row).
+  energy_ece_calibrated: number | null;
+  force_ece_calibrated: number | null;
+  energy_coverage_90_calibrated: number | null;
+  force_coverage_90_calibrated: number | null;
+  energy_sharpness_calibrated: number | null;
+  force_sharpness_calibrated: number | null;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
