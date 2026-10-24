@@ -11,11 +11,19 @@ MD17-scale test splits (tens of thousands of frames, under 25 atoms each)
 that is a few tens of MB - acceptable; it would not be for a dataset with
 millions of frames, and this module does not try to be.
 
-**This is a proposed definition, not yet Dongxiao's confirmed one** (per
-CLAUDE.md's ownership split: she owns binning strategy, correlation
-convention, and what counts as calibrated; this file implements a
-specific, documented choice for each so there is something concrete to
-react to, not a vacuum). See SCRUM-39.
+**These definitions are ratified as UQ protocol v1.0** (Fazin, from
+2026-10-23). Dongxiao owned the definitions - binning strategy,
+correlation convention, and what counts as calibrated - and assigned them
+to Fazin on 2026-10-23, who adopted the choices already implemented here
+as v1.0 rather than changing them. So the numbers any earlier run
+recorded stand as scored: the definition did not move when ownership did,
+and re-scoring would reproduce them. A record written before that date
+still carries a note calling the definition provisional - that note is
+historical, not a live caveat. See SCRUM-39.
+
+Changing any choice below is a v2.0 and invalidates cross-run
+comparability, so it needs a re-score of every stochastic run in the same
+commit, not a quiet edit.
 
 **Distributional assumption - the central decision that shapes every
 metric below.** `ModelOutput` (ml/utils/contract.py) carries a predictive
@@ -27,9 +35,9 @@ contract's "one batch of predictions" shape would need a new axis).
 Every metric here that needs more than a point estimate therefore assumes
 the predictive distribution is **Normal(mean, variance)**, per frame for
 energy and per component for force. That is what makes closed-form NLL
-and CRPS possible without raw samples. If Dongxiao's definition wants the
-empirical MC-sample distribution instead (no Gaussian assumption), that
-is the bigger change described above, not an edit to this file.
+and CRPS possible without raw samples. Moving to the empirical MC-sample
+distribution instead (no Gaussian assumption) is the bigger change
+described above and a v2.0, not an edit to this file.
 
 Six metrics, each reported separately for energy and force:
 
@@ -219,8 +227,8 @@ class UQAccumulator:
             "schema_version": SCHEMA_VERSION,
             "distribution_assumption": (
                 "Normal(mean, variance) per frame (energy) / per component (force), "
-                "from ModelOutput.E_var/F_var - provisional, see this module's docstring "
-                "and SCRUM-39 for Dongxiao's sign-off"
+                "from ModelOutput.E_var/F_var - UQ protocol v1.0, see this module's "
+                "docstring (SCRUM-39)"
             ),
             "coverage_levels": list(COVERAGE_LEVELS),
             "risk_coverage_levels": list(RISK_COVERAGE_LEVELS),

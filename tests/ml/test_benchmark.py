@@ -213,6 +213,28 @@ def test_unscored_run_and_empty_directory_are_refused(tmp_path):
 # 2. The table reproduces the records exactly
 # --------------------------------------------------------------------------
 
+def _expected_uq(test: dict) -> dict:
+    """The four UQ cells a record should produce, derived here independently
+    of benchmark.py so the test checks the rule rather than restating it."""
+    per_key = (test.get("uq_metrics") or {}).get("per_key") or []
+    if not per_key:
+        row = test["benchmark_row"]
+        return {
+            "ece_energy": row.get("ece"),
+            "ece_force": None,
+            "uncertainty_error_spearman_energy": row.get("uncertainty_correlation"),
+            "uncertainty_error_spearman_force": None,
+        }
+    energy = per_key[0].get("energy") or {}
+    force = per_key[0].get("force") or {}
+    return {
+        "ece_energy": energy.get("ece"),
+        "ece_force": force.get("ece"),
+        "uncertainty_error_spearman_energy": energy.get("spearman_uncertainty_error"),
+        "uncertainty_error_spearman_force": force.get("spearman_uncertainty_error"),
+    }
+
+
 def _expected_row(run: dict, test: dict) -> dict:
     metrics = test["metrics"]["per_key"][0]
     return {
@@ -228,8 +250,11 @@ def _expected_row(run: dict, test: dict) -> dict:
         "stop_reason": run["stop_reason"],
         "training_time_s": run["wall_clock_s"],
         "inference_ms_per_frame": test["timing"]["inference_s_per_config"] * 1000,
-        "ece": test["benchmark_row"]["ece"],
-        "uncertainty_error_spearman": test["benchmark_row"]["uncertainty_correlation"],
+        # Per quantity, from the run's own uq_metrics block where it has
+        # one; benchmark_row's flat pair is energy and is the fallback for
+        # a record written before uq_metrics existed. A deterministic run
+        # has neither, so all four are None.
+        **_expected_uq(test),
         "git_commit": run["git_commit"],
     }
 
@@ -266,15 +291,54 @@ def test_csv_reproduces_the_committed_run_records_exactly():
 
 
 def test_uncertainty_columns_carry_phase_2_values_when_present(tmp_path):
+    """Energy and force are reported separately, each from its own block.
+
+    The force cells must never inherit the energy value: on real
+    checkpoints the two differ by two orders of magnitude (ethanol_dft
+    BLIP: energy Spearman ~0.003, force ~0.30), so a force cell silently
+    showing the energy number is a wrong result, not a cosmetic one.
+    """
     _write_run(tmp_path, "a")
     _write_run(tmp_path, "b", run_changes={"model": "BLIP", "phase": "blip"},
-               test_changes={"benchmark_row.ece": 0.0421, "benchmark_row.uncertainty_correlation": 0.613})
+               test_changes={
+                   "benchmark_row.ece": 0.0421,
+                   "benchmark_row.uncertainty_correlation": 0.613,
+                   "uq_metrics": {"per_key": [{
+                       "energy": {"ece": 0.0421, "spearman_uncertainty_error": 0.613},
+                       "force": {"ece": 0.3310, "spearman_uncertainty_error": 0.274},
+                   }]},
+               })
     csv_text, md_text, _ = build(tmp_path)
     rows = {row["run"]: row for row in csv.DictReader(io.StringIO(csv_text))}
-    assert rows["a"]["ece"] == rows["a"]["uncertainty_error_spearman"] == ""
-    assert float(rows["b"]["ece"]) == 0.0421 and float(rows["b"]["uncertainty_error_spearman"]) == 0.613
+
+    # Deterministic run: all four empty, none backfilled.
+    assert rows["a"]["ece_energy"] == rows["a"]["ece_force"] == ""
+    assert rows["a"]["uncertainty_error_spearman_energy"] == ""
+    assert rows["a"]["uncertainty_error_spearman_force"] == ""
+
+    # Stochastic run: each quantity carries its own value.
+    assert float(rows["b"]["ece_energy"]) == 0.0421
+    assert float(rows["b"]["ece_force"]) == 0.3310
+    assert float(rows["b"]["uncertainty_error_spearman_energy"]) == 0.613
+    assert float(rows["b"]["uncertainty_error_spearman_force"]) == 0.274
+
     assert _assert_csv_reproduces_records(csv_text, tmp_path) == 2
-    assert "| 0.0421 | 0.6130 |" in md_text
+    assert "| 0.0421 | 0.3310 | 0.6130 | 0.2740 |" in md_text
+
+
+def test_force_uncertainty_is_not_filled_from_energy(tmp_path):
+    """A record predating `uq_metrics` has energy only. The force cells stay
+    empty rather than repeating the energy figure under a force heading."""
+    _write_run(tmp_path, "legacy", run_changes={"model": "BLIP", "phase": "blip"},
+               test_changes={"benchmark_row.ece": 0.0421,
+                             "benchmark_row.uncertainty_correlation": 0.613})
+    csv_text, _, _ = build(tmp_path)
+    row = next(iter(csv.DictReader(io.StringIO(csv_text))))
+
+    assert float(row["ece_energy"]) == 0.0421
+    assert float(row["uncertainty_error_spearman_energy"]) == 0.613
+    assert row["ece_force"] == ""
+    assert row["uncertainty_error_spearman_force"] == ""
 
 
 def test_markdown_shows_each_value_and_each_commit(tmp_path):
@@ -500,9 +564,16 @@ def test_markdown_notes_for_a_stochastic_run(tmp_path):
         "benchmark_row.uncertainty_note": "computed under the provisional definition"})
     _, md_text, _ = build(tmp_path)
     assert "for b_blip, scored as a distribution, it covers all 20 MC passes per frame" in md_text
-    assert "provisional until signed off (SCRUM-39); each scored run's own note:" in md_text
+    # The legend names the ratified protocol and its owner, not a pending
+    # sign-off (Dongxiao assigned the definitions to Fazin on 2026-10-23).
+    assert "UQ protocol v1.0" in md_text
+    assert "owned by Fazin from 2026-10-23" in md_text
+    assert "each scored run's own note, as recorded at scoring time:" in md_text
     assert "  - b_blip: computed under the provisional definition." in md_text
     assert "  - a_mpnn:" not in md_text
+    # A pre-ratification note is reproduced verbatim but marked historical,
+    # so an old "provisional" wording can't be read as a live caveat.
+    assert "are historical: a run scored before 2026-10-23" in md_text
     # The training-time count can't be read as the eval count, and the legend says what blank/0/1 mean.
     assert "| Training MC samples (NLL) |" in md_text
     assert "0 / 1 / 0 means the hook is off; blank means the record predates the key." in md_text
@@ -512,4 +583,42 @@ def test_markdown_notes_for_deterministic_runs_only(tmp_path):
     _write_run(tmp_path, "a")
     _, md_text, _ = build(tmp_path)
     assert "MC passes" not in md_text
-    assert "provisional until signed off (SCRUM-39)." in md_text
+    assert "UQ protocol v1.0" in md_text
+    assert "(SCRUM-39)." in md_text
+    # No per-run notes section and no historical-note caveat when nothing
+    # was scored for uncertainty.
+    assert "each scored run's own note" not in md_text
+    assert "are historical" not in md_text
+
+
+def test_a_narrowed_table_names_the_runs_it_left_out(tmp_path):
+    """A prefix- or name-narrowed table must disclose what it excluded.
+
+    SCRUM-62: the CLI's default narrows the shared run directory to
+    `phase1_*`, so `python -m ml.training.benchmark` with no arguments
+    silently produced a Phase-1-only table while Phase 2 and Phase 3 runs
+    sat in the same directory. Correctness filtering is check_same_protocol
+    and the clean-commit guard's job; a name prefix is a naming convention,
+    so the table has to say out loud that it is a subset.
+    """
+    _write_run(tmp_path, "phase1_a")
+    _write_run(tmp_path, "phase2_b", run_changes={"model": "BLIP", "phase": "blip"})
+    _write_run(tmp_path, "phase3_c", run_changes={"model": "GraphStochastic",
+                                                  "phase": "graph_stochastic"})
+
+    _, md_text, rows = build(tmp_path, name_prefix="phase1_")
+    assert [row["run"] for row in rows] == ["phase1_a"]
+    assert "**Not in this table:** `phase2_b`, `phase3_c`" in md_text
+    assert "a subset of the runs on record, not all of them" in md_text
+
+    # Nothing excluded -> no such note at all.
+    _, md_all, rows_all = build(tmp_path)
+    assert len(rows_all) == 3
+    assert "Not in this table:" not in md_all
+
+
+def test_excluded_note_is_singular_for_one_run(tmp_path):
+    _write_run(tmp_path, "phase1_a")
+    _write_run(tmp_path, "phase2_b", run_changes={"model": "BLIP", "phase": "blip"})
+    _, md_text, _ = build(tmp_path, runs=["phase1_a"])
+    assert "`phase2_b` — a run record that exists" in md_text

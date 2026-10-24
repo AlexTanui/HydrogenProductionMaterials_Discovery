@@ -108,14 +108,14 @@ BENCHMARK_ENERGY_FIELD = "energy_mae_total"
 BENCHMARK_FORCE_FIELD = "force_mae_component"
 
 _UQ_NOTE_DETERMINISTIC = (
-    "ECE and uncertainty-error correlation are defined by Dongxiao; this model has "
-    "no predict_distribution (deterministic, or Phase 2/3 hasn't wired one in yet), "
-    "so there is no uncertainty to score against that definition"
+    "this model has no predict_distribution (deterministic, or Phase 2/3 hasn't wired "
+    "one in yet), so there is no uncertainty to score against UQ protocol v1.0"
 )
 _UQ_NOTE_PROVISIONAL = (
-    "computed under ml.utils.uq_metrics's provisional definition (Normal "
-    "distribution assumed from E_var/F_var) - not yet Dongxiao's confirmed "
-    "definition; see that module's docstring and SCRUM-39"
+    "computed under UQ protocol v1.0 (ml.utils.uq_metrics: Normal distribution "
+    "assumed from E_var/F_var, binning and Spearman convention as documented there); "
+    "ratified 2026-10-23, Fazin, previously Dongxiao's to confirm; see that module's "
+    "docstring and SCRUM-39"
 )
 
 
@@ -369,10 +369,18 @@ def _score_checkpoint(
     n_configs = int(record["n_frames"])
 
     uq_record = uq_metrics["per_key"][0] if uq_metrics is not None else None
-    benchmark_ece = uq_record["energy"]["ece"] if uq_record and uq_record["energy"] else None
-    benchmark_correlation = (
-        uq_record["energy"]["spearman_uncertainty_error"] if uq_record and uq_record["energy"] else None
-    )
+
+    def _uq(quantity: str, field: str) -> Optional[float]:
+        block = uq_record.get(quantity) if uq_record else None
+        return block.get(field) if block else None
+
+    # `ece`/`uncertainty_correlation` are energy, kept under their original
+    # names so every existing reader and record stays valid. The per-quantity
+    # pairs below are what benchmark.py tabulates: force calibration differs
+    # from energy by two orders of magnitude on the same checkpoint, so a
+    # single unqualified figure misreports whichever one it isn't.
+    benchmark_ece = _uq("energy", "ece")
+    benchmark_correlation = _uq("energy", "spearman_uncertainty_error")
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -431,6 +439,10 @@ def _score_checkpoint(
             "force_mae_unit": record["units"]["force"],
             "ece": benchmark_ece,
             "uncertainty_correlation": benchmark_correlation,
+            "ece_energy": benchmark_ece,
+            "ece_force": _uq("force", "ece"),
+            "uncertainty_correlation_energy": benchmark_correlation,
+            "uncertainty_correlation_force": _uq("force", "spearman_uncertainty_error"),
             "uncertainty_note": _UQ_NOTE_PROVISIONAL if uq_record else _UQ_NOTE_DETERMINISTIC,
         },
         "warnings": warnings,
@@ -486,11 +498,13 @@ def main(argv: Optional[list[str]] = None) -> int:
           f"{row['force_mae']:.6g} {row['force_mae_unit']}")
     print(f"  inference                             : "
           f"{timing['inference_s_per_config'] * 1e3:.4g} ms/config")
-    if row["ece"] is not None:
-        print(f"  energy ECE / Spearman(std, |err|)     : "
-              f"{row['ece']:.4g} / {row['uncertainty_correlation']:.4g}"
-              if row["uncertainty_correlation"] is not None
-              else f"{row['ece']:.4g} / n/a")
+    for quantity in ("energy", "force"):
+        ece, spearman = row[f"ece_{quantity}"], row[f"uncertainty_correlation_{quantity}"]
+        if ece is None and spearman is None:
+            continue
+        print(f"  {quantity:<6} ECE / Spearman(std, |err|)     : "
+              f"{'n/a' if ece is None else format(ece, '.4g')} / "
+              f"{'n/a' if spearman is None else format(spearman, '.4g')}")
     print(f"  written to {output}")
     return 0
 

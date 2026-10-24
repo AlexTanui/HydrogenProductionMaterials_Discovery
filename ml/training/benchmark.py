@@ -56,10 +56,12 @@ recorded commit does not fully describe the run.
 Numbers are copied from the records, never recomputed: the CSV keeps them
 at full precision (so tests can check them exactly), the Markdown rounds
 them for reading. Each row carries the git commit it was trained at. ECE
-and uncertainty-error Spearman are empty for a deterministic model; they
-come from evaluate.py's benchmark_row, whose definitions are Dongxiao's
-and provisional until signed off (each run's own uncertainty_note is
-shown). The model-specific columns (KL weight, training MC samples, NLL
+and uncertainty-error Spearman are empty for a deterministic model; for a
+stochastic one they are reported per quantity (energy and force
+separately, never pooled) and read from the run's own `uq_metrics`
+block, under the definitions in ml/utils/uq_metrics.py - UQ protocol
+v1.0, Fazin's from 2026-10-23 (each run's own uncertainty_note is still
+shown, as recorded at scoring time). The model-specific columns (KL weight, training MC samples, NLL
 warmup) are copied as recorded: train.py records them for every model,
 at their "off" values 0 / 1 / 0 when the hook isn't used, so they are
 blank only for a record that predates the key.
@@ -144,8 +146,16 @@ COLUMNS = [
     ("stop_reason", "Stop reason"),
     ("training_time_s", "Training time"),
     ("inference_ms_per_frame", "Inference (ms/frame)"),
-    ("ece", "ECE"),
-    ("uncertainty_error_spearman", "Unc.-error Spearman"),
+    # Per quantity, never pooled: energy and force are calibrated
+    # independently and in practice disagree sharply (ethanol_dft: BLIP's
+    # energy Spearman ~0.003 against force ~0.30 on the same checkpoint).
+    # One column labelled "ECE"/"Spearman" reported whichever quantity
+    # evaluate.py happened to put in benchmark_row - energy - and read as
+    # if it covered both. UQ protocol v1.0 reports both or neither.
+    ("ece_energy", "ECE (energy)"),
+    ("ece_force", "ECE (force)"),
+    ("uncertainty_error_spearman_energy", "Unc.-error Spearman (energy)"),
+    ("uncertainty_error_spearman_force", "Unc.-error Spearman (force)"),
     ("kl_weight", "KL weight"),
     ("train_num_mc_samples", "Training MC samples (NLL)"),  # not the eval count: see the Inference note
     ("nll_warmup_epochs", "NLL warmup epochs"),
@@ -309,6 +319,38 @@ def check_same_protocol(results: list[RunResult]) -> dict[str, Any]:
     return reference
 
 
+def _uq_columns(test: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
+    """ECE and uncertainty-error Spearman per quantity, read from the run's
+    own `uq_metrics.per_key[0]` - the full per-quantity block every scored
+    stochastic run already records.
+
+    `benchmark_row`'s flat `ece`/`uncertainty_correlation` are the *energy*
+    numbers only. They stay in the record (nothing is rewritten) but are
+    used here only as the fallback for a record written before
+    `uq_metrics` existed, where energy is all there is; the force cells are
+    then left empty rather than filled with the energy value.
+
+    Deterministic runs have no `uq_metrics` and no uncertainty: all four
+    cells are None, same as before.
+    """
+    per_key = (test.get("uq_metrics") or {}).get("per_key") or []
+    if not per_key:
+        return {
+            "ece_energy": row.get("ece"),
+            "ece_force": None,
+            "uncertainty_error_spearman_energy": row.get("uncertainty_correlation"),
+            "uncertainty_error_spearman_force": None,
+        }
+    block = per_key[0]
+    energy, force = block.get("energy") or {}, block.get("force") or {}
+    return {
+        "ece_energy": energy.get("ece"),
+        "ece_force": force.get("ece"),
+        "uncertainty_error_spearman_energy": energy.get("spearman_uncertainty_error"),
+        "uncertainty_error_spearman_force": force.get("spearman_uncertainty_error"),
+    }
+
+
 def build_rows(results: list[RunResult]) -> list[dict[str, Any]]:
     """One row per run, every number copied from its records unchanged."""
     rows = []
@@ -330,8 +372,7 @@ def build_rows(results: list[RunResult]) -> list[dict[str, Any]]:
             "stop_reason": run["stop_reason"],
             "training_time_s": run["wall_clock_s"],
             "inference_ms_per_frame": test["timing"]["inference_s_per_config"] * 1000,
-            "ece": row["ece"],
-            "uncertainty_error_spearman": row["uncertainty_correlation"],
+            **_uq_columns(test, row),
             # Model-specific (MODEL_SPECIFIC_PROTOCOL_KEYS) - not gated on,
             # shown so a reader can see why e.g. two BLIP runs differ.
             # .get(): absent entirely for a run recorded before the key
@@ -391,8 +432,25 @@ def _budget_text(train: dict[str, Any]) -> str:
     return f"{part(train_size, 'train')} and {part(val_size, 'val')}"
 
 
+def other_runs_present(runs_dir: Path, included: list[str]) -> list[str]:
+    """Run directories under `runs_dir` that this table left out.
+
+    A narrowed selection (`--name-prefix`, `--runs`) is a choice about
+    *naming*, not about correctness - `check_same_protocol` and the
+    clean-commit guard are what decide whether a run belongs in a table.
+    So a reader has to be told which runs exist and were not tabulated,
+    or a partial table reads as the whole picture. Names only; whether
+    each one is reportable is its own record's business.
+    """
+    runs_dir = Path(runs_dir)
+    if not runs_dir.is_dir():
+        return []
+    return sorted(p.name for p in runs_dir.iterdir()
+                  if (p / "run.json").is_file() and p.name not in set(included))
+
+
 def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared: dict[str, Any],
-                    title: str = "Phase 1 benchmark") -> str:
+                    title: str = "Phase 1 benchmark", excluded: Optional[list[str]] = None) -> str:
     data, train = shared["data"], shared["train"]
     loop, scoring = shared["training loop"], shared["test scoring"]
     unchecked = ", ".join(f"`{key}`" for key in MODEL_SPECIFIC_PROTOCOL_KEYS)
@@ -402,7 +460,9 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
     mc_counts = {name: n for name, n in mc_counts.items() if n is not None}
     uq_notes = [(result.name, result.test["benchmark_row"].get("uncertainty_note"))
                 for result, row in zip(results, rows)
-                if row["ece"] is not None or row["uncertainty_error_spearman"] is not None]
+                if any(row[key] is not None for key in
+                       ("ece_energy", "ece_force",
+                        "uncertainty_error_spearman_energy", "uncertainty_error_spearman_force"))]
     lines = [
         f"# {title}: {data['molecule']} ({data['theory']})",
         "",
@@ -413,6 +473,10 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
         f"All {len(rows)} runs were checked to share one protocol before being tabulated: identical "
         "`data:` and `train:` blocks, training-loop settings, train and val frames, and test scoring. "
         f"Not checked, because each describes one model rather than the shared protocol: {unchecked}.",
+        *([f"**Not in this table:** {', '.join(f'`{name}`' for name in excluded)} — "
+           f"{'a run record that exists' if len(excluded) == 1 else 'run records that exist'} under the "
+           "same directory but fell outside this table's selection. This table is therefore a subset of "
+           "the runs on record, not all of them."] if excluded else []),
         "",
         "| " + " | ".join(header for _, header in COLUMNS) + " |",
         "|" + "|".join("---" for _ in COLUMNS) + "|",
@@ -435,9 +499,17 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
            f"{next(iter(mc_counts.values()))} MC passes per frame (the eval MC sample count, the same "
            "for every stochastic run here)." if mc_counts else "."),
         "- **ECE / uncertainty-error Spearman**: empty for deterministic models; Phase 2/3 rows fill "
-        "these columns. The definitions are Dongxiao's to confirm, so they are provisional until "
-        "signed off (SCRUM-39)" + ("; each scored run's own note:" if uq_notes else "."),
+        "these columns. Reported per quantity (energy, force), never pooled: the two are calibrated "
+        "independently and disagree sharply on the same checkpoint, so a single figure would stand "
+        "for whichever one happened to be recorded. Definitions are UQ protocol v1.0 (ECE binning, "
+        "Spearman convention and the Normal(mean, variance) predictive assumption as documented in "
+        "`ml/utils/uq_metrics.py`), owned by Fazin from 2026-10-23, previously Dongxiao's (SCRUM-39)"
+        + ("; each scored run's own note, as recorded at scoring time:" if uq_notes else "."),
         *(f"  - {name}: {note or 'no uncertainty_note recorded'}." for name, note in uq_notes),
+        *(["  - Notes above are copied verbatim from each `test_metrics.json` and are historical: a "
+           "run scored before 2026-10-23 records the definition as pending Dongxiao's sign-off. The "
+           "definition itself did not change when ownership moved, so those numbers stand as "
+           "scored; re-scoring would reproduce them."] if uq_notes else []),
         "- **KL weight / Training MC samples (NLL) / NLL warmup epochs**: model-specific training "
         "hooks, not checked across runs, copied from each run record. 0 / 1 / 0 means the hook is "
         "off; blank means the record predates the key.",
@@ -490,7 +562,10 @@ def build(runs_dir: Path = RUNS_DIR, title: str = "Phase 1 benchmark",
     results = load_runs(runs_dir, name_prefix=name_prefix, names=runs)
     shared = check_same_protocol(results)
     rows = build_rows(results)
-    return render_csv(rows), render_markdown(results, rows, shared, title=title), rows
+    excluded = other_runs_present(runs_dir, [result.name for result in results])
+    return (render_csv(rows),
+            render_markdown(results, rows, shared, title=title, excluded=excluded),
+            rows)
 
 
 def main(argv: Optional[list[str]] = None) -> int:

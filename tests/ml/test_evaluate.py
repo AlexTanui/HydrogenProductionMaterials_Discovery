@@ -314,12 +314,23 @@ def test_units_are_reported_alongside_every_number(checkpoint):
 
 
 def test_uncertainty_fields_are_null_not_invented(checkpoint):
-    """ECE and uncertainty-error correlation are Dongxiao's to define."""
+    """A deterministic model has no uncertainty: every UQ cell stays null
+    rather than being filled with a stand-in, and the note says why."""
     row = evaluate_checkpoint(checkpoint)["benchmark_row"]
 
     assert row["ece"] is None
     assert row["uncertainty_correlation"] is None
-    assert "Dongxiao" in row["uncertainty_note"]
+    # Per-quantity pairs, null for the same reason - never backfilled from
+    # each other (the force cell must not inherit the energy value).
+    assert row["ece_energy"] is None
+    assert row["ece_force"] is None
+    assert row["uncertainty_correlation_energy"] is None
+    assert row["uncertainty_correlation_force"] is None
+    assert "no predict_distribution" in row["uncertainty_note"]
+    # The note names the ratified protocol, not a pending sign-off. Guards
+    # against the stale "pending Dongxiao's sign-off" wording coming back:
+    # she assigned the definitions to Fazin on 2026-10-23 (CLAUDE.md).
+    assert "UQ protocol v1.0" in row["uncertainty_note"]
 
 
 def test_timing_is_recorded_per_config(checkpoint):
