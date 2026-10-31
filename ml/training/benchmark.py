@@ -321,7 +321,7 @@ def check_same_protocol(results: list[RunResult]) -> dict[str, Any]:
     return reference
 
 
-def _uq_columns(test: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
+def _uq_columns(test: dict[str, Any], row: dict[str, Any], name: str) -> dict[str, Any]:
     """ECE and uncertainty-error Spearman per quantity, read from the run's
     own `uq_metrics.per_key[0]` - the full per-quantity block every scored
     stochastic run already records.
@@ -334,6 +334,10 @@ def _uq_columns(test: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
 
     Deterministic runs have no `uq_metrics` and no uncertainty: all four
     cells are None, same as before.
+
+    The UQ block must describe the same molecule and theory as the accuracy
+    block (`metrics.per_key[0]`) it shares a row with; otherwise this raises
+    rather than put one dataset's uncertainty beside another's errors.
     """
     per_key = (test.get("uq_metrics") or {}).get("per_key") or []
     if not per_key:
@@ -344,6 +348,15 @@ def _uq_columns(test: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
             "uncertainty_error_spearman_force": None,
         }
     block = per_key[0]
+    scored = test["metrics"]["per_key"][0]
+    uq_key = (block.get("molecule"), block.get("theory"))
+    accuracy_key = (scored.get("molecule"), scored.get("theory"))
+    if uq_key != accuracy_key:
+        raise ValueError(
+            f"{name}: uq_metrics.per_key[0] is {uq_key[0]}/{uq_key[1]} but metrics.per_key[0] is "
+            f"{accuracy_key[0]}/{accuracy_key[1]}; the uncertainty columns would describe a different "
+            "dataset from the accuracy columns in the same row"
+        )
     energy, force = block.get("energy") or {}, block.get("force") or {}
     return {
         "ece_energy": energy.get("ece"),
@@ -374,7 +387,7 @@ def build_rows(results: list[RunResult]) -> list[dict[str, Any]]:
             "stop_reason": run["stop_reason"],
             "training_time_s": run["wall_clock_s"],
             "inference_ms_per_frame": test["timing"]["inference_s_per_config"] * 1000,
-            **_uq_columns(test, row),
+            **_uq_columns(test, row, result.name),
             # Model-specific (MODEL_SPECIFIC_PROTOCOL_KEYS) - not gated on,
             # shown so a reader can see why e.g. two BLIP runs differ.
             # .get(): absent entirely for a run recorded before the key

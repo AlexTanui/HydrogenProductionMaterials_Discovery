@@ -344,6 +344,35 @@ def test_force_uncertainty_is_not_filled_from_energy(tmp_path):
     assert row["uncertainty_error_spearman_force"] == ""
 
 
+def _uq_run(tmp_path, uq_molecule, uq_theory):
+    metrics = copy.deepcopy(_TEST["metrics"])
+    metrics["per_key"][0].update(molecule="ethanol", theory="dft")
+    _write_run(tmp_path, "blip", run_changes={"model": "BLIP", "phase": "blip"}, test_changes={
+        "metrics": metrics,
+        "uq_metrics": {"per_key": [{
+            "molecule": uq_molecule, "theory": uq_theory,
+            "energy": {"ece": 0.0421, "spearman_uncertainty_error": 0.613},
+            "force": {"ece": 0.3310, "spearman_uncertainty_error": 0.274},
+        }]},
+    })
+
+
+def test_uncertainty_from_the_same_molecule_and_theory_is_tabulated(tmp_path):
+    _uq_run(tmp_path, "ethanol", "dft")
+    row = next(iter(csv.DictReader(io.StringIO(build(tmp_path)[0]))))
+    assert float(row["ece_force"]) == 0.3310
+
+
+@pytest.mark.parametrize("molecule, theory", [("aspirin", "dft"), ("ethanol", "ccsd_t")])
+def test_uncertainty_from_another_molecule_or_theory_is_refused(tmp_path, molecule, theory):
+    """Step 1 review, item 7: the UQ block shares a row with the accuracy
+    block, so it must describe the same dataset."""
+    _uq_run(tmp_path, molecule, theory)
+    with pytest.raises(ValueError, match=rf"blip: uq_metrics.per_key\[0\] is {molecule}/{theory} but "
+                                         r"metrics.per_key\[0\] is ethanol/dft"):
+        build(tmp_path)
+
+
 def test_markdown_shows_each_value_and_each_commit(tmp_path):
     _write_run(tmp_path, "a")
     _, md_text, _ = build(tmp_path)
