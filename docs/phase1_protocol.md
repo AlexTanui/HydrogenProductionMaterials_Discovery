@@ -87,9 +87,8 @@ at each thread count):
 
 After two epochs instead of one, the thread-count spread had already
 reached 8.5 × 10⁻⁴ relative, so the run stops at one. No other machine or OS has been
-measured. The tolerance is `GOLDEN_RTOL` in the test: proposed at 10⁻⁴
-relative per metric, not yet agreed. Until it is, the comparison skips
-and prints the measured differences.
+measured. The tolerance is `GOLDEN_RTOL` in the test: 10⁻⁴ relative per
+metric (agreed 1 Nov).
 
 **Updating the reference values.** Only for a change that is meant to move
 them, never to clear a failure whose cause is unknown:

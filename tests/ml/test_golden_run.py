@@ -86,10 +86,10 @@ GOLDEN_EPOCHS = 1
 GOLDEN_THREADS = 1
 
 # Largest accepted relative difference, |now - reference| / |reference|, per
-# metric. Not agreed yet, so None: the test then skips, printing the measured
-# differences (`pytest -rs`), rather than pass or fail against a number
-# nobody has approved.
-GOLDEN_RTOL: Optional[float] = None
+# metric. Agreed 1 Nov: 100x the largest thread-count difference measured
+# (9.9e-7), and below what a 0.1% loss-weight change does (every metric
+# moved at least 4.7e-4). Evidence in docs/phase1_protocol.md.
+GOLDEN_RTOL: Optional[float] = 1e-4
 
 
 # --------------------------------------------------------------------------
