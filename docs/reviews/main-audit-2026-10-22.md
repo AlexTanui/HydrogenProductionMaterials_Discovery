@@ -1,11 +1,11 @@
 # Audit of `main` before Phase 2/3 work (22 Oct 2026)
 
-Read-only audit of `main` at `fdc2353`, on local branch `audit/main-2026-10-22`. No code was changed. All throwaway scripts ran outside the repo. Owners follow CLAUDE.md's 15 Oct agreement:
+Read-only audit of `main` at `fdc2353`, on local branch `audit/main-2026-10-22`. No code was changed. All throwaway scripts ran outside the repo. Areas and their tickets:
 
-- **Fazin:** `train.py`, `evaluate.py`, `benchmark.py`, `config.py`, registry, scaling, metrics, `tests/`, `backend/tests/`.
-- **Model owners:** Ruturaj (MPNN), Alex (SchNet, BLIP), Shijin (PhysNet), Dongxiao (DimeNet++), Fazin (PaiNN).
-- **Data and backend:** Shijin owns `ml/data/`; Alex owns `backend/app/`.
-- **Phase 3:** `graph_stochastic.py` is a first draft by Alex (b616970). glossary §3 assigns Phase 3 to Ruturaj (implementation) and Dongxiao (evaluation).
+- **Harness and tests** (`train.py`, `evaluate.py`, `benchmark.py`, `config.py`, registry, scaling, metrics, `tests/`, `backend/tests/`): SCRUM-24, SCRUM-57.
+- **Models:** MPNN SCRUM-51, SchNet SCRUM-53, BLIP SCRUM-21/SCRUM-31, PhysNet SCRUM-55, DimeNet++ SCRUM-54, PaiNN SCRUM-52.
+- **Data and backend:** `ml/data/` SCRUM-19/SCRUM-28; `backend/app/` SCRUM-25.
+- **Phase 3:** `graph_stochastic.py` is a first draft (b616970); SCRUM-22, SCRUM-32.
 
 PRs #8 (demo deck) and #9 (predictions export) were open and are not part of `main`.
 
@@ -48,7 +48,7 @@ PRs #8 (demo deck) and #9 (predictions export) were open and are not part of `ma
 - **`phase2_blip`:** `--runs phase1_baseline phase2_blip` fails with `ValueError: phase2_blip: git_dirty=True at commit e581be8. Accepted results must come from a clean commit (SCRUM-48)` (`ml/training/benchmark.py:222`).
 - **`phase2_blip_nll`:** `--runs phase1_baseline phase2_blip_nll` fails with `phase2_blip_nll: scored as a distribution, but test_metrics.json records no eval MC sample count ... (SCRUM-49)` (`benchmark.py:247`).
 - **A second problem is masked.** `phase2_blip` *also* has no `num_mc_samples` (`stochastic=True`, field absent), but the dirty-tree check fires first.
-- **Fix:** both need their checkpoints re-scored with the current `evaluate.py`, and `phase2_blip` needs a retrain from a clean commit. Owner Alex (BLIP runs); SCRUM-48, SCRUM-49, SCRUM-39.
+- **Fix:** both need their checkpoints re-scored with the current `evaluate.py`, and `phase2_blip` needs a retrain from a clean commit. SCRUM-48, SCRUM-49, SCRUM-39.
 
 ### 2. NLL variance floor
 
@@ -89,7 +89,7 @@ Pure Gaussian scatter gives √(π/2) = 1.2533.
 
 - **Model-based estimate:** fitting "constant offset plus Gaussian scatter" to MAE and RMSE gives |bias| ≈ 0.154 kcal/mol (`phase2_blip`) and 0.171 (`phase2_blip_nll`). That would be most of each run's MAE. The sign is not identifiable from MAE and RMSE.
 - **A suggestive data fact:** the 10k training subset's mean energy is −97,195.819 kcal/mol and the test split's is −97,196.000, so the training subset sits **0.18 kcal/mol above** the test split. A model anchored on training-set energies would predict too high by about that much. This is a hypothesis, not evidence of the cause.
-- **Not checkable here:** no `phase2_blip*.pt` exists on this machine, and `--save-predictions` (PR #9) is not on `main`. Measuring the mean signed error needs Alex's checkpoints.
+- **Not checkable here:** no `phase2_blip*.pt` exists on this machine, and `--save-predictions` (PR #9) is not on `main`. Measuring the mean signed error needs the `phase2_blip*.pt` checkpoints (SCRUM-21).
 
 ### 4. KL in the validation loss: CONFIRMED, and worse than suspected
 
@@ -163,7 +163,7 @@ Pure Gaussian scatter gives √(π/2) = 1.2533.
 
 ### 8. Hand-edited NLL run record: CONFIRMED
 
-- **What changed:** fdc2353 (Alex, 22 Oct) changed only `experiments/runs/phase2_blip_nll/run.json`. It rewrote `protocol.loss` and added `loss_override`, `nll_min_energy_var`, `nll_min_force_var` and `nll_min_var_epoch`.
+- **What changed:** fdc2353 (22 Oct) changed only `experiments/runs/phase2_blip_nll/run.json`. It rewrote `protocol.loss` and added `loss_override`, `nll_min_energy_var`, `nll_min_force_var` and `nll_min_var_epoch`.
 - **No trace in the record:** nothing in it says it was edited (0 matches for patch/edited/migrat/manual).
 - **The values are inconsistent with its own commit.** Its `git_commit` is `fdada3b`, whose `train.py` never writes `loss_override` (0 occurrences).
 - **The values are right:** they match `history.csv` at epoch 20.
@@ -192,13 +192,13 @@ Pure Gaussian scatter gives √(π/2) = 1.2533.
   - early stopping uses `val_loss`.
 
   For BLIP, `val_loss` is mostly KL (item 4), so the LR schedule follows KL rather than fit.
-- *Owner:* Fazin (`train.py`; the floor code came from Alex in fdada3b). *Ticket:* SCRUM-61.
+- *Ticket:* SCRUM-61 (`train.py`; the floor code came in fdada3b).
 - *Fix:* calibrate the floor from training-pass error, or from a held-out slice of train. Schedule and stop on validation *data* loss only.
 
 **N2. KL dominates the MSE-trained BLIP's objective.**
 - *File:* `experiments/configs/phase2_blip.yaml` (`kl_weight: 0.01`); `train.py:309-313`.
 - *Evidence:* `train_kl` is 68% of training loss at epoch 100 and 76% at epoch 200. A plausible contributor to BLIP's 2× energy MAE versus its own MPNN backbone, and possibly to item 3's offset. This is a hypothesis.
-- *Owner:* Alex (BLIP), with Dongxiao (calibration). *Ticket:* none found.
+- *Ticket:* none found (BLIP: SCRUM-21).
 - *Fix:* sweep `kl_weight`, or scale the KL by the number of training frames (minibatch-ELBO convention) rather than `n_batches`. Report the KL share in the run record.
 
 **N3. A hard 5 Å cutoff makes the energy discontinuous in MPNN, BLIP, GraphStochastic and SchNet.**
@@ -215,13 +215,13 @@ Pure Gaussian scatter gives √(π/2) = 1.2533.
   PaiNN, PhysNet and DimeNet++ are continuous (jump ≤ 3e-8).
 
   This is harmless for ethanol (largest pair distance 4.43 Å, complete graph). It is not harmless for paracetamol (73% of pairs within 5 Å), azobenzene (59%) or MD22. All three phases share the discontinuous backbone.
-- *Owner:* Ruturaj (MPNN backbone); Alex (SchNet, BLIP); Phase 3 owner.
+- *Ticket:* none found (MPNN backbone SCRUM-51, SchNet SCRUM-53, BLIP SCRUM-21, Phase 3 SCRUM-32).
 - *Fix:* multiply messages by a smooth cutoff envelope, as PaiNN and PhysNet do, before any phase trains on a molecule other than ethanol. Add the 4.99/5.01 check as a test.
 
 **N4. The superseded standalone trainers are still runnable and write into shared folders.**
 - *File:* `ml/training/train_schnet.py:58-60` (opens the test split), `181-186` and `247-248` (writes `experiments/checkpoints/<name>.pt` and `experiments/results/<name>.json`); `train_physnet.py`; `train_dimenet.py` (imported by `tests/test_dimenet.py`).
 - *Evidence:* a second path reads the test split outside `evaluate.py`. It can overwrite a harness checkpoint of the same name, and writes into the folder the backend's `/benchmarks` reads.
-- *Owner:* Alex (SchNet trainer), Shijin (PhysNet), Dongxiao (DimeNet++).
+- *Ticket:* none found (SchNet SCRUM-53, PhysNet SCRUM-55, DimeNet++ SCRUM-54).
 - *Fix:* make them raise on import with a pointer to `train.py`, or delete them. Move `test_dimenet.py` onto the shared harness.
 
 **N5. Backend gaps beyond item 6.**
@@ -231,7 +231,7 @@ Pure Gaussian scatter gives √(π/2) = 1.2533.
   - the stub's catalogue lists `naphthalene` and `salicylic_acid` (not in the data) and omits `azobenzene` and `paracetamol` (in the data);
   - an unknown molecule silently gets 10 atoms and a plausible-looking energy;
   - the backend's dependencies are not in the project `.venv`.
-- *Owner:* Alex; Fazin for `backend/tests/`.
+- *Ticket:* SCRUM-25 (`backend/tests/`: SCRUM-24).
 - *Fix:*
   - point `/benchmarks` at `experiments/runs/*/test_metrics.json` and map `benchmark_row`;
   - build the catalogue from the gold roster and reject unknown molecules with a 404;
@@ -242,13 +242,13 @@ Pure Gaussian scatter gives √(π/2) = 1.2533.
 **N6. Validation metrics are averaged per batch, not per frame.**
 - *File:* `ml/training/train.py:349`.
 - *Evidence:* `run_epoch` returns means of batch means. The final 8-frame validation batch (5,000 = 156·32 + 8) weighs 4× per frame. This affects selection only, not reported scores.
-- *Owner:* Fazin.
+- *Ticket:* SCRUM-24.
 - *Fix:* accumulate sums and divide by frames.
 
 **N7. Split-provenance config keys are recorded but never checked.**
 - *File:* `ml/config.py:20-37`.
 - *Evidence:* `dataset`, `train_split`/`val_split`/`test_split` and `use_literature_split` are read nowhere in `ml/` (grep). The gold file stores `used_literature_split`, and nothing compares the two. A config can misstate how its split was made, and that statement is copied into run.json and compared as the `data:` block.
-- *Owner:* Fazin (`config.py`), with Shijin.
+- *Ticket:* SCRUM-24 (data side: SCRUM-28).
 - *Fix:* check them against the gold file in `open_split`.
 
 **N8. Stale documentation.**
@@ -256,9 +256,9 @@ Pure Gaussian scatter gives √(π/2) = 1.2533.
   - `CLAUDE.md:19` ("Current state": `ml/models`, `ml/training`, `ml/utils` are implemented);
   - `glossary.md:4-5` ("structure only" in `ml/`);
   - `glossary.md:398` (graph_stochastic "not yet registered"; it is, at `ml/models/registry.py:88`);
-  - glossary §3 lists Ruturaj as owner of `train.py` (CLAUDE.md's 15 Oct agreement says Fazin);
+  - glossary §3's owner for `train.py` disagrees with CLAUDE.md's 15 Oct agreement;
   - `train.py:560`'s pinned base-loss text says the KL term applies to "BLIP only", which GraphStochastic now makes false.
-- *Owner:* Alex (glossary, CLAUDE.md); Fazin (`train.py` text).
+- *Ticket:* none found (`train.py` text: SCRUM-24).
 - *Fix:* edit the docs. Changing the pinned loss text needs the same migration as item 8, or every existing record mismatches.
 
 ### Checked and found correct
@@ -272,12 +272,12 @@ Pure Gaussian scatter gives √(π/2) = 1.2533.
   - Both are reproducible under a fixed seed.
 - **Leakage:** `open_split` refuses the test split and checks molecule and theory against the gold file (`train.py:124-140`). Preprocessing asserts disjoint splits (`preprocessing.py:140-142`). Contiguous blocks come from `trajectory_block_split` (`preprocessing.py:107-112`).
 - **Metrics:** `MetricAccumulator` accumulates float64 sums across the whole split, never per batch.
-- **UQ formulas:** on synthetic data, a calibrated Gaussian gives coverage 0.498 / 0.799 / 0.900 / 0.950 and ECE 0.001. The closed-form CRPS matches Monte Carlo, the NLL matches by hand, Spearman separates informative from shuffled σ, and variance is converted to std correctly. (ECE here is the provisional coverage-gap definition, pending Dongxiao's sign-off.)
+- **UQ formulas:** on synthetic data, a calibrated Gaussian gives coverage 0.498 / 0.799 / 0.900 / 0.950 and ECE 0.001. The closed-form CRPS matches Monte Carlo, the NLL matches by hand, Spearman separates informative from shuffled σ, and variance is converted to std correctly. (ECE here is the provisional coverage-gap definition, pending sign-off, SCRUM-39.)
 - **Config:** unknown keys fail loudly at every level (`config.py:97-104`).
 
 ## 4. Not checked, and why
 
-- **BLIP signed energy error (item 3):** no `phase2_blip*.pt` on this machine, and `--save-predictions` (PR #9) not on `main`. Needs Alex's checkpoints.
+- **BLIP signed energy error (item 3):** no `phase2_blip*.pt` on this machine, and `--save-predictions` (PR #9) not on `main`. Needs the `phase2_blip*.pt` checkpoints (SCRUM-21).
 - **Re-scoring the retrained Phase 1 models (item 7):** the local checkpoints are the pre-retrain ones. Needs the 19 Oct checkpoints.
 - **BLIP trained-checkpoint physics checks:** 14 skips, for the same missing checkpoint.
 - **The backend under its real dependencies:** `pydantic-settings` is not in the `.venv`. A scratch-only stand-in was used and nothing was installed.
