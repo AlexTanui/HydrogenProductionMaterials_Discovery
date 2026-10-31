@@ -38,6 +38,7 @@ from torch_geometric.loader import DataLoader
 
 import ml.training.train as train_module
 from ml.config import ExperimentConfig, ModelConfig
+from ml.data.preprocessing import trajectory_block_split
 from ml.models.blip import BLIP
 from ml.models.painn import PaiNN
 from ml.models.registry import MODEL_REGISTRY, UnknownModel, load_model
@@ -146,6 +147,44 @@ def test_config_builds_its_own_registered_model(name):
 
 def test_the_six_configs_cover_every_registered_model():
     assert {phase for phase, _ in EXPECTED_MODELS.values()} == set(MODEL_REGISTRY)
+
+
+@pytest.mark.parametrize("name", sorted(p.stem for p in CONFIGS.glob("phase*.yaml")))
+def test_config_describes_how_its_gold_file_was_split(name):
+    """N7 (22 Oct audit): `use_literature_split` and the train/val/test
+    fractions are copied into every run record and compared across runs,
+    but nothing checked them against the gold file they describe.
+
+    A test over the committed configs rather than a check in `open_split`:
+    test fixtures and the SCRUM-47 leakage control train on gold files that
+    no splitter made, and until a gold file records its own split method
+    (proposed under SCRUM-47) a runtime check can't tell those apart."""
+    data = _load(name).data
+    gold_path = ROOT / data.gold_path
+    if not gold_path.exists():
+        pytest.skip(f"{gold_path} not found; run `python -m ml.data.preprocessing`")
+    with np.load(gold_path) as gold:
+        used_literature = bool(gold["used_literature_split"])
+        sizes = tuple(len(gold[f"{split}_idx"]) for split in ("train", "val", "test"))
+    assert data.use_literature_split == used_literature, (
+        f"{name}.yaml says use_literature_split={data.use_literature_split}, but {gold_path.name} "
+        f"records used_literature_split={used_literature}"
+    )
+    if used_literature:
+        # silver_to_gold keeps the published test set and splits the rest train:val.
+        remaining = sizes[0] + sizes[1]
+        expected = round(remaining * data.train_split / (data.train_split + data.val_split))
+        assert sizes[0] == expected, (
+            f"{name}.yaml's train/val fractions give {expected} of {remaining} non-test frames to train; "
+            f"{gold_path.name} has {sizes[0]}"
+        )
+    else:
+        expected = tuple(map(len, trajectory_block_split(sum(sizes), data.train_split, data.val_split,
+                                                          data.test_split)))
+        assert sizes == expected, (
+            f"{name}.yaml's fractions ({data.train_split}/{data.val_split}/{data.test_split}) give block "
+            f"sizes {expected}; {gold_path.name} has {sizes}"
+        )
 
 
 # --------------------------------------------------------------------------
