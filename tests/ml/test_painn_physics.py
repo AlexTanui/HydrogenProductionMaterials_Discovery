@@ -47,10 +47,16 @@ reasoning.
 Skipped if `data/gold/md17/ethanol_dft.npz` is absent - run
 `python -m ml.data.preprocessing`. Each trained variant (`<phase>_trained`)
 runs once `experiments/checkpoints/<config name>.pt` exists in the current
-checkpoint format, and is skipped until then.
+checkpoint format **and** is the checkpoint its run record describes (its
+sha256 equals `experiments/runs/<config name>/run.json`'s
+`checkpoint_sha256`); otherwise it is skipped, naming the reason. Without
+that check a stale local file - e.g. one from before a retrain - passes
+these tests on behalf of weights nobody reported (audit item 7).
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -74,6 +80,7 @@ ROOT = Path(__file__).resolve().parents[2]
 GOLD = ROOT / "data" / "gold" / "md17" / "ethanol_dft.npz"
 CONFIGS = ROOT / "experiments" / "configs"
 CHECKPOINTS = ROOT / "experiments" / "checkpoints"
+RUNS = ROOT / "experiments" / "runs"
 CUTOFF = 5.0
 
 # registry phase -> the experiment config that trains it.
@@ -280,6 +287,14 @@ def _trained_model(phase: str, ethanol) -> nn.Module:
     version = torch.load(path, map_location="cpu", weights_only=False).get("checkpoint_version", 1)
     if version != CHECKPOINT_VERSION:
         pytest.skip(f"{path.name} is checkpoint version {version}, from a superseded trainer")
+    record = RUNS / HARNESS_CONFIGS[phase] / "run.json"
+    expected = json.loads(record.read_text(encoding="utf-8")).get("checkpoint_sha256") if record.exists() else None
+    if expected is None:
+        pytest.skip(f"no run record with a checkpoint_sha256 at {record}: nothing says which weights to test")
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual != expected:
+        pytest.skip(f"{path.name} (sha256 {actual[:12]}...) is not the checkpoint its run record describes "
+                    f"({expected[:12]}...): these checks would test weights nobody reported")
     model, _ = load_model(path)
     return _for_testing(phase, model)
 
