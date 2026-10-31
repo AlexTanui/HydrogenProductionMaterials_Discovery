@@ -91,3 +91,11 @@ split.
    noise scale is pooled over the whole batch, so a molecule's prediction
    depends on its batch-mates; see
    [docs/reviews/blip-batch-dependence.md](reviews/blip-batch-dependence.md).
+6. **Split leakage was audited (SCRUM-47, 31 Oct).** No test frame is
+   within two MD steps of a training frame (closest 0.034 Å; one step moves
+   ethanol 0.014 Å). The blocks have no purge buffer, so validation and
+   test each start with one near-duplicate of the block before them, but
+   no benchmarked run trains or selects on those frames: the stride's
+   uncovered tail leaves 4,114 / 519 frames between the frames actually
+   used. See
+   [docs/reviews/leakage-audit-2026-10-31.md](reviews/leakage-audit-2026-10-31.md).
