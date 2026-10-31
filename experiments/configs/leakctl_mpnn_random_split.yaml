@@ -1,0 +1,50 @@
+name: leakctl_mpnn_random_split
+
+# ---------------------------------------------------------------------------
+# SCRUM-47 leakage CONTROL - not a result, never in a benchmark table.
+# phase1_baseline.yaml with exactly two changes: `name` (not phase1_*, so the
+# benchmark's Phase 1 table can't pick it up) and `data.gold_path`, which
+# points at a random frame-level split of the same ethanol_dft frames - the
+# leaky split CLAUDE.md forbids, made on purpose so the MAE gap against
+# phase1_baseline measures how much leakage would inflate results.
+#
+# Build the split first (gitignored, not scanned by the backend):
+#   python scripts/make_random_split_control.py
+# How it was made (seed, source sha256, method) is recorded in the file's
+# control_* keys and in data/external/leakage_controls/ethanol_dft_random_split.json.
+# train_split/val_split/test_split below are copied unchanged; nothing reads
+# them (audit N7), and here they describe sizes only, not a block split.
+# ---------------------------------------------------------------------------
+data:
+  dataset: md17
+  molecule: ethanol
+  theory: dft
+  gold_path: data/external/leakage_controls/ethanol_dft_random_split.npz   # random-split control; see above
+  cutoff_radius: 5.0          # A; each model's own cutoff must equal it (train.py checks)
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+  use_literature_split: false
+  num_rbf: 16                 # width of the dataset's edge_attr; no model reads it
+  seed: 42                    # torch seed: initialisation and shuffle order
+
+model:
+  phase: mpnn
+  hidden_channels: 128
+  num_layers: 4
+  num_rbf: 50
+
+train:
+  epochs: 200
+  batch_size: 32
+  lr: 0.0005
+  energy_loss_weight: 1.0
+  force_loss_weight: 100.0    # forces weighted far above energy (glossary.md section 6)
+  patience: 20
+  device: cpu
+  # Same budget as phase1_baseline: 10,000 train and 5,000 val frames, a fixed
+  # stride over each split's (here randomly drawn, sorted) indices with a
+  # seeded offset. The test split is scored whole by ml/training/evaluate.py.
+  train_subset: 10000
+  train_subset_seed: 42
+  val_subset: 5000
