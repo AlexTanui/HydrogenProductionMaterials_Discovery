@@ -5,7 +5,8 @@
 **Short answer.**
 - **Test does not leak into training.** No test frame is within two MD steps of any training frame. Test never touches train, because the 55,509-frame validation block sits between them.
 - **Two boundary near-duplicates.** Validation touches train, and test touches validation, with no purge buffer, so each boundary has one frame one MD step from the other block, then a short ramp of a few frames. No benchmark run trained or selected on those frames.
-- **Pending decisions.** Thresholds, the buffer size and the random-split control (part 3b) await approval; proposals are below.
+- **Decisions (31 Oct).** The 2-MD-step nearest-neighbour threshold is approved and enforced in the tests. A 10-frame purge buffer for new splits (keeping the existing split) and split provenance in every gold file are proposals for review; nothing in `ml/data/` has changed.
+- **Random-split control (part 3b).** On one machine and one commit, a random split scored lower test errors than the block split: energy MAE 0.0587 against 0.0792 kcal/mol, force MAE 0.1795 against 0.2162 kcal/mol/Å. Each split has one training run, so the gap is indicative and could be within run-to-run noise, which has not been measured yet.
 
 Measured at commit `b4a8634` with `scripts/leakage_audit.py`; raw numbers in [reports/leakage/ethanol_dft.json](../../reports/leakage/ethanol_dft.json) and [reports/leakage/ethanol_ccsd_t.json](../../reports/leakage/ethanol_ccsd_t.json). Tests in [tests/ml/test_split_leakage.py](../../tests/ml/test_split_leakage.py); method in [ml/utils/leakage.py](../../ml/utils/leakage.py).
 
@@ -64,28 +65,49 @@ Every benchmarked config (`phase1_*`, `phase2_*`, `phase3_*`) trains on **ethano
   - val → train: closest 0.0137 Å.
 - That's a property of the published split, which is kept deliberately for comparability with published numbers. Only the legacy `dimenet_*` configs use this file.
 
-## Proposals (need approval; nothing below is enforced yet)
+## Decisions and proposals (31 Oct)
 
-1. **Nearest-neighbour threshold: no held-out frame within 2 MD steps of a training frame** (`NN_THRESHOLD_LAG = 2`, i.e. the lag-2 median, 0.028 Å for ethanol DFT).
+Only the threshold (1) is enforced. The other two change `ml/data/` and are proposals for review.
+
+1. **Approved: no held-out frame within 2 MD steps of a training frame** (`NN_THRESHOLD_LAG = 2`, i.e. the lag-2 median, 0.028 Å for ethanol DFT).
    - Lag 1 would miss the boundary frame (0.0148 > 0.0141).
    - Lag 3 would flag 12 test frames that are configuration recurrences hundreds of thousands of steps apart, which is the dataset rather than the split.
-   - With lag 2: test → train passes (0 frames); val → train fails on frame 444,074 until there is a buffer or an exemption (proposal 2).
+   - With lag 2: test → train passes (0 frames); val → train fails on frame 444,074, because the existing split is kept (2). The tests record that one case as a strict expected failure, and separately check the frames actually used, which pass for both validation and test.
    - Expressed as a lag rather than in ångström, so it transfers to other molecules.
-2. **Purge buffer: 10 frames between blocks for any new split** (`AGREED_PURGE_BUFFER_FRAMES = 10`).
+2. **Proposed: a 10-frame purge buffer between blocks for any new split** (`AGREED_PURGE_BUFFER_FRAMES = 10` once agreed; unset until then, so its test skips).
    - The boundary ramp reaches the bulk's 1st percentile (0.053 Å) after about 4 frames, and lag-10 RMSD (0.12 Å median, 0.09 Å 5th percentile) clears the bulk with margin.
    - Cost: 20 of 555,092 frames.
    - **For `ethanol_dft` as it stands**, adding a buffer changes every run's validation and test frames, so all eight runs would need retraining and re-scoring. The recommendation is not to re-split it: the frames every run actually used already sit 4,114 / 519 frames apart. Record it as a documented exemption backed by the "actually used" rows above, and require the buffer from the splitter for new gold files. This is a change to `ml/data/preprocessing.py`.
-3. **Split provenance in every gold file:** `source_sha256`, `split_method`, `split_params` and `git_commit` (proposed names), written by `silver_to_gold`. A change to `ml/data/`. The test for it is a strict expected failure until then.
+3. **Proposed: split provenance in every gold file:** `source_sha256`, `split_method`, `split_params` and `git_commit`, written by `silver_to_gold`. A change to `ml/data/`. The test for it stays a strict expected failure until then.
 
-## Part 3b: random-split control (prepared, not trained)
+## Part 3b: random-split control (trained 31 Oct, UTC)
 
-- **What:** `phase1_baseline`'s exact config, retrained on a random frame-level split of the same ethanol (DFT) frames, then its test energy and force MAE compared with the block split's (0.0779 kcal/mol / 0.1775 kcal/mol/Å).
+- **What:** `phase1_baseline`'s config, trained twice on one machine (Windows x86, CPU, 24 threads) from one clean commit (`465f769`), one run after the other:
+  - `leakctl_mpnn_random_split` on a random frame-level split of the same ethanol (DFT) frames;
+  - `leakctl_mpnn_block_split` on the real block split, as the same-machine reference.
+- **Why a same-machine reference:** an earlier retrain of the Phase 1 configs moved SchNet's energy MAE from 0.1173 to 0.1714. That retrain changed the machine and thread count (Windows x86, 24 threads → macOS arm64, 4 threads) and the commit (`d9f3814` → `b1c2d89`) together, so the change can't be put down to any one of them. A comparison with `phase1_baseline`, trained elsewhere, could carry the same mix of differences.
 - **Files:**
-  - `scripts/make_random_split_control.py` (seed 0) writes `data/external/leakage_controls/ethanol_dft_random_split.npz`, which is gitignored and not scanned by the backend.
-  - `experiments/configs/leakctl_mpnn_random_split.yaml` differs from `phase1_baseline.yaml` only in `name` and `data.gold_path`.
-  - The split's seed, method, source sha256 (`245697fe…`) and commit (`023d40d`) are in the file's `control_*` keys and in the JSON next to it.
-- **Expected:** a small gap. Against the full train block the random split is far leakier (median 0.014 Å against 0.077 Å). But against the 10,000 frames the protocol actually trains on, the two splits are about equally far (median 0.088 against 0.092 Å), because a stride subset of either split is sparse in time. So the control measures leakage *under this protocol's budget*, and the answer is likely "small".
-- **Cost:** about 13 s per epoch on this machine (measured: 36 ms per training step, 11 ms per validation step, 24 CPU threads), so about 45 minutes for 200 epochs plus scoring. `phase1_baseline` itself was trained on a different machine.
+  - `scripts/make_random_split_control.py` (seed 0) writes `data/external/leakage_controls/ethanol_dft_random_split.npz`, which is gitignored and not scanned by the backend. The split's seed, method, source sha256 (`245697fe…`) and commit (`023d40d`) are in the file's `control_*` keys and in the JSON next to it.
+  - `experiments/configs/leakctl_mpnn_random_split.yaml` and `leakctl_mpnn_block_split.yaml` differ from `phase1_baseline.yaml` only in `name` and, for the control, `data.gold_path`.
+  - Run records: `experiments/runs/leakctl_mpnn_random_split/` and `experiments/runs/leakctl_mpnn_block_split/`. The `leakctl_` names keep them out of the default Phase 1 table. `benchmark.py` refuses to put the two in one table (different gold file, frames and test fingerprint), and accepts the block control next to `phase1_baseline` (same frames, test fingerprint `518af6e3…`).
+
+| Run | Split | Machine, threads, commit | Energy MAE | Force MAE | Energy RMSE | Force RMSE |
+|---|---|---|---|---|---|---|
+| `leakctl_mpnn_random_split` | random, frame-level (its own 55,509 test frames) | Windows x86, 24, `465f769` | **0.0587** | **0.1795** | 0.0796 | 0.3327 |
+| `leakctl_mpnn_block_split` | gold block split | Windows x86, 24, `465f769` | **0.0792** | **0.2162** | 0.1007 | 0.3281 |
+| `phase1_baseline` (for reference) | gold block split | macOS arm64, 4, `755d57f` | 0.0779 | 0.1775 | 0.0962 | 0.2774 |
+
+Test set; energy in kcal/mol, force per component in kcal/mol/Å. Both new runs hit the 200-epoch cap (best epochs 199 and 197).
+
+**Reading it.**
+1. **On the same machine and commit, the random split scored lower:** energy MAE 26% lower and force MAE 17% lower, the direction leakage would produce. Force RMSE doesn't follow (0.333 against 0.328).
+2. **One training run per split, so the gap is indicative and could be within run-to-run noise.** The only repeat available is the block control against `phase1_baseline`: the same config, frames and seeds, but a different machine, thread count and commit. Their losses differ from the first epoch, and they end 1.7% apart on energy MAE and 22% apart on force MAE. The force gap above is no larger than that one difference; the energy gap is larger, but one pair is not a noise estimate. Run-to-run noise is measured separately (Step 4 of the evaluation plan). Until then, neither gap should be quoted as the size of a leakage effect.
+3. **The control can't say which change made the gap.** A random split changes two things at once:
+   - its test frames have a training frame about one MD step away in the full train block (median 0.014 Å), although against the 10,000 frames actually trained on they are about as far as the block split's (median 0.088 against 0.092 Å);
+   - its test frames are spread over the whole trajectory instead of being its last 10%.
+4. **Against part 3a's prediction of a small gap** (because the two splits' used training frames are about equally far from test): the force gap fits it; the energy gap is larger than predicted, and whether it survives run-to-run noise is open.
+
+**Cost:** 44 min (control) and 77 min (reference). Epoch times varied between about 11 and 20 s within each run on the same laptop, so wall-clock time doesn't compare the two.
 
 ## Reproduce
 
@@ -94,4 +116,6 @@ python scripts/leakage_audit.py data/gold/md17/ethanol_dft.npz          # ~3.5 m
 python scripts/leakage_audit.py data/gold/md17/ethanol_ccsd_t.npz --run none
 pytest tests/ml/test_leakage_method.py tests/ml/test_split_leakage.py -rs
 python scripts/make_random_split_control.py                             # 3b split only; trains nothing
+python -m ml.training.train experiments/configs/leakctl_mpnn_random_split.yaml   # 45-80 min each on CPU
+python -m ml.training.train experiments/configs/leakctl_mpnn_block_split.yaml
 ```
