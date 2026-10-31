@@ -1,0 +1,155 @@
+{
+  "name": "phase1v2_schnet",
+  "phase": "schnet",
+  "model": "SchNet",
+  "reportable": true,
+  "overrides": {},
+  "status": "complete",
+  "git_commit": "a7103664b1d349e3f35bb4464042d770b5f6b940",
+  "git_dirty": false,
+  "git_dirty_ignores": [
+    "experiments/runs/"
+  ],
+  "config_path": "experiments/configs/phase1v2_schnet.yaml",
+  "config_sha256": "1275b3bcda3bb29ad2ad9d6199436c0d323c605b1432b4a4add85c08f2ce6b2d",
+  "config": {
+    "name": "phase1v2_schnet",
+    "data": {
+      "dataset": "md17",
+      "molecule": "ethanol",
+      "theory": "dft",
+      "gold_path": "data/gold/md17/ethanol_dft.npz",
+      "cutoff_radius": 5.0,
+      "train_split": 0.8,
+      "val_split": 0.1,
+      "test_split": 0.1,
+      "use_literature_split": false,
+      "num_rbf": 16,
+      "seed": 42
+    },
+    "model": {
+      "phase": "schnet",
+      "hidden_channels": 64,
+      "num_layers": 3,
+      "num_rbf": 16
+    },
+    "train": {
+      "epochs": 50,
+      "batch_size": 32,
+      "lr": 0.0005,
+      "energy_loss_weight": 1.0,
+      "force_loss_weight": 100.0,
+      "patience": 20,
+      "device": "cpu",
+      "train_subset": 111000,
+      "train_subset_seed": 42,
+      "val_subset": 5000
+    }
+  },
+  "model_config": {
+    "hidden_channels": 64,
+    "num_layers": 3,
+    "num_rbf": 16,
+    "cutoff": 5.0
+  },
+  "n_parameters": 61569,
+  "subsets": {
+    "train": {
+      "size": 111000,
+      "of": 444074,
+      "seed": 42,
+      "stride": 4,
+      "offset": 0,
+      "gold_indices_sha256": "792d865e657af30d37c7915d2f6e7c884b1a7ad27d19043221b01bf37d1df9e1",
+      "first_gold_index": 0,
+      "last_gold_index": 443996
+    },
+    "val": {
+      "size": 5000,
+      "of": 55509,
+      "seed": 42,
+      "stride": 11,
+      "offset": 0,
+      "gold_indices_sha256": "9ca1c1b6fdf48a5c1805ad0b9b019b09987f1abb4c04b3d6f12f015c27b36da3",
+      "first_gold_index": 444074,
+      "last_gold_index": 499063
+    }
+  },
+  "energy_statistics": {
+    "computed_on": "train subset",
+    "n_frames": 111000,
+    "energy_mean": -97195.89240512387,
+    "energy_std": 4.213515352122023,
+    "n_atoms": 9,
+    "shift_per_atom": -10799.5439453125,
+    "scale_per_atom": 0.46816837787628174,
+    "unit": "kcal/mol",
+    "formula": "E = scale * E_model + n_atoms * shift; F = scale * F_model"
+  },
+  "protocol": {
+    "loss": "energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E, plus kl_weight * model.kl_divergence() / n_batches when the model defines kl_weight (BLIP only; see ml/models/blip.py)",
+    "loss_override": null,
+    "nll_min_energy_var": null,
+    "nll_min_force_var": null,
+    "nll_min_var_epoch": null,
+    "energy_loss_weight": 1.0,
+    "force_loss_weight": 100.0,
+    "kl_weight": 0.0,
+    "train_num_mc_samples": 1,
+    "nll_warmup_epochs": 0,
+    "optimizer": {
+      "name": "Adam",
+      "lr": 0.0005,
+      "weight_decay": 1e-06
+    },
+    "scheduler": {
+      "name": "ReduceLROnPlateau",
+      "factor": 0.5,
+      "patience": 5
+    },
+    "grad_clip_norm": 10.0,
+    "batch_size": 32,
+    "max_epochs": 50,
+    "patience": 20,
+    "max_batches_per_epoch": null,
+    "shuffle": "torch.Generator seeded with data.seed",
+    "selection": "lowest val loss on the val subset"
+  },
+  "environment": {
+    "device": "cpu",
+    "torch": "2.13.0+cu130",
+    "torch_geometric": "2.8.0.post1",
+    "numpy": "2.4.6",
+    "torch_num_threads": 24,
+    "python": "3.11.9",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel"
+  },
+  "setup_s": 0.9905904000042938,
+  "started_at": "2026-10-22T10:25:19+00:00",
+  "checkpoint": "experiments/checkpoints/phase1v2_schnet.pt",
+  "history_csv": "experiments/runs/phase1v2_schnet/history.csv",
+  "epochs_run": 50,
+  "best_epoch": 47,
+  "best_val_loss": 14.748532598944985,
+  "stop_reason": "max_epochs",
+  "wall_clock_s": 2779.13964020001,
+  "finished_at": "2026-10-22T11:11:38+00:00",
+  "checkpoint_sha256": "b249d2e6c407fd0f02a8f2119d5a4587f9cef5560c4e083353844b8dad9df1e6",
+  "test": {
+    "metrics_json": "test_metrics.json",
+    "benchmark_row": {
+      "phase": "schnet",
+      "model": "SchNet",
+      "energy_mae": 0.31253448202093354,
+      "energy_mae_field": "energy_mae_total",
+      "energy_mae_unit": "kcal/mol",
+      "force_mae": 0.26108869869607104,
+      "force_mae_field": "force_mae_component",
+      "force_mae_unit": "kcal/mol/Ang",
+      "ece": null,
+      "uncertainty_correlation": null,
+      "uncertainty_note": "ECE and uncertainty-error correlation are defined by Dongxiao; this model has no predict_distribution (deterministic, or Phase 2/3 hasn't wired one in yet), so there is no uncertainty to score against that definition"
+    }
+  }
+}
