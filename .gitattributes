@@ -1,2 +1,8 @@
 data/bronze/**/*.npz filter=lfs diff=lfs merge=lfs -text
 data/bronze/**/*.zip filter=lfs diff=lfs merge=lfs -text
+
+# benchmark.py writes these with LF and tests compare their exact text, so check
+# them out with LF too; otherwise every regeneration on Windows (core.autocrlf)
+# marks them modified with no content change.
+reports/*.csv text eol=lf
+reports/*.md text eol=lf
