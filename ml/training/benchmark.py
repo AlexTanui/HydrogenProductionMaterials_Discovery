@@ -72,6 +72,8 @@ import argparse
 import csv
 import io
 import json
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -432,6 +434,22 @@ def _budget_text(train: dict[str, Any]) -> str:
     return f"{part(train_size, 'train')} and {part(val_size, 'val')}"
 
 
+def tracked_run_names(runs_dir: Path) -> Optional[set[str]]:
+    """Run directories under `runs_dir` whose `run.json` git tracks
+    (committed or staged), or None when git can't say - not installed, or
+    `runs_dir` is not inside a repository."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z", "--", "."], cwd=runs_dir, capture_output=True,
+            encoding="utf-8", check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    # Paths are relative to runs_dir: "<run>/run.json" is a run record.
+    return {path.split("/")[0] for path in result.stdout.split("\0")
+            if path.count("/") == 1 and path.endswith("/run.json")}
+
+
 def other_runs_present(runs_dir: Path, included: list[str]) -> list[str]:
     """Run directories under `runs_dir` that this table left out.
 
@@ -441,12 +459,28 @@ def other_runs_present(runs_dir: Path, included: list[str]) -> list[str]:
     So a reader has to be told which runs exist and were not tabulated,
     or a partial table reads as the whole picture. Names only; whether
     each one is reportable is its own record's business.
+
+    Only run records git tracks are named. A run that was never committed
+    exists on one machine, so naming it would make a committed report
+    depend on whoever regenerated it (a local experiment did exactly that
+    to reports/*.md in the Step 1 review, 31 Oct). Those are printed to
+    stderr instead - skipped, not hidden. Where git can't say, every run
+    record on disk is named. Only this note is affected: which runs
+    become rows is `load_runs`' business, unchanged.
     """
     runs_dir = Path(runs_dir)
     if not runs_dir.is_dir():
         return []
-    return sorted(p.name for p in runs_dir.iterdir()
-                  if (p / "run.json").is_file() and p.name not in set(included))
+    left_out = sorted(p.name for p in runs_dir.iterdir()
+                      if (p / "run.json").is_file() and p.name not in set(included))
+    tracked = tracked_run_names(runs_dir)
+    if tracked is None:
+        return left_out
+    untracked = [name for name in left_out if name not in tracked]
+    if untracked:
+        print(f"benchmark: not named under 'Not in this table' because git does not track them "
+              f"(local run records): {', '.join(untracked)}", file=sys.stderr)
+    return [name for name in left_out if name in tracked]
 
 
 def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared: dict[str, Any],

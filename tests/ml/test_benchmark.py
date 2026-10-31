@@ -19,6 +19,8 @@ import copy
 import csv
 import io
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -622,3 +624,54 @@ def test_excluded_note_is_singular_for_one_run(tmp_path):
     _write_run(tmp_path, "phase2_b", run_changes={"model": "BLIP", "phase": "blip"})
     _, md_text, _ = build(tmp_path, runs=["phase1_a"])
     assert "`phase2_b` — a run record that exists" in md_text
+
+
+def _three_phase_runs(runs_dir: Path) -> None:
+    _write_run(runs_dir, "phase1_a")
+    _write_run(runs_dir, "phase2_b", run_changes={"model": "BLIP", "phase": "blip"})
+    _write_run(runs_dir, "phase3_c", run_changes={"model": "GraphStochastic",
+                                                  "phase": "graph_stochastic"})
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git not installed")
+def test_the_note_names_only_run_records_git_tracks(tmp_path, capsys):
+    """An uncommitted run exists on one machine only, so naming it would
+    make the committed report depend on who regenerated it (in the Step 1
+    review, a local experiment's name leaked into reports/*.md that way).
+    It is printed to stderr instead: skipped from the note, not hidden."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    runs = tmp_path / "runs"
+    _three_phase_runs(runs)
+    subprocess.run(["git", "add", "runs/phase1_a", "runs/phase2_b"], cwd=tmp_path, check=True)
+
+    _, md_text, rows = build(runs, name_prefix="phase1_")
+    assert [row["run"] for row in rows] == ["phase1_a"]
+    assert "**Not in this table:** `phase2_b` — a run record that exists" in md_text
+    assert "phase3_c" not in md_text
+    assert "phase3_c" in capsys.readouterr().err
+
+    # Table rows are unaffected: an untracked run still becomes a row, and
+    # with nothing left out there is no note and nothing to report.
+    _, md_all, rows_all = build(runs)
+    assert [row["run"] for row in rows_all] == ["phase1_a", "phase2_b", "phase3_c"]
+    assert "Not in this table:" not in md_all
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("why", ["git not installed", "not a repository"])
+def test_without_git_the_note_names_every_run_record_on_disk(tmp_path, monkeypatch, capsys, why):
+    """Where git can't say which records are tracked, nothing is dropped."""
+    if why == "git not installed":
+        def no_git(*args, **kwargs):
+            raise FileNotFoundError("git")
+        monkeypatch.setattr(benchmark.subprocess, "run", no_git)
+    else:
+        # Stop git looking above tmp_path for a repository to belong to.
+        monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+    runs = tmp_path / "runs"
+    _three_phase_runs(runs)
+
+    assert benchmark.tracked_run_names(runs) is None
+    _, md_text, _ = build(runs, name_prefix="phase1_")
+    assert "**Not in this table:** `phase2_b`, `phase3_c`" in md_text
+    assert capsys.readouterr().err == ""
