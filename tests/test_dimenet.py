@@ -17,6 +17,9 @@ class DimeNetChecks(unittest.TestCase):
         torch.set_num_threads(2)
         torch.manual_seed(42)
         cls.config = yaml.safe_load((ROOT/'experiments/configs/dimenet_smoke.yaml').read_text())
+        gold = ROOT / cls.config['data']['gold_path']
+        if not gold.exists():
+            raise unittest.SkipTest(f'{gold} not present - run `python -m ml.data.preprocessing`')
         cls.datasets, cls.mean, cls.selected, _ = load_gold(cls.config)
         mc = dict(cls.config['model'])
         mc.pop('name')
