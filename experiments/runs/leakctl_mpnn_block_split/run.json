@@ -1,0 +1,155 @@
+{
+  "name": "leakctl_mpnn_block_split",
+  "phase": "mpnn",
+  "model": "MPNN",
+  "reportable": true,
+  "overrides": {},
+  "status": "complete",
+  "git_commit": "465f7699ba002516c6a259b9da5833f4475afa02",
+  "git_dirty": false,
+  "git_dirty_ignores": [
+    "experiments/runs/"
+  ],
+  "config_path": "experiments/configs/leakctl_mpnn_block_split.yaml",
+  "config_sha256": "00ea88531f1f5be22cd148dbc17b67b089ea29ed6472e611b04f712a27f5bbe4",
+  "config": {
+    "name": "leakctl_mpnn_block_split",
+    "data": {
+      "dataset": "md17",
+      "molecule": "ethanol",
+      "theory": "dft",
+      "gold_path": "data/gold/md17/ethanol_dft.npz",
+      "cutoff_radius": 5.0,
+      "train_split": 0.8,
+      "val_split": 0.1,
+      "test_split": 0.1,
+      "use_literature_split": false,
+      "num_rbf": 16,
+      "seed": 42
+    },
+    "model": {
+      "phase": "mpnn",
+      "hidden_channels": 128,
+      "num_layers": 4,
+      "num_rbf": 50
+    },
+    "train": {
+      "epochs": 200,
+      "batch_size": 32,
+      "lr": 0.0005,
+      "energy_loss_weight": 1.0,
+      "force_loss_weight": 100.0,
+      "patience": 20,
+      "device": "cpu",
+      "train_subset": 10000,
+      "train_subset_seed": 42,
+      "val_subset": 5000
+    }
+  },
+  "model_config": {
+    "hidden_channels": 128,
+    "num_layers": 4,
+    "num_rbf": 50,
+    "cutoff": 5.0
+  },
+  "n_parameters": 384897,
+  "subsets": {
+    "train": {
+      "size": 10000,
+      "of": 444074,
+      "seed": 42,
+      "stride": 44,
+      "offset": 3,
+      "gold_indices_sha256": "7240883e6938bd7c5f27195567accb40a7147a7b7a0673e516597d2e8bf9fa0d",
+      "first_gold_index": 3,
+      "last_gold_index": 439959
+    },
+    "val": {
+      "size": 5000,
+      "of": 55509,
+      "seed": 42,
+      "stride": 11,
+      "offset": 0,
+      "gold_indices_sha256": "9ca1c1b6fdf48a5c1805ad0b9b019b09987f1abb4c04b3d6f12f015c27b36da3",
+      "first_gold_index": 444074,
+      "last_gold_index": 499063
+    }
+  },
+  "energy_statistics": {
+    "computed_on": "train subset",
+    "n_frames": 10000,
+    "energy_mean": -97195.8193421875,
+    "energy_std": 4.189574263572231,
+    "n_atoms": 9,
+    "shift_per_atom": -10799.53515625,
+    "scale_per_atom": 0.46550825238227844,
+    "unit": "kcal/mol",
+    "formula": "E = scale * E_model + n_atoms * shift; F = scale * F_model"
+  },
+  "protocol": {
+    "loss": "energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E, plus kl_weight * model.kl_divergence() / n_batches when the model defines kl_weight (BLIP only; see ml/models/blip.py)",
+    "loss_override": null,
+    "nll_min_energy_var": null,
+    "nll_min_force_var": null,
+    "nll_min_var_epoch": null,
+    "energy_loss_weight": 1.0,
+    "force_loss_weight": 100.0,
+    "kl_weight": 0.0,
+    "train_num_mc_samples": 1,
+    "nll_warmup_epochs": 0,
+    "optimizer": {
+      "name": "Adam",
+      "lr": 0.0005,
+      "weight_decay": 1e-06
+    },
+    "scheduler": {
+      "name": "ReduceLROnPlateau",
+      "factor": 0.5,
+      "patience": 5
+    },
+    "grad_clip_norm": 10.0,
+    "batch_size": 32,
+    "max_epochs": 200,
+    "patience": 20,
+    "max_batches_per_epoch": null,
+    "shuffle": "torch.Generator seeded with data.seed",
+    "selection": "lowest val loss on the val subset"
+  },
+  "environment": {
+    "device": "cpu",
+    "torch": "2.13.0+cu130",
+    "torch_geometric": "2.8.0.post1",
+    "numpy": "2.4.6",
+    "torch_num_threads": 24,
+    "python": "3.11.9",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel"
+  },
+  "setup_s": 1.0227927000378259,
+  "started_at": "2026-10-31T13:11:46+00:00",
+  "checkpoint": "experiments/checkpoints/leakctl_mpnn_block_split.pt",
+  "history_csv": "experiments/runs/leakctl_mpnn_block_split/history.csv",
+  "epochs_run": 200,
+  "best_epoch": 197,
+  "best_val_loss": 17.92546646002751,
+  "stop_reason": "max_epochs",
+  "wall_clock_s": 4594.448402700014,
+  "finished_at": "2026-10-31T14:28:21+00:00",
+  "checkpoint_sha256": "9f53f120ed1c2b511f5128e9384029ee10252656285cdd72768a52dcb699974b",
+  "test": {
+    "metrics_json": "test_metrics.json",
+    "benchmark_row": {
+      "phase": "mpnn",
+      "model": "MPNN",
+      "energy_mae": 0.07924418787944297,
+      "energy_mae_field": "energy_mae_total",
+      "energy_mae_unit": "kcal/mol",
+      "force_mae": 0.21617795327932424,
+      "force_mae_field": "force_mae_component",
+      "force_mae_unit": "kcal/mol/Ang",
+      "ece": null,
+      "uncertainty_correlation": null,
+      "uncertainty_note": "ECE and uncertainty-error correlation are defined by Dongxiao; this model has no predict_distribution (deterministic, or Phase 2/3 hasn't wired one in yet), so there is no uncertainty to score against that definition"
+    }
+  }
+}
