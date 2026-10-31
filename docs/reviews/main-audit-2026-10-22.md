@@ -283,3 +283,34 @@ Pure Gaussian scatter gives √(π/2) = 1.2533.
 - **The backend under its real dependencies:** `pydantic-settings` is not in the `.venv`. A scratch-only stand-in was used and nothing was installed.
 - **Phase 3 noise dynamics during training (5c):** checked at initialisation only. No Phase 3 run exists.
 - **Line-by-line read of every file:** the sub-agent sweep did not run (session limit). The sweep covered every Part 2 category with targeted checks and the evidence above, but not every function body. `ml/models/painn.py`, `physnet.py` and `dimenet.py` internals beyond forces, cutoff and batch independence were not read. `frontend/` was out of scope.
+
+## Status on 31 Oct 2026 (main at `46b5f99`)
+
+Appended on 31 Oct; everything above is the 22 Oct text, unedited. Since `fdc2353`, `ml/training/train.py`, `benchmark.py`, `config.py`, every model file, `ml/data/` and the core tests are unchanged on `main`; `evaluate.py` changed and was reverted (`a1c2ee8`, `6f38928`). So findings in that code are still open by construction. Commit `e332e1d` (SCRUM-70) is on `origin/alex`, **not on `main`**; where it changes a finding, that is noted below.
+
+| # | Status on 31 Oct |
+|---|---|
+| 1 | **Partly fixed.** `phase2_blip_nll` now passes the benchmark: `7141609` re-scored it so its record carries the eval MC count. `phase2_blip` is still refused (`git_dirty=True` at `e581be8`), and it also still has no eval MC count. SCRUM-69. |
+| 2a | **Still open** on `main`. **Also applies to Phase 3 once `e332e1d` lands:** `phase3_graph_stochastic_nll.yaml` (`train_num_mc_samples: 4`, `nll_warmup_epochs: 20`) takes the same `train.py` branch, so the floor is set once, at epoch 20, from validation MSE. For reference, BLIP's floor was 610× its final squared energy error and 83× its force error. |
+| 2b | **Still open** on `main`. **`e332e1d`:** Phase 3 scoring adds no floor either (`ScaledEnergyModel.predict_distribution`, `GraphStochastic.predict_distribution`), and training uses the biased variance over K = 4 while scoring uses the unbiased variance over K = 20. Both of BLIP's mismatches carry over. |
+| 2c | **Still open** on `main`. **`e332e1d`:** after epoch 20, Phase 3's `*_energy_mse`/`*_force_mse` history columns will hold NLL values. |
+| 3 | **Can't check.** There's no `phase2_blip*.pt` on this machine, and the per-frame export (`a1c2ee8`, PR #9) was reverted by `6f38928`. |
+| 4 | **Still open** (`train.py:309-313` unchanged). |
+| 5a | **Still open** (`graph_stochastic.py` unchanged on `main`; `e332e1d` doesn't change the KL scaling). The scored `phase3_graph_stochastic` run (`7141609`) was trained with `kl_weight` 0.01 under this scaling. |
+| 5b | **Fixed on `origin/alex` by `e332e1d`, not on `main`.** It adds `predict_training_distribution` and the `train_num_mc_samples`/`nll_warmup_epochs` hooks, and `ScaledEnergyModel.supports_training_distribution` is simply "has that method". This is what brings 2a, 2b, 2c and N1 to Phase 3. |
+| 5c | **Still open** on `main`, now with trained-run evidence: `phase3_graph_stochastic`'s 90% intervals cover 99.5% of test energies but only 57.4% of force components (its `test_metrics.json`). `e332e1d` targets this with NLL training (SCRUM-70); no result yet. |
+| 5d | **Latent on `main`; live on `origin/alex`.** In `e332e1d`, `predict_training_distribution` runs K forward passes, each overwriting `_last_kl` (`graph_stochastic.py:286`), and `batch_loss` then reads only the last one (`train.py:311`). `phase3_graph_stochastic_nll.yaml` sets `kl_weight: 0.01` with K = 4, the combination the new docstring calls "worth revisiting". |
+| 6 | **Partly fixed by `b8a8ab7`:** `/benchmarks` maps `benchmark_row` (no `KeyError`), and inference is real, not the stub. **Still open:** it reads the gitignored `experiments/results/<checkpoint>.json`, not the committed run records. On this machine those files are older scorings: `phase1_baseline` energy MAE 0.0891 against 0.0779 in its run record, with a different data fingerprint. `pydantic-settings` is now installed in this machine's `.venv` (environment only). |
+| 7 | **Still open.** The same five local Phase 1 checkpoints with the same mismatched sha256; no Phase 2/3 checkpoints here. `_trained_model` in `tests/ml/test_painn_physics.py` still checks only existence and version. |
+| 8 | **Still open.** `experiments/runs/phase2_blip_nll/run.json` is unchanged since `fdc2353` and records no migration. (`7141609` re-scored the same run's `test_metrics.json` through `evaluate.py`.) |
+| 9 | **Partly fixed:** `backend/tests/test_api.py` has 16 test functions (23 collected) since `b8a8ab7`. **Still open:** `tests/test_md17.py` and `tests/test_models.py` are 0 bytes; no test references `silver_to_gold`, `bronze_to_silver`, `validate_sample` or `load_split_zip`; `build_graph`'s edge set, symmetry and cutoff are untested; `tests/test_dimenet.py` still has no skip guard and still imports `ml.training.train_dimenet`. |
+| N1 | **Still open** on `main`. **`e332e1d`:** applies to Phase 3 NLL. The floor comes from validation MSE, and the LR schedule and early stopping run on a `val_loss` that includes KL (`kl_weight: 0.01`), with item 4's per-loader scaling. |
+| N2 | **Still open** (`phase2_blip.yaml` and the `phase2_blip` record unchanged). It bears on the SCRUM-69 retrain, which uses that config. |
+| N3 | **Still open** (`md17.py:242` `<=`; no envelope in MPNN, BLIP, GraphStochastic or SchNet). It matters more since `dc0dfcc`: `POST /jobs/train` trains any of the 7 architectures on any molecule with gold data, including paracetamol and azobenzene. |
+| N4 | **Still open.** `train_schnet.py`, `train_physnet.py` and `train_dimenet.py` are unchanged on `main`. |
+| N5 | **Fixed by `b8a8ab7`:** no `baseline.pt` default; the catalogue is read from the gold files; an unknown molecule gets a 404 (tested). The backend's requirements are installed in this machine's `.venv` (environment only); the repo has no CI. |
+| N6 | **Still open** (`train.py` unchanged). |
+| N7 | **Still open** (`config.py` unchanged). |
+| N8 | **Still open** on `main`: `CLAUDE.md:19` (corrected on the unmerged `fazin-uq-protocol-v1`, `319425a`); `glossary.md:4-5`; the "not yet registered" line, now `glossary.md:454`; glossary §3's `train.py` row still disagrees with `CLAUDE.md`; `train.py:560`'s pinned "BLIP only" text (changing it needs item 8's migration). |
+
+**Also noted since 22 Oct:** where a trained checkpoint exists, 6 of `backend/tests/test_api.py`'s tests fail. Three fail because `TestClient(app)` is built without `with`, so `init_db()` never runs; three lack a skip guard for missing aspirin/azobenzene/paracetamol gold data. On a clean clone the module-level `skipif` skips all 23. Section 3's "Checked and found correct" covers code that is unchanged on `main`; it wasn't re-run.
