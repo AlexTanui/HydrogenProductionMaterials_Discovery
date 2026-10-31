@@ -376,8 +376,8 @@ def _score_checkpoint(
 
     # `ece`/`uncertainty_correlation` are energy, kept under their original
     # names so every existing reader and record stays valid. The per-quantity
-    # pairs below are what benchmark.py tabulates: force calibration differs
-    # from energy by two orders of magnitude on the same checkpoint, so a
+    # pairs below are what benchmark.py tabulates: on the same checkpoint
+    # force Spearman is ~100x energy's and ECE differs by up to ~2x, so a
     # single unqualified figure misreports whichever one it isn't.
     benchmark_ece = _uq("energy", "ece")
     benchmark_correlation = _uq("energy", "spearman_uncertainty_error")

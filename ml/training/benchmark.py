@@ -543,7 +543,8 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
         *(["  - Notes above are copied verbatim from each `test_metrics.json` and are historical: a "
            "run scored before 2026-10-23 records the definition as pending Dongxiao's sign-off. The "
            "definition itself did not change when ownership moved, so those numbers stand as "
-           "scored; re-scoring would reproduce them."] if uq_notes else []),
+           "scored; a re-score is expected to reproduce them, and the Run records table below "
+           "shows whether one has been run."] if uq_notes else []),
         "- **KL weight / Training MC samples (NLL) / NLL warmup epochs**: model-specific training "
         "hooks, not checked across runs, copied from each run record. 0 / 1 / 0 means the hook is "
         "off; blank means the record predates the key.",

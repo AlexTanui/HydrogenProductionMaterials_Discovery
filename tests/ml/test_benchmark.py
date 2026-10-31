@@ -296,9 +296,10 @@ def test_uncertainty_columns_carry_phase_2_values_when_present(tmp_path):
     """Energy and force are reported separately, each from its own block.
 
     The force cells must never inherit the energy value: on real
-    checkpoints the two differ by two orders of magnitude (ethanol_dft
-    BLIP: energy Spearman ~0.003, force ~0.30), so a force cell silently
-    showing the energy number is a wrong result, not a cosmetic one.
+    checkpoints Spearman differs by two orders of magnitude (ethanol_dft
+    BLIP: energy ~0.003, force ~0.30; ECE by up to ~2x), so a force cell
+    silently showing the energy number is a wrong result, not a cosmetic
+    one.
     """
     _write_run(tmp_path, "a")
     _write_run(tmp_path, "b", run_changes={"model": "BLIP", "phase": "blip"},

@@ -17,7 +17,8 @@ correlation convention, and what counts as calibrated - and assigned them
 to Fazin on 2026-10-23, who adopted the choices already implemented here
 as v1.0 rather than changing them. So the numbers any earlier run
 recorded stand as scored: the definition did not move when ownership did,
-and re-scoring would reproduce them. A record written before that date
+so a re-score is expected to reproduce them (none has been run yet; see
+SCRUM-38). A record written before that date
 still carries a note calling the definition provisional - that note is
 historical, not a live caveat. See SCRUM-39.
 

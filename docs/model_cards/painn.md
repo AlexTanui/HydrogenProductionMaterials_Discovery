@@ -310,9 +310,10 @@ The checkpoint is gitignored; the run record is committed.
 
 **None.** Phase 1 is deterministic by construction, so `ece` and
 `uncertainty_correlation` are `null` in the results JSON rather than
-invented. Those metric *definitions* are Dongxiao's to set (binning
-strategy, correlation choice, what counts as calibrated); they are
-implemented against those definitions when Phase 2/3 land.
+invented. Those metric *definitions* (binning strategy, correlation
+choice, what counts as calibrated) are UQ protocol v1.0 in
+`ml/utils/uq_metrics.py`, Fazin's since 23 Oct 2026 (previously
+Dongxiao's); Phase 2/3 runs are scored against them.
 
 ---
 
