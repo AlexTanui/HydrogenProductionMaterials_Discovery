@@ -68,8 +68,11 @@ split.
    Models whose errors are close (energy MAE 0.0537 for DimeNet++, 0.0557
    for PaiNN, 0.0611 for PhysNet) cannot be ranked against each other
    without repeated runs. Retraining all five with the same configs and
-   seeds on another machine (19 Oct) moved SchNet's energy MAE from 0.1173
-   to 0.1714 and swapped PaiNN and DimeNet++ on energy MAE.
+   seeds (19 Oct) moved SchNet's energy MAE from 0.1173 to 0.1714 and
+   swapped PaiNN and DimeNet++ on energy MAE. That retrain changed the
+   machine and thread count (Windows x86, 24 threads → macOS arm64, 4
+   threads) and the commit (for SchNet, `d9f3814` → `b1c2d89`) together,
+   so the change can't be put down to any one of them.
 2. **Every model hit the 200-epoch cap.** None stopped early. Four were
    still improving: best epochs 199–200, val loss improved 6–12 times in
    their last 20 epochs, and the learning rate had decayed to
