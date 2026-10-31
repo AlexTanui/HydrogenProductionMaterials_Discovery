@@ -19,12 +19,11 @@ values in tests/ml/golden/phase1_mpnn_golden_run.json:
   only the budget (`GOLDEN_EPOCHS` and the two frame counts) changed and
   `gold_path` pointed at the temporary file. A change to that config's
   model or optimiser settings therefore moves the golden numbers too.
-- **Two epochs.** The second is worse on validation, so the scored
-  checkpoint is the first epoch's: the run also checks that selection
-  keeps the best epoch, not the last. Training is still early enough
-  that thread-count differences stay near 1e-6 relative; from the third
-  epoch on they grow to 1e-3 and beyond, which would make a tolerance
-  meaningless.
+- **One epoch** (16 optimiser steps). Early training swings hard, and it
+  amplifies the tiny summation-order differences between thread counts:
+  scored after one epoch they stay near 1e-6 relative, but after two
+  they already reach 1e-4 to 1e-3 and keep growing, which would leave a
+  tolerance either too loose to catch a real change or flaky.
 - **Threads.** torch is pinned to `GOLDEN_THREADS` for the run and
   restored afterwards, and the count is stored with the reference values.
   The same config ended 22% apart on 200-epoch force MAE across two
@@ -82,7 +81,7 @@ REFERENCE = Path(__file__).resolve().parent / "golden" / "phase1_mpnn_golden_run
 GOLDEN_NAME = "golden_phase1_mpnn"
 GOLDEN_TRAIN_FRAMES = 512
 GOLDEN_VAL_FRAMES = 256
-GOLDEN_EPOCHS = 2
+GOLDEN_EPOCHS = 1
 GOLDEN_THREADS = 1
 
 # Largest accepted relative difference, |now - reference| / |reference|, per
@@ -97,11 +96,16 @@ GOLDEN_RTOL: Optional[float] = None
 # --------------------------------------------------------------------------
 
 def golden_frames(gold) -> dict[str, np.ndarray]:
-    """Gold indices of the golden train and val frames: evenly spaced over each real block."""
+    """Gold indices of the golden train and val frames: evenly spaced over each real block.
+
+    `endpoint=False` stops short of each block's last frame, so the last
+    train frame and the first val frame - one MD step apart, a near-duplicate
+    pair (docs/reviews/leakage-audit-2026-10-31.md) - are never both chosen.
+    """
     frames = {}
     for split, size in (("train", GOLDEN_TRAIN_FRAMES), ("val", GOLDEN_VAL_FRAMES)):
         idx = gold[f"{split}_idx"]
-        frames[split] = idx[np.linspace(0, len(idx) - 1, size).astype(int)]
+        frames[split] = idx[np.linspace(0, len(idx), size, endpoint=False).astype(int)]
     return frames
 
 
@@ -129,7 +133,7 @@ def write_golden_gold(path: Path) -> dict[str, Any]:
         z = gold["z"]
     return {
         "source": GOLD.relative_to(ROOT).as_posix(),
-        "selection": "numpy.linspace(0, len(split_idx) - 1, n).astype(int) over the real train_idx and val_idx",
+        "selection": "numpy.linspace(0, len(split_idx), n, endpoint=False).astype(int) over the real train_idx and val_idx",
         **{f"{split}_frames": int(len(idx)) for split, idx in frames.items()},
         **{f"{split}_first_last_gold_index": [int(idx[0]), int(idx[-1])] for split, idx in frames.items()},
         "gold_indices_sha256": _sha256(chosen.astype(np.int64)),
