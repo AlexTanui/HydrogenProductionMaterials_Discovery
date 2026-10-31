@@ -36,7 +36,7 @@
   - `phase2_blip_nll`: 3.9 h;
   - `phase3_graph_stochastic`: 0.7 h.
 
-  Plus about 0.5 h of scoring.
+  Plus about 0.5 h of scoring. **All three run on the Mac at 4 threads** (see option A below).
 - **Test it needs:**
   - a tiny model with a non-zero KL, trained for 2 epochs, records `best_epoch` by `val_data_loss`;
   - the history's `val_kl` uses the training divisor (`val_kl / train_kl` ≈ 1 for the same weights);
@@ -93,6 +93,9 @@
 **Options:**
 - **(A, recommended) Adopt 4, N1 and 2c now, as one change. Defer N6.**
   - Retrain the three KL runs: Step 7's `phase2_blip` plus `phase2_blip_nll` and `phase3_graph_stochastic`, about 6 h on the Mac plus 0.5 h scoring.
+  - **The three retrains run on the Mac, CPU, 4 threads (Fazin, 1 Nov), the hardware and thread count of every Phase 1 record.** Option A keeps the Phase 1 records rather than retraining them, so the new runs have to match their hardware. Hardware is not a neutral detail here:
+    - the same MPNN config trained on this laptop (24 threads) ended 22% apart from the Mac record on force MAE (SCRUM-47, part 3b);
+    - this laptop's 24-thread runs are not repeatable even from one run to the next (SCRUM-38 measurements).
   - Phase 1 records stay valid through the explicit `kl_weight = 0` equivalence for `selection`.
   - Fold the Phase 3 retrain in with audit 5a if that fix lands.
 - **(B)** Adopt all four, including N6, and retrain all 8 (about 12 h). It's cheapest to do this together with the noise study, since that study retrains three of the eight anyway.
