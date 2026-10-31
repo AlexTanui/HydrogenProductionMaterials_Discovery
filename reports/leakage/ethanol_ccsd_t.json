@@ -1,0 +1,308 @@
+{
+  "schema_version": 1,
+  "generated_by": "scripts/leakage_audit.py",
+  "date": "2026-10-31",
+  "git_commit": "bce382e612e3dd5937a3e1bf17a2d5772de89bd8",
+  "git_dirty": false,
+  "gold": {
+    "path": "data/gold/md17/ethanol_ccsd_t.npz",
+    "sha256": "8e6571e1c0f0ac5a4fbab8a3236c26abff0095f54772866ad6ffa7f525deb441",
+    "molecule": "ethanol",
+    "theory": "ccsd_t",
+    "n_frames": 2000
+  },
+  "metric": {
+    "distance": "Kabsch-aligned RMSD (proper rotations), min over equivalent-H relabellings",
+    "units": "angstrom",
+    "equivalent_groups": [
+      [
+        0
+      ],
+      [
+        1
+      ],
+      [
+        2
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        5,
+        6,
+        7
+      ],
+      [
+        8
+      ]
+    ],
+    "relabellings": 12,
+    "groups_stable_on_sample": true,
+    "shortlist_k": 512,
+    "seed": 0
+  },
+  "split": {
+    "sizes": {
+      "train": 889,
+      "val": 111,
+      "test": 1000
+    },
+    "ranges": {
+      "train": [
+        0,
+        888
+      ],
+      "val": [
+        889,
+        999
+      ],
+      "test": [
+        1000,
+        1999
+      ]
+    },
+    "contiguous": {
+      "train": true,
+      "val": true,
+      "test": true
+    },
+    "gaps": {
+      "train_to_val": 0,
+      "val_to_test": 0,
+      "train_to_test": 111
+    },
+    "used_literature_split": true,
+    "matches_trajectory_block_split": false,
+    "keys_in_file": [
+      "E",
+      "F",
+      "R",
+      "molecule",
+      "test_idx",
+      "theory",
+      "train_idx",
+      "used_literature_split",
+      "val_idx",
+      "z"
+    ],
+    "provenance_keys_present": [],
+    "indices_sha256": "55f385cf2332d9056aaed6f496e7bebd2df52c6a9547ce2144b309432d4b0290"
+  },
+  "time_order": {
+    "lag1_median": 0.4204311041484412,
+    "random_pair_median": 0.4313850531130659,
+    "in_trajectory_order": false
+  },
+  "lag_rmsd": {
+    "1": {
+      "median": 0.4204311041484412,
+      "p5": 0.188699132948485,
+      "p95": 0.6194837340561956
+    },
+    "2": {
+      "median": 0.4328810060326786,
+      "p5": 0.20262718702935487,
+      "p95": 0.6127855792235978
+    },
+    "3": {
+      "median": 0.421813265572677,
+      "p5": 0.1958169093796929,
+      "p95": 0.6050696596602536
+    },
+    "5": {
+      "median": 0.4322388007426391,
+      "p5": 0.19280044209619482,
+      "p95": 0.6057998941972159
+    },
+    "10": {
+      "median": 0.44021304169983655,
+      "p5": 0.18781557776796495,
+      "p95": 0.6041661332098996
+    },
+    "20": {
+      "median": 0.4235145891211828,
+      "p5": 0.19155623949253361,
+      "p95": 0.592544410985857
+    },
+    "50": {
+      "median": 0.43922289777101464,
+      "p5": 0.19771419088420236,
+      "p95": 0.6118278016591248
+    },
+    "100": {
+      "median": 0.4236509109205484,
+      "p5": 0.19416868752559222,
+      "p95": 0.6131232505599379
+    }
+  },
+  "frames_used": null,
+  "nearest_neighbours": {
+    "test_to_train": {
+      "n": 1000,
+      "min": 0.012574335706110324,
+      "p1": 0.04738466160018498,
+      "p5": 0.08164237134269717,
+      "median": 0.1112751605220454,
+      "max": 0.21555072288818167,
+      "closest_pair": {
+        "query_frame": 1753,
+        "reference_frame": 703,
+        "rmsd": 0.012574335706110324,
+        "frames_apart": 1050
+      },
+      "below_lag_median": {
+        "1": 1000,
+        "2": 1000,
+        "3": 1000,
+        "5": 1000,
+        "10": 1000,
+        "20": 1000
+      },
+      "first_query_frames": [
+        {
+          "query_frame": 1000,
+          "rmsd": 0.1094828613443741,
+          "reference_frame": 329
+        },
+        {
+          "query_frame": 1001,
+          "rmsd": 0.10873880378666953,
+          "reference_frame": 46
+        },
+        {
+          "query_frame": 1002,
+          "rmsd": 0.13830216440691168,
+          "reference_frame": 2
+        },
+        {
+          "query_frame": 1003,
+          "rmsd": 0.10698693736167186,
+          "reference_frame": 763
+        },
+        {
+          "query_frame": 1004,
+          "rmsd": 0.11351994536988214,
+          "reference_frame": 716
+        }
+      ],
+      "seconds": 0.6
+    },
+    "val_to_train": {
+      "n": 111,
+      "min": 0.013744502738439596,
+      "p1": 0.05638300655278737,
+      "p5": 0.08267035481970736,
+      "median": 0.11025581281149135,
+      "max": 0.16320264222240327,
+      "closest_pair": {
+        "query_frame": 910,
+        "reference_frame": 746,
+        "rmsd": 0.013744502738439596,
+        "frames_apart": 164
+      },
+      "below_lag_median": {
+        "1": 111,
+        "2": 111,
+        "3": 111,
+        "5": 111,
+        "10": 111,
+        "20": 111
+      },
+      "first_query_frames": [
+        {
+          "query_frame": 889,
+          "rmsd": 0.11472773779111672,
+          "reference_frame": 253
+        },
+        {
+          "query_frame": 890,
+          "rmsd": 0.11333745540247538,
+          "reference_frame": 175
+        },
+        {
+          "query_frame": 891,
+          "rmsd": 0.10710645672174039,
+          "reference_frame": 366
+        },
+        {
+          "query_frame": 892,
+          "rmsd": 0.1350930608216194,
+          "reference_frame": 285
+        },
+        {
+          "query_frame": 893,
+          "rmsd": 0.1148907678652794,
+          "reference_frame": 677
+        }
+      ],
+      "seconds": 0.1
+    },
+    "test_to_val": {
+      "n": 1000,
+      "min": 0.023512475602196287,
+      "p1": 0.08535441391169181,
+      "p5": 0.10065870188923183,
+      "median": 0.13997510605942706,
+      "max": 0.28329342153553033,
+      "closest_pair": {
+        "query_frame": 1329,
+        "reference_frame": 942,
+        "rmsd": 0.023512475602196287,
+        "frames_apart": 387
+      },
+      "below_lag_median": {
+        "1": 1000,
+        "2": 1000,
+        "3": 1000,
+        "5": 1000,
+        "10": 1000,
+        "20": 1000
+      },
+      "first_query_frames": [
+        {
+          "query_frame": 1000,
+          "rmsd": 0.13408281392135135,
+          "reference_frame": 926
+        },
+        {
+          "query_frame": 1001,
+          "rmsd": 0.14951320382404756,
+          "reference_frame": 946
+        },
+        {
+          "query_frame": 1002,
+          "rmsd": 0.17969616549542358,
+          "reference_frame": 967
+        },
+        {
+          "query_frame": 1003,
+          "rmsd": 0.11325912167443555,
+          "reference_frame": 891
+        },
+        {
+          "query_frame": 1004,
+          "rmsd": 0.1191168623975353,
+          "reference_frame": 941
+        }
+      ],
+      "seconds": 0.2
+    }
+  },
+  "validation": {
+    "queries": 20,
+    "reference": "train",
+    "k": 512,
+    "exact_matches": 20,
+    "worst_excess": 3.927413949611491e-15,
+    "seconds": 0.1
+  },
+  "reflection": {
+    "queries": 1000,
+    "median_proper": 0.1112751605220454,
+    "median_with_reflection": 0.1052965328491291,
+    "min_proper": 0.012574335706110324,
+    "min_with_reflection": 0.01257433570607893
+  },
+  "seconds": 2.4
+}
