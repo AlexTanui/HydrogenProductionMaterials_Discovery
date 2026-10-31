@@ -18,8 +18,9 @@ split - this chooses a protocol value, so the test split is never read:
    metric's mean over seeds is within `tolerance` of its value at the
    largest K, and its seed-to-seed spread is within `tolerance` too. The
    answer is the smallest K from which every larger K is also stable.
-   The criterion and its 0.01 default are a proposal (SCRUM-49 needs it
-   agreed), so both are arguments, not constants.
+   The criterion and these defaults (tolerance 0.01 of K = 100, 3 seeds,
+   2,000 val frames) were agreed on 1 Nov (SCRUM-49); they stay arguments
+   so a later re-measurement can vary them explicitly.
 
     python -m ml.training.mc_stability --checkpoint experiments/checkpoints/phase2_blip_nll.pt \\
         --out reports/mc_stability/phase2_blip_nll.json

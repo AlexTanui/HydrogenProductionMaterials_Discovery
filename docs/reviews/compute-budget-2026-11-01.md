@@ -3,7 +3,7 @@
 **Short answer.**
 - **MC sampling is cheap and scales linearly.** One MC sample costs about one forward-and-force pass: on the Mac's official runs, 0.6 ms per frame for BLIP and 0.33 ms for Phase 3. Time grows exactly with the sample count K, and memory doesn't grow with K at all.
 - **The known remaining work fits in a few CPU-hours.** An optional repeat-seed noise study is the only large item, at 10–24 h.
-- **Whether K = 20 (the count every stochastic run uses) is enough can't be measured yet.** It needs the two trained checkpoints that aren't on this laptop. The tool is ready (`python -m ml.training.mc_stability`), with a proposed criterion. Theory alone puts K = 20 at the edge of a 0.01 tolerance for a well-calibrated model.
+- **Whether K = 20 (the count every stochastic run uses) is enough can't be measured yet.** It needs the two trained checkpoints that aren't on this laptop. The tool is ready (`python -m ml.training.mc_stability`), with the criterion agreed on 1 Nov. Theory alone puts K = 20 at the edge of a 0.01 tolerance for a well-calibrated model.
 
 **Hardware.**
 - **The official runs:** every Phase 1/2/3 record trained on an Apple arm64 Mac, CPU only, 4 torch threads. Those numbers come from the run records.
@@ -57,7 +57,7 @@ Peak GPU memory during training is at most 426 MB (BLIP-NLL), so the 12 GB GPU i
 - **What it does:** on 2,000 validation frames, never test, since this picks a protocol value, it draws 100 stochastic passes per frame for each of 3 seeds. It scores the first K passes for K = 2, 5, 10, 20, 50 and 100 through `UQAccumulator`, the same path `evaluate.py` uses. Each prefix equals `predict_distribution(K)` exactly; a test pins that.
 - **Cost per checkpoint:** about 6 min on the Mac for BLIP, and about half that for Phase 3.
 
-**Proposed stability criterion (not agreed):** the smallest K from which every larger K satisfies both of these:
+**Stability criterion (agreed 1 Nov):** the smallest K from which every larger K satisfies both of these:
 - the energy and force ECE, coverage at 90% and Spearman are each within **0.01** of their value at K = 100 (mean over the 3 seeds);
 - the seed-to-seed spread is also within 0.01.
 
@@ -70,7 +70,7 @@ Sharpness and Gaussian NLL are reported but not judged, because both carry units
 | Coverage at nominal 90% | 82.5% | 86.6% | 88.4% | 89.4% | 89.7% |
 | ECE from finite K alone | 0.063 | 0.029 | 0.014 | 0.005 | 0.003 |
 
-So for a well-calibrated model, K = 20 is about 0.011 from K = 100 on ECE: right at the proposed tolerance. For today's BLIP, which is overconfident by more than 10×, the effect of K is negligible next to its miscalibration. The measurement decides.
+So for a well-calibrated model, K = 20 is about 0.011 from K = 100 on ECE: right at the agreed tolerance. For today's BLIP, which is overconfident by more than 10×, the effect of K is negligible next to its miscalibration. The measurement decides.
 
 **Blocked on** `phase2_blip_nll.pt` and `phase3_graph_stochastic.pt` (sha256 `bf6c13fb…` and `9412d664…`, as recorded in their run records). They are not on this laptop.
 
