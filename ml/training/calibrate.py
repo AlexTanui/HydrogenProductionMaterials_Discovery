@@ -17,7 +17,7 @@ Conformal Regression's finite-sample marginal coverage guarantee). This
 combines both - a studentized-residual nonconformity score with conformal
 quantile selection - rather than Kuleshov's isotonic regression, because
 it is the smallest change that reuses ml.utils.uq_metrics's existing
-Normal-distribution machinery (`_quantity_block`) completely unchanged:
+Normal-distribution machinery (`quantity_block`) completely unchanged:
 multiply std by one learned scalar, nothing else about the pipeline moves.
 
 Caveat stated plainly, from Kuleshov et al. 2018 SS5 (Discussion): this
@@ -46,10 +46,7 @@ from torch_geometric.loader import DataLoader
 
 from ml.data.datasets import MD17Dataset
 from ml.models.registry import load_model
-from ml.utils.uq_metrics import _quantity_block  # noqa: uq_metrics' own computation, reused rather
-# than duplicated - it's not in uq_metrics.__all__ (private), so this is a known API-boundary debt:
-# promote it to public (or add a module-level "score these arrays" entry point) if this calibration
-# module sticks around past the exploratory stage. Flagged for Fazin, who owns that file.
+from ml.utils.uq_metrics import quantity_block  # uq_metrics' own scoring, public since SCRUM-68
 
 __all__ = ["conformal_scale", "calibrate_and_report"]
 
@@ -171,12 +168,12 @@ def calibrate_and_report(
         "q_energy": q_energy,
         "q_force": q_force,
         "before": {
-            "energy": _quantity_block(test["e_error"], test["e_std"]),
-            "force": _quantity_block(test["f_error"], test["f_std"]),
+            "energy": quantity_block(test["e_error"], test["e_std"]),
+            "force": quantity_block(test["f_error"], test["f_std"]),
         },
         "after": {
-            "energy": _quantity_block(test["e_error"], test["e_std"] * q_energy),
-            "force": _quantity_block(test["f_error"], test["f_std"] * q_force),
+            "energy": quantity_block(test["e_error"], test["e_std"] * q_energy),
+            "force": quantity_block(test["f_error"], test["f_std"] * q_force),
         },
     }
 
