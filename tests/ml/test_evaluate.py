@@ -638,6 +638,22 @@ def test_rescore_comparison_is_relative():
     assert differences["metrics.n"] == differences["benchmark_row.b"] == 0.0
 
 
+def test_rescore_comparison_ignores_fields_only_a_newer_evaluate_records():
+    """A record scored before evaluate.py gained a field is still reproducible."""
+    script = _load_script()
+    stored = {"metrics": {"a": 0.25}, "benchmark_row": {"b": 2.0}}
+    fresh = {"metrics": {"a": 0.25}, "benchmark_row": {"b": 2.0, "force_ece": 0.3}}
+    assert script.compare(stored, fresh) == {"metrics.a": 0.0, "benchmark_row.b": 0.0}
+
+
+def test_rescore_comparison_rejects_a_stored_field_the_rescore_no_longer_produces():
+    script = _load_script()
+    stored = {"metrics": {"a": 0.25}, "benchmark_row": {"b": 2.0}}
+    fresh = {"metrics": {"a": 0.25}, "benchmark_row": {}}
+    with pytest.raises(ValueError, match=r"no longer produces .*benchmark_row\.b"):
+        script.compare(stored, fresh)
+
+
 
 # --------------------------------------------------------------------------
 # 9. The caller's RNG survives scoring, model reconstruction included
