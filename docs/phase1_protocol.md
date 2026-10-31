@@ -62,6 +62,51 @@ reproduces numbers already reported and tunes or selects nothing, so the
 "test scored once" rule still holds: no decision was made from the test
 split.
 
+## Golden-run regression test (SCRUM-38)
+
+[tests/ml/test_golden_run.py](../tests/ml/test_golden_run.py) guards the
+shared path (loader, graph construction, model, loss and optimiser,
+checkpoint, metrics) against unannounced drift. It trains
+`phase1_baseline.yaml`'s MPNN for one epoch on 512 real train frames and
+256 real val frames, with torch pinned to one thread. It then scores the
+val frames with `evaluate_checkpoint` and compares all eight metrics with
+[tests/ml/golden/phase1_mpnn_golden_run.json](../tests/ml/golden/phase1_mpnn_golden_run.json).
+It reads no test frame, writes only to a temporary directory, takes about
+8 s, and skips without the gold file.
+
+**Measured variation** (Windows x86, torch 2.13.0; 3 fresh-process repeats
+at each thread count):
+
+| What changed | Largest relative change in any metric |
+|---|---|
+| Nothing (repeat), at 1, 2, 4, 8 or 16 threads | 0 (bit-identical) |
+| Nothing (repeat), at 24 threads | 2.3 × 10⁻⁷ |
+| Thread count, 1 to 24 | 9.9 × 10⁻⁷ |
+| Energy or force loss weight +0.1% | 1.1 – 1.5 × 10⁻³ (every metric moves at least 4.7 × 10⁻⁴) |
+| Learning rate +0.1% | 2.1 × 10⁻² |
+
+After two epochs instead of one, the thread-count spread had already
+reached 8.5 × 10⁻⁴ relative, so the run stops at one. No other machine or OS has been
+measured. The tolerance is `GOLDEN_RTOL` in the test: proposed at 10⁻⁴
+relative per metric, not yet agreed. Until it is, the comparison skips
+and prints the measured differences.
+
+**Updating the reference values.** Only for a change that is meant to move
+them, never to clear a failure whose cause is unknown:
+
+1. Commit the change.
+2. From the clean tree, run
+   `python tests/ml/test_golden_run.py --regenerate --reason "<why>"`. It
+   refuses a dirty tree, and stores the reason, commit, platform and
+   thread count with the values.
+3. Commit `tests/ml/golden/phase1_mpnn_golden_run.json` on its own, with
+   the reason in the commit message.
+
+Changing the golden run's own settings (frames, epochs, thread count)
+follows the same steps; a test fails until the reference matches them.
+`python tests/ml/test_golden_run.py --measure --threads 1 4 24` repeats
+the run to re-measure the variation, for example on another machine.
+
 ## Limitations
 
 1. **One seed per model.** There is no estimate of seed-to-seed variation.

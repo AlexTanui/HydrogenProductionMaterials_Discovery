@@ -77,7 +77,8 @@ BASE_CONFIG = ROOT / "experiments" / "configs" / "phase1_baseline.yaml"
 REFERENCE = Path(__file__).resolve().parent / "golden" / "phase1_mpnn_golden_run.json"
 
 # The run. Changing any of these changes what the reference describes:
-# regenerate it in the same commit.
+# regenerate it in the next commit (--regenerate needs a clean tree), and
+# test_reference_describes_this_golden_run fails until then.
 GOLDEN_NAME = "golden_phase1_mpnn"
 GOLDEN_TRAIN_FRAMES = 512
 GOLDEN_VAL_FRAMES = 256
