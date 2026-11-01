@@ -18,9 +18,11 @@ another only in its `model:` block:
   subset; the loss is on absolute energies in kcal/mol.
 - **Loss and optimiser.** energy_w * MSE(E) + force_w * MSE(F); Adam with
   weight decay 1e-6; ReduceLROnPlateau(factor 0.5, patience 5) on val
-  loss; gradient-norm clipping at 10; early stopping after
-  `train.patience` epochs without val improvement. Val (the subset) is the
-  only thing early stopping and checkpoint selection see.
+  **data** loss (energy/force terms only, no KL - SCRUM-24 train-fixes
+  Option A); gradient-norm clipping at 10; early stopping after
+  `train.patience` epochs without val improvement on that same quantity.
+  Val (the subset) is the only thing early stopping and checkpoint
+  selection see.
 - **Batch order.** The train loader shuffles with its own generator seeded
   from `data.seed`, so every model sees the same batches in the same
   order however much of the global RNG its initialisation - or, for BLIP,
@@ -102,7 +104,9 @@ SMOKE_BATCHES = 3
 HISTORY_FIELDS = [
     "epoch", "lr",
     "train_loss", "train_energy_mse", "train_force_mse", "train_kl",
-    "val_loss", "val_energy_mse", "val_force_mse", "val_kl",
+    "train_energy_nll", "train_force_nll",
+    "val_loss", "val_data_loss", "val_energy_mse", "val_force_mse", "val_kl",
+    "val_energy_nll", "val_force_nll",
     "train_s", "val_s", "epoch_s", "elapsed_s", "improved",
 ]
 
@@ -261,47 +265,71 @@ def batch_loss(model: torch.nn.Module, batch, energy_w: float, force_w: float,
     catastrophically wrong before NLL turns on, but a warmup alone does
     not fix the collapsed-variance side: nothing during MSE-only warmup
     ever grows it back up. That is `train()`'s job, once per run, right
-    at the boundary: measure that epoch's real validation error and use
-    it to set `inner.nll_min_energy_var`/`nll_min_force_var`, the `min_var`
+    at the boundary: measure that epoch's real **training** error (SCRUM-24
+    train-fixes Option A/N1 - validation error would otherwise leak into a
+    training hyperparameter) and use it to set
+    `inner.nll_min_energy_var`/`nll_min_force_var`, the `min_var`
     `_gaussian_nll_loss` adds in (see that function for why addition, not
     a clamp). `epoch` is None when a caller (e.g. a unit test) wants the
     NLL branch immediately regardless of warmup; `train()` always passes
     the real epoch number.
 
-    `n_batches` is the loader's length for the epoch being run (not
-    `max_batches`'s dev-mode truncation): the minibatch-ELBO recipe
-    distributes one full-dataset KL term evenly across every batch in an
-    epoch (kl_weight * kl_divergence() / n_batches), so a shortened
-    smoke-test epoch should not change that scaling. A model with no
-    `kl_weight` (every Phase 1 model, and BLIP before this is set >0)
-    gets `getattr(..., 0.0)` and the branch is skipped - zero added cost
-    for models this was never meant to touch.
+    `n_batches` distributes one full-dataset KL term evenly across every
+    batch (kl_weight * kl_divergence() / n_batches): the minibatch-ELBO
+    recipe. For the training pass it is the train loader's own length (not
+    `max_batches`'s dev-mode truncation, so a shortened smoke-test epoch
+    doesn't change the scaling); for the validation pass `train()` passes
+    the *training* loader's length too (SCRUM-24 train-fixes Option A/4) -
+    val and train have different batch counts (e.g. 157 vs. 313), so using
+    val's own length double-counted its per-batch KL share by roughly that
+    ratio. A model with no `kl_weight` (every Phase 1 model, and BLIP
+    before this is set >0) gets `getattr(..., 0.0)` and the branch is
+    skipped - zero added cost for models this was never meant to touch.
+
+    Returns `(loss, energy_mse, force_mse, kl_term, energy_nll, force_nll)`.
+    `energy_mse`/`force_mse` are always the mean prediction's actual MSE,
+    even on the NLL branch (SCRUM-24 train-fixes Option A/2c) - they are
+    never mislabeled NLL values. `energy_nll`/`force_nll` are `None` unless
+    this call actually took the NLL branch.
     """
     inner = getattr(model, "model", model)
     train_k = int(getattr(inner, "train_num_mc_samples", 1))
     warmup = int(getattr(inner, "nll_warmup_epochs", 0))
     past_warmup = epoch is None or epoch > warmup
 
+    energy_nll = force_nll = None
     if train_k > 1 and past_warmup and getattr(model, "supports_training_distribution", False):
         pred_e, e_var, pred_f, f_var = model.predict_training_distribution(
             batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch,
             num_mc_samples=train_k,
         )
         # Set once, at the warmup/NLL boundary, from that epoch's own
-        # measured validation error (train()'s loop) - not a guessed
-        # constant. Falls back to the tiny numerical default only for a
-        # caller that never went through that boundary (e.g. a unit test
-        # requesting the NLL branch directly via epoch=None).
+        # measured TRAINING error (train()'s loop, SCRUM-24 train-fixes
+        # Option A/N1) - not validation, which would otherwise leak into a
+        # training hyperparameter, and not a guessed constant. Falls back
+        # to the tiny numerical default only for a caller that never went
+        # through that boundary (e.g. a unit test requesting the NLL
+        # branch directly via epoch=None).
         e_min_var = float(getattr(inner, "nll_min_energy_var", _NLL_VAR_EPS))
         f_min_var = float(getattr(inner, "nll_min_force_var", _NLL_VAR_EPS))
-        energy_loss = _gaussian_nll_loss(pred_e, e_var, batch.y.view(-1), e_min_var)
-        force_loss = _gaussian_nll_loss(pred_f, f_var, batch.force, f_min_var)
+        energy_nll_t = _gaussian_nll_loss(pred_e, e_var, batch.y.view(-1), e_min_var)
+        force_nll_t = _gaussian_nll_loss(pred_f, f_var, batch.force, f_min_var)
+        energy_loss, force_loss = energy_nll_t, force_nll_t
+        # SCRUM-24 train-fixes Option A/2c: the optimised quantity on this
+        # branch is NLL, not MSE - but *_energy_mse/*_force_mse must always
+        # hold the mean prediction's actual MSE, never silently switch units
+        # mid-run. pred_e/pred_f are already the K-sample mean, so this is
+        # one extra, cheap mse_loss call, not a second forward pass.
+        energy_mse = F.mse_loss(pred_e, batch.y.view(-1))
+        force_mse = F.mse_loss(pred_f, batch.force)
+        energy_nll, force_nll = float(energy_nll_t.detach()), float(force_nll_t.detach())
     else:
         pred_e, pred_f = model.predict_energy_and_forces(
             batch.x, batch.pos, batch.edge_index, batch.edge_attr, batch.batch,
         )
-        energy_loss = F.mse_loss(pred_e, batch.y.view(-1))
-        force_loss = F.mse_loss(pred_f, batch.force)
+        energy_mse = F.mse_loss(pred_e, batch.y.view(-1))
+        force_mse = F.mse_loss(pred_f, batch.force)
+        energy_loss, force_loss = energy_mse, force_mse
 
     loss = energy_w * energy_loss + force_w * force_loss
 
@@ -312,11 +340,14 @@ def batch_loss(model: torch.nn.Module, batch, energy_w: float, force_w: float,
         loss = loss + (kl_weight * kl) / n_batches
         kl_term = float(kl.detach()) * kl_weight / n_batches
 
-    return loss, float(energy_loss.detach()), float(force_loss.detach()), kl_term
+    return loss, float(energy_mse.detach()), float(force_mse.detach()), kl_term, energy_nll, force_nll
 
 
-def run_epoch(model, loader, energy_w, force_w, device, optimizer=None, max_batches=None, epoch=None):
-    """One pass over `loader`; returns mean (loss, energy MSE, force MSE, KL term) over batches.
+def run_epoch(model, loader, energy_w, force_w, device, optimizer=None, max_batches=None, epoch=None,
+              kl_n_batches=None):
+    """One pass over `loader`; returns mean (loss, energy MSE, force MSE, KL
+    term, energy NLL, force NLL) over batches. The last two are `None`
+    unless this epoch actually took `batch_loss`'s NLL branch.
 
     optimizer=None -> eval mode, no weight update. Forces still need
     autograd, so this is never wrapped in torch.no_grad().
@@ -324,17 +355,25 @@ def run_epoch(model, loader, energy_w, force_w, device, optimizer=None, max_batc
     `epoch` just passes through to `batch_loss`'s NLL-warmup check - see
     that docstring. `train()` passes the real epoch number for both the
     train and val passes, so warmup applies identically to both.
+
+    `kl_n_batches` overrides the KL divisor `batch_loss` receives as
+    `n_batches`; `None` (the train pass) uses this loader's own length, as
+    before. `train()` passes the *training* loader's length for the
+    validation pass (SCRUM-24 train-fixes Option A/4) - see `batch_loss`'s
+    docstring for why val's own length is the wrong divisor.
     """
     is_train = optimizer is not None
     model.train(is_train)
-    n_batches = len(loader)
-    total_loss = total_e = total_f = total_kl = 0.0
-    n = 0
+    n_batches = kl_n_batches if kl_n_batches is not None else len(loader)
+    total_loss = total_e = total_f = total_kl = total_e_nll = total_f_nll = 0.0
+    n = n_nll = 0
     for batch in loader:
         batch = batch.to(device)
         if is_train:
             optimizer.zero_grad()
-        loss, e_loss, f_loss, kl_term = batch_loss(model, batch, energy_w, force_w, n_batches, epoch=epoch)
+        loss, e_loss, f_loss, kl_term, e_nll, f_nll = batch_loss(
+            model, batch, energy_w, force_w, n_batches, epoch=epoch,
+        )
         if is_train:
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=GRAD_CLIP)
@@ -343,10 +382,16 @@ def run_epoch(model, loader, energy_w, force_w, device, optimizer=None, max_batc
         total_e += e_loss
         total_f += f_loss
         total_kl += kl_term
+        if e_nll is not None:
+            total_e_nll += e_nll
+            total_f_nll += f_nll
+            n_nll += 1
         n += 1
         if max_batches is not None and n >= max_batches:
             break
-    return total_loss / n, total_e / n, total_f / n, total_kl / n
+    e_nll_mean = total_e_nll / n_nll if n_nll else None
+    f_nll_mean = total_f_nll / n_nll if n_nll else None
+    return total_loss / n, total_e / n, total_f / n, total_kl / n, e_nll_mean, f_nll_mean
 
 
 # --------------------------------------------------------------------------
@@ -564,8 +609,8 @@ def train(
                 "after nll_warmup_epochs epochs of the base loss, Gaussian NLL(E) + Gaussian NLL(F) on "
                 "the train_num_mc_samples-sample mean/variance from predict_training_distribution "
                 "replace the MSE terms, weighted by energy_loss_weight/force_loss_weight; variance floor "
-                "(added, not clamped) = the last warmup epoch's validation MSE, or 1e-6 with no warmup; "
-                "best-val selection and the LR scheduler reset at the first NLL epoch"
+                "(added, not clamped) = the last warmup epoch's training MSE, or 1e-6 with no warmup; "
+                "best-selection and the LR scheduler reset at the first NLL epoch"
                 if nll_active else None
             ),
             # The NLL variance floor in force: batch_loss's default until the
@@ -588,7 +633,21 @@ def train(
             "patience": patience,
             "max_batches_per_epoch": max_batches,
             "shuffle": "torch.Generator seeded with data.seed",
-            "selection": "lowest val loss on the val subset",
+            # SCRUM-24 train-fixes Option A/4: val_loss (kept, unchanged
+            # meaning, since backend/app/services/jobs.py reads it for live
+            # job status) includes kl_weight * KL, counted at roughly 2x
+            # training's own per-batch share (val has fewer batches than
+            # train, so the same /n_batches split gives it a bigger slice) -
+            # following it would mean selecting on the KL penalty, not the
+            # fit, for any model with kl_weight>0. Selection, the scheduler
+            # and early stopping use val_data_loss instead: energy/force
+            # terms only, no KL. For kl_weight=0 (every Phase 1 model) the
+            # two are identical by construction - benchmark.py's
+            # protocol_signature treats both wordings as equal there.
+            "selection": (
+                "lowest validation data loss (energy and force terms, no KL) on the val subset; "
+                "early stopping and the LR scheduler use the same quantity"
+            ),
         },
         "environment": environment(device),
         "setup_s": setup_s,
@@ -622,6 +681,11 @@ def train(
           f"{'val_loss':>12} {'val_E':>10} {'val_F':>10} {'val_KL':>10} {'lr':>10} "
           f"{'train_s':>8} {'val_s':>8}", flush=True)
 
+    # best_val_loss tracks val_data_loss (energy+force, no KL), what
+    # selection/scheduling/stopping actually act on (SCRUM-24 train-fixes
+    # Option A/4) - not the full val_loss (with KL) still written to
+    # history.csv/run.json under its old name for backend/app/services/
+    # jobs.py's live job-status read, which keeps its old meaning.
     best_val_loss = float("inf")
     best_state: Optional[dict[str, torch.Tensor]] = None
     epochs_without_improvement = 0
@@ -637,24 +701,31 @@ def train(
             for epoch in range(1, max_epochs + 1):
                 epoch_lr = optimizer.param_groups[0]["lr"]
                 epoch_start = time.perf_counter()
-                train_loss, train_e, train_f, train_kl = run_epoch(
+                train_loss, train_e, train_f, train_kl, train_e_nll, train_f_nll = run_epoch(
                     model, train_loader, energy_w, force_w, device,
                     optimizer=optimizer, max_batches=max_batches, epoch=epoch,
                 )
                 train_s = time.perf_counter() - epoch_start
-                val_loss, val_e, val_f, val_kl = run_epoch(
+                # kl_n_batches=len(train_loader): the validation pass's KL
+                # divisor must match training's, not use val_loader's own
+                # (smaller) batch count - see batch_loss's docstring.
+                val_loss, val_e, val_f, val_kl, val_e_nll, val_f_nll = run_epoch(
                     model, val_loader, energy_w, force_w, device, max_batches=max_batches, epoch=epoch,
+                    kl_n_batches=len(train_loader),
                 )
+                val_data_loss = energy_w * val_e + force_w * val_f
                 epoch_s = time.perf_counter() - epoch_start
 
                 if nll_train_k > 1:
                     if epoch == nll_warmup:
-                        # Last MSE-warmup epoch: calibrate the NLL
-                        # variance floor to THIS epoch's real validation
-                        # error, not a guessed constant - batch_loss's
-                        # docstring. Read by next epoch's batch_loss call.
-                        inner.nll_min_energy_var = max(val_e, 1e-6)
-                        inner.nll_min_force_var = max(val_f, 1e-6)
+                        # Last MSE-warmup epoch: calibrate the NLL variance
+                        # floor to THIS epoch's real TRAINING error (SCRUM-24
+                        # train-fixes Option A/N1 - validation error would
+                        # otherwise leak into a training hyperparameter), not
+                        # a guessed constant. Read by next epoch's batch_loss
+                        # call.
+                        inner.nll_min_energy_var = max(train_e, 1e-6)
+                        inner.nll_min_force_var = max(train_f, 1e-6)
                         if nll_active:
                             # Recorded, not just described in loss_override:
                             # the floor shapes every NLL step after this one.
@@ -664,25 +735,25 @@ def train(
                                 nll_min_var_epoch=epoch,
                             )
                     if epoch == nll_warmup + 1:
-                        # First NLL epoch: val_loss just changed what it
+                        # First NLL epoch: val_data_loss just changed what it
                         # means (MSE -> NLL). Comparing it against a
-                        # best_val_loss set under the old loss, or
-                        # carrying the scheduler's internal "best" across
-                        # the switch, silently freezes the checkpoint at
-                        # the last warmup epoch and reports an ordinary
-                        # MSE model as the NLL result (Fazin's review,
-                        # SCRUM-61) - reset both so the new regime is
-                        # judged on its own terms from its own first epoch.
+                        # best_val_loss set under the old loss, or carrying
+                        # the scheduler's internal "best" across the switch,
+                        # silently freezes the checkpoint at the last warmup
+                        # epoch and reports an ordinary MSE model as the NLL
+                        # result (Fazin's review, SCRUM-61) - reset both so
+                        # the new regime is judged on its own terms from its
+                        # own first epoch.
                         best_val_loss = float("inf")
                         epochs_without_improvement = 0
                         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
                             optimizer, mode="min", factor=LR_FACTOR, patience=LR_PATIENCE
                         )
 
-                scheduler.step(val_loss)
+                scheduler.step(val_data_loss)
                 elapsed = time.perf_counter() - train_start
 
-                improved = val_loss < best_val_loss
+                improved = val_data_loss < best_val_loss
                 record["epochs_run"] = epoch
                 record["wall_clock_s"] = elapsed
                 print(f"{epoch:>5} {train_loss:>12.4f} {train_e:>10.4f} {train_f:>10.4f} "
@@ -690,7 +761,7 @@ def train(
                       f"{val_kl:>10.4f} {epoch_lr:>10.2e} {train_s:>8.1f} "
                       f"{epoch_s - train_s:>8.1f}", flush=True)
                 if improved:
-                    best_val_loss = val_loss
+                    best_val_loss = val_data_loss
                     epochs_without_improvement = 0
                     record["best_epoch"], record["best_val_loss"] = epoch, best_val_loss
                     best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
@@ -704,9 +775,10 @@ def train(
                 history.writerow({
                     "epoch": epoch, "lr": epoch_lr,
                     "train_loss": train_loss, "train_energy_mse": train_e, "train_force_mse": train_f,
-                    "train_kl": train_kl,
-                    "val_loss": val_loss, "val_energy_mse": val_e, "val_force_mse": val_f,
-                    "val_kl": val_kl,
+                    "train_kl": train_kl, "train_energy_nll": train_e_nll, "train_force_nll": train_f_nll,
+                    "val_loss": val_loss, "val_data_loss": val_data_loss,
+                    "val_energy_mse": val_e, "val_force_mse": val_f,
+                    "val_kl": val_kl, "val_energy_nll": val_e_nll, "val_force_nll": val_f_nll,
                     "train_s": train_s, "val_s": epoch_s - train_s, "epoch_s": epoch_s,
                     "elapsed_s": elapsed, "improved": int(improved),
                 })
@@ -739,7 +811,7 @@ def train(
         checkpoint_train_record(complete=stop_reason != "interrupted"),
     )
     record["checkpoint_sha256"] = hashlib.sha256(checkpoint_path.read_bytes()).hexdigest()
-    print(f"Best epoch {record['best_epoch']} (val_loss {best_val_loss:.4f}); "
+    print(f"Best epoch {record['best_epoch']} (val_data_loss {best_val_loss:.4f}); "
           f"{record['epochs_run']} epochs in {wall_clock_s:.1f} s, stopped by {stop_reason}.", flush=True)
     print(f"Checkpoint: {_display_path(checkpoint_path)}", flush=True)
 

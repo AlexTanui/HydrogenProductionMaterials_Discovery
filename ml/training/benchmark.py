@@ -109,7 +109,8 @@ EXPECTED_UNITS = {"energy": "kcal/mol", "force": "kcal/mol/Ang"}
 # losses (an L1 PhysNet, a per-atom energy target). BLIP's NLL replacement
 # is recorded separately, as loss_override, so the base stays comparable.
 # The NLL variance floor and the epoch it was calibrated at are measured
-# per run from that run's own validation error, so they differ by design.
+# per run from that run's own training error (SCRUM-24 train-fixes Option
+# A/N1), so they differ by design.
 MODEL_SPECIFIC_PROTOCOL_KEYS = (
     "kl_weight", "train_num_mc_samples", "nll_warmup_epochs", "loss_override",
     "nll_min_energy_var", "nll_min_force_var", "nll_min_var_epoch",
@@ -266,18 +267,41 @@ def load_runs(runs_dir: Path = RUNS_DIR, name_prefix: str = "",
     return results
 
 
+def _comparable_selection(run: dict[str, Any]) -> str:
+    """`protocol.selection`'s text changed in SCRUM-24's train-fixes Option
+    A (dropping KL from what checkpoint selection/scheduling/stopping act
+    on). For a `kl_weight=0` model - every Phase 1 model - the old and new
+    rules pick the same epoch by construction: there is no KL to drop, so
+    the wording difference alone must not force a retrain just to get a
+    matching `selection` string. Normalise it away in that case only; a
+    `kl_weight>0` run's selection text still compares literally, since
+    there the rule genuinely changed (pre-fix BLIP/Phase3 runs select on a
+    KL-inclusive quantity, post-fix ones do not - those must not share a
+    table either)."""
+    text = run["protocol"].get("selection")
+    if text is not None and float(run["protocol"].get("kl_weight", 0.0)) == 0.0:
+        return "<kl_weight=0: selection wording is immaterial, SCRUM-24>"
+    return text
+
+
 def protocol_signature(result: RunResult) -> dict[str, Any]:
     """Everything that must match for two runs to share a table.
 
     "training loop" is `run["protocol"]` minus `MODEL_SPECIFIC_PROTOCOL_KEYS`
     - those vary per model on purpose (BLIP's kl_weight, its NLL warmup) and
     are reported as their own columns in `build_rows`, not gated on here.
+    `selection`'s raw text is replaced by `_comparable_selection` within
+    that dict, since a `kl_weight=0` run's wording must not be compared
+    literally - see that function.
     """
     run, test = result.run, result.test
     return {
         "data": run["config"]["data"],
         "train": run["config"]["train"],
-        "training loop": {k: v for k, v in run["protocol"].items() if k not in MODEL_SPECIFIC_PROTOCOL_KEYS},
+        "training loop": {
+            **{k: v for k, v in run["protocol"].items() if k not in MODEL_SPECIFIC_PROTOCOL_KEYS},
+            "selection": _comparable_selection(run),
+        },
         "train frames": {"sha256": run["subsets"]["train"]["gold_indices_sha256"]},
         "val frames": {"sha256": run["subsets"]["val"]["gold_indices_sha256"]},
         "test scoring": {

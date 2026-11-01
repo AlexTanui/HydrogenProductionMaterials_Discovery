@@ -644,7 +644,7 @@ def test_batch_loss_gives_the_noise_gate_a_real_gradient_under_nll(tiny_gold):
     loader = DataLoader(torch.utils.data.Subset(train_ds, list(range(8))), batch_size=8)
     batch = next(iter(loader))
 
-    loss, _, _, _ = batch_loss(wrapped, batch, energy_w=1.0, force_w=100.0, n_batches=1)
+    loss, _, _, _, _, _ = batch_loss(wrapped, batch, energy_w=1.0, force_w=100.0, n_batches=1)
     loss.backward()
 
     assert gate.weight.grad is not None
@@ -663,9 +663,12 @@ def test_batch_loss_falls_back_to_mse_for_every_other_model(tiny_gold):
     train_ds = open_split(cfg, "train")
     loader = DataLoader(torch.utils.data.Subset(train_ds, list(range(8))), batch_size=8)
     batch = next(iter(loader))
-    loss, energy_loss, force_loss, kl_term = batch_loss(wrapped, batch, energy_w=1.0, force_w=100.0, n_batches=1)
+    loss, energy_loss, force_loss, kl_term, energy_nll, force_nll = batch_loss(
+        wrapped, batch, energy_w=1.0, force_w=100.0, n_batches=1,
+    )
     assert kl_term == 0.0
     assert energy_loss >= 0.0 and force_loss >= 0.0  # MSE, never negative
+    assert energy_nll is None and force_nll is None  # MSE branch, no NLL to report
 
 
 # --------------------------------------------------------------------------
@@ -718,7 +721,10 @@ def test_nll_loss_does_not_blow_up_across_the_warmup_boundary(tiny_gold, tmp_pat
 def test_nll_run_records_the_calibrated_variance_floor(tiny_gold, tmp_path):
     """The floor set at the warmup boundary shapes every NLL step after it,
     so run.json records the values and the epoch - read back from disk and
-    checked against that epoch's measured validation MSE in history.csv."""
+    checked against that epoch's measured TRAINING MSE in history.csv
+    (SCRUM-24 train-fixes Option A/N1 - deliberately not validation, which
+    would leak into a training hyperparameter; this pins the post-fix
+    behaviour, not the pre-fix one)."""
     cfg = dataclasses.replace(
         _tiny_config("phase2_blip", tiny_gold.path, epochs=4),
         name="phase2_blip_nll_floor",
@@ -734,9 +740,9 @@ def test_nll_run_records_the_calibrated_variance_floor(tiny_gold, tmp_path):
 
     assert saved == record["protocol"]
     assert saved["nll_min_var_epoch"] == 2
-    assert saved["nll_min_energy_var"] == pytest.approx(max(float(history[2]["val_energy_mse"]), 1e-6))
-    assert saved["nll_min_force_var"] == pytest.approx(max(float(history[2]["val_force_mse"]), 1e-6))
-    # Measured, not the default: an all-but-untrained model's val MSE is far above 1e-6.
+    assert saved["nll_min_energy_var"] == pytest.approx(max(float(history[2]["train_energy_mse"]), 1e-6))
+    assert saved["nll_min_force_var"] == pytest.approx(max(float(history[2]["train_force_mse"]), 1e-6))
+    # Measured, not the default: an all-but-untrained model's train MSE is far above 1e-6.
     assert saved["nll_min_energy_var"] > 1e-6 and saved["nll_min_force_var"] > 1e-6
 
 
