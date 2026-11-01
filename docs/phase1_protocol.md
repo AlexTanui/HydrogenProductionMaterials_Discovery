@@ -112,8 +112,11 @@ the run to re-measure the variation, for example on another machine.
    Models whose errors are close (energy MAE 0.0537 for DimeNet++, 0.0557
    for PaiNN, 0.0611 for PhysNet) cannot be ranked against each other
    without repeated runs. Retraining all five with the same configs and
-   seeds on another machine (19 Oct) moved SchNet's energy MAE from 0.1173
-   to 0.1714 and swapped PaiNN and DimeNet++ on energy MAE.
+   seeds (19 Oct) moved SchNet's energy MAE from 0.1173 to 0.1714 and
+   swapped PaiNN and DimeNet++ on energy MAE. That retrain changed the
+   machine and thread count (Windows x86, 24 threads → macOS arm64, 4
+   threads) and the commit (for SchNet, `d9f3814` → `b1c2d89`) together,
+   so the change can't be put down to any one of them.
 2. **Every model hit the 200-epoch cap.** None stopped early. Four were
    still improving: best epochs 199–200, val loss improved 6–12 times in
    their last 20 epochs, and the learning rate had decayed to
@@ -135,3 +138,11 @@ the run to re-measure the variation, for example on another machine.
    noise scale is pooled over the whole batch, so a molecule's prediction
    depends on its batch-mates; see
    [docs/reviews/blip-batch-dependence.md](reviews/blip-batch-dependence.md).
+6. **Split leakage was audited (SCRUM-47, 31 Oct).** No test frame is
+   within two MD steps of a training frame (closest 0.034 Å; one step moves
+   ethanol 0.014 Å). The blocks have no purge buffer, so validation and
+   test each start with one near-duplicate of the block before them, but
+   no benchmarked run trains or selects on those frames: the stride's
+   uncovered tail leaves 4,114 / 519 frames between the frames actually
+   used. See
+   [docs/reviews/leakage-audit-2026-10-31.md](reviews/leakage-audit-2026-10-31.md).
