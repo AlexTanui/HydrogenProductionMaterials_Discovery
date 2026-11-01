@@ -69,7 +69,7 @@ from scipy import stats
 
 from ml.utils.contract import DatasetKey, ModelOutput, ReferenceData, Units, require_compatible
 
-__all__ = ["UQAccumulator", "COVERAGE_LEVELS", "RISK_COVERAGE_LEVELS"]
+__all__ = ["UQAccumulator", "quantity_block", "COVERAGE_LEVELS", "RISK_COVERAGE_LEVELS"]
 
 SCHEMA_VERSION = 1
 
@@ -140,7 +140,19 @@ def _gaussian_crps(error: np.ndarray, std: np.ndarray) -> float:
     return float(np.mean(crps))
 
 
-def _quantity_block(error: np.ndarray, std: np.ndarray) -> dict:
+def quantity_block(error: np.ndarray, std: np.ndarray) -> dict:
+    """All six UQ protocol v1.0 metrics for one quantity, from plain arrays.
+
+    `error` is the signed prediction error (prediction minus reference) and
+    `std` the predictive standard deviation, same shape: one entry per frame
+    for energy, per (frame, atom, component) for force. `std` must already
+    be positive - `UQAccumulator` floors the variance at `_VAR_EPS` before
+    calling this, and a caller passing its own arrays must do the same.
+
+    This is exactly what `UQAccumulator.compute()` reports per quantity, so
+    a caller scoring arrays it collected itself (ml/training/calibrate.py)
+    gets numbers comparable with every evaluate.py record.
+    """
     z = error / std
     abs_error = np.abs(error)
     coverage = _coverage_table(z)
@@ -154,6 +166,10 @@ def _quantity_block(error: np.ndarray, std: np.ndarray) -> dict:
         "crps_gaussian": _gaussian_crps(error, std),
         "sharpness_mean_std": float(np.mean(std)),
     }
+
+
+# The name this had while it was private; kept so existing imports keep working.
+_quantity_block = quantity_block
 
 
 @dataclass
@@ -246,6 +262,6 @@ class UQAccumulator:
             if not errors:
                 record[quantity] = None
                 continue
-            record[quantity] = _quantity_block(np.asarray(errors, dtype=np.float64),
-                                                np.asarray(stds, dtype=np.float64))
+            record[quantity] = quantity_block(np.asarray(errors, dtype=np.float64),
+                                               np.asarray(stds, dtype=np.float64))
         return record

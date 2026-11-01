@@ -1,0 +1,397 @@
+{
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel",
+    "logical_cpus": 24,
+    "ram_gb": 31.4,
+    "python": "3.11.9",
+    "torch": "2.13.0+cu130",
+    "git_commit": "efb9818a58bc6aed63ba21d4a68e04a865eca874",
+    "git_dirty": false,
+    "git_dirty_ignores": [
+      "experiments/runs/"
+    ]
+  },
+  "runs": [
+    {
+      "config": "phase1_baseline",
+      "device": "cpu",
+      "threads": 4,
+      "n_parameters": 384897,
+      "frames_timed": 256,
+      "batch_size": 32,
+      "peak_rss_mb_after_setup": 805.48046875,
+      "single_pass_ms_per_frame": 0.395954296891432,
+      "peak_rss_mb_after_inference": 805.48046875,
+      "train_step_ms": 65.3475500002969,
+      "val_batch_ms": 12.208737498440314,
+      "protocol_epoch_s": 22.37055493734806,
+      "protocol_200_epochs_h": 1.2428086076304479,
+      "peak_rss_mb_after_training": 931.21484375
+    },
+    {
+      "config": "phase2_blip",
+      "device": "cpu",
+      "threads": 4,
+      "n_parameters": 740953,
+      "frames_timed": 256,
+      "batch_size": 32,
+      "peak_rss_mb_after_setup": 806.7734375,
+      "mc": [
+        {
+          "num_mc_samples": 1,
+          "ms_per_frame": 0.733559765649261,
+          "ms_per_frame_per_sample": 0.733559765649261,
+          "peak_rss_mb": 806.7734375
+        },
+        {
+          "num_mc_samples": 2,
+          "ms_per_frame": 1.5252722655532125,
+          "ms_per_frame_per_sample": 0.7626361327766062,
+          "peak_rss_mb": 847.61328125
+        },
+        {
+          "num_mc_samples": 5,
+          "ms_per_frame": 3.875053906313042,
+          "ms_per_frame_per_sample": 0.7750107812626084,
+          "peak_rss_mb": 866.7421875
+        },
+        {
+          "num_mc_samples": 10,
+          "ms_per_frame": 8.006116015621956,
+          "ms_per_frame_per_sample": 0.8006116015621956,
+          "peak_rss_mb": 866.7421875
+        },
+        {
+          "num_mc_samples": 20,
+          "ms_per_frame": 15.044248046933717,
+          "ms_per_frame_per_sample": 0.7522124023466858,
+          "peak_rss_mb": 866.7421875
+        },
+        {
+          "num_mc_samples": 50,
+          "ms_per_frame": 37.02607890613763,
+          "ms_per_frame_per_sample": 0.7405215781227525,
+          "peak_rss_mb": 867.66015625
+        },
+        {
+          "num_mc_samples": 100,
+          "ms_per_frame": 72.44887460933569,
+          "ms_per_frame_per_sample": 0.7244887460933569,
+          "peak_rss_mb": 867.84375
+        }
+      ],
+      "train_step_ms": 129.58762500056764,
+      "val_batch_ms": 25.96558749792166,
+      "protocol_epoch_s": 44.63752386235137,
+      "protocol_200_epochs_h": 2.4798624367972986,
+      "peak_rss_mb_after_training": 983.01171875
+    },
+    {
+      "config": "phase2_blip_nll",
+      "device": "cpu",
+      "threads": 4,
+      "n_parameters": 740953,
+      "frames_timed": 256,
+      "batch_size": 32,
+      "peak_rss_mb_after_setup": 805.92578125,
+      "mc": [
+        {
+          "num_mc_samples": 1,
+          "ms_per_frame": 0.7178550781645754,
+          "ms_per_frame_per_sample": 0.7178550781645754,
+          "peak_rss_mb": 805.92578125
+        },
+        {
+          "num_mc_samples": 2,
+          "ms_per_frame": 1.4993769532338774,
+          "ms_per_frame_per_sample": 0.7496884766169387,
+          "peak_rss_mb": 846.078125
+        },
+        {
+          "num_mc_samples": 5,
+          "ms_per_frame": 3.699583984371202,
+          "ms_per_frame_per_sample": 0.7399167968742404,
+          "peak_rss_mb": 862.78515625
+        },
+        {
+          "num_mc_samples": 10,
+          "ms_per_frame": 7.337794921795648,
+          "ms_per_frame_per_sample": 0.7337794921795648,
+          "peak_rss_mb": 866.19921875
+        },
+        {
+          "num_mc_samples": 20,
+          "ms_per_frame": 14.500613671771134,
+          "ms_per_frame_per_sample": 0.7250306835885567,
+          "peak_rss_mb": 866.19921875
+        },
+        {
+          "num_mc_samples": 50,
+          "ms_per_frame": 35.90049179683774,
+          "ms_per_frame_per_sample": 0.7180098359367548,
+          "peak_rss_mb": 866.73828125
+        },
+        {
+          "num_mc_samples": 100,
+          "ms_per_frame": 71.90574609376199,
+          "ms_per_frame_per_sample": 0.7190574609376199,
+          "peak_rss_mb": 867.33984375
+        }
+      ],
+      "train_step_ms": 429.5026124964352,
+      "val_batch_ms": 98.57848750107223,
+      "protocol_epoch_s": 149.91114024905255,
+      "protocol_200_epochs_h": 8.32839668050292,
+      "peak_rss_mb_after_training": 1254.7265625
+    },
+    {
+      "config": "phase3_graph_stochastic",
+      "device": "cpu",
+      "threads": 4,
+      "n_parameters": 385925,
+      "frames_timed": 256,
+      "batch_size": 32,
+      "peak_rss_mb_after_setup": 805.65625,
+      "mc": [
+        {
+          "num_mc_samples": 1,
+          "ms_per_frame": 0.45654882796952734,
+          "ms_per_frame_per_sample": 0.45654882796952734,
+          "peak_rss_mb": 828.1484375
+        },
+        {
+          "num_mc_samples": 2,
+          "ms_per_frame": 0.849098437356588,
+          "ms_per_frame_per_sample": 0.424549218678294,
+          "peak_rss_mb": 830.51171875
+        },
+        {
+          "num_mc_samples": 5,
+          "ms_per_frame": 2.1148726561932563,
+          "ms_per_frame_per_sample": 0.42297453123865125,
+          "peak_rss_mb": 831.92578125
+        },
+        {
+          "num_mc_samples": 10,
+          "ms_per_frame": 4.1906734375061205,
+          "ms_per_frame_per_sample": 0.41906734375061205,
+          "peak_rss_mb": 832.1015625
+        },
+        {
+          "num_mc_samples": 20,
+          "ms_per_frame": 8.380996875075652,
+          "ms_per_frame_per_sample": 0.4190498437537826,
+          "peak_rss_mb": 832.14453125
+        },
+        {
+          "num_mc_samples": 50,
+          "ms_per_frame": 20.88782343753337,
+          "ms_per_frame_per_sample": 0.4177564687506674,
+          "peak_rss_mb": 835.69140625
+        },
+        {
+          "num_mc_samples": 100,
+          "ms_per_frame": 41.851769140521355,
+          "ms_per_frame_per_sample": 0.41851769140521355,
+          "peak_rss_mb": 835.77734375
+        }
+      ],
+      "train_step_ms": 68.57517499884125,
+      "val_batch_ms": 13.899287499953061,
+      "protocol_epoch_s": 23.64621791212994,
+      "protocol_200_epochs_h": 1.313678772896108,
+      "peak_rss_mb_after_training": 936.625
+    },
+    {
+      "config": "phase1_baseline",
+      "device": "cpu",
+      "threads": 24,
+      "n_parameters": 384897,
+      "frames_timed": 256,
+      "batch_size": 32,
+      "peak_rss_mb_after_setup": 806.38671875,
+      "single_pass_ms_per_frame": 0.19949609372815758,
+      "peak_rss_mb_after_inference": 806.38671875,
+      "train_step_ms": 29.805362501065247,
+      "val_batch_ms": 6.77596250170609,
+      "protocol_epoch_s": 10.392904575601278,
+      "protocol_200_epochs_h": 0.5773835875334044,
+      "peak_rss_mb_after_training": 940.35546875
+    },
+    {
+      "config": "phase2_blip",
+      "device": "cpu",
+      "threads": 24,
+      "n_parameters": 740953,
+      "frames_timed": 256,
+      "batch_size": 32,
+      "peak_rss_mb_after_setup": 806.8984375,
+      "mc": [
+        {
+          "num_mc_samples": 1,
+          "ms_per_frame": 0.5365675781376922,
+          "ms_per_frame_per_sample": 0.5365675781376922,
+          "peak_rss_mb": 806.8984375
+        },
+        {
+          "num_mc_samples": 2,
+          "ms_per_frame": 1.1249773438066768,
+          "ms_per_frame_per_sample": 0.5624886719033384,
+          "peak_rss_mb": 853.61328125
+        },
+        {
+          "num_mc_samples": 5,
+          "ms_per_frame": 2.246386328124572,
+          "ms_per_frame_per_sample": 0.44927726562491443,
+          "peak_rss_mb": 876.19140625
+        },
+        {
+          "num_mc_samples": 10,
+          "ms_per_frame": 5.073964843631984,
+          "ms_per_frame_per_sample": 0.5073964843631984,
+          "peak_rss_mb": 876.19140625
+        },
+        {
+          "num_mc_samples": 20,
+          "ms_per_frame": 9.485404687438859,
+          "ms_per_frame_per_sample": 0.47427023437194293,
+          "peak_rss_mb": 876.19140625
+        },
+        {
+          "num_mc_samples": 50,
+          "ms_per_frame": 24.04148906248338,
+          "ms_per_frame_per_sample": 0.4808297812496676,
+          "peak_rss_mb": 876.80078125
+        },
+        {
+          "num_mc_samples": 100,
+          "ms_per_frame": 47.43323125012466,
+          "ms_per_frame_per_sample": 0.47433231250124663,
+          "peak_rss_mb": 876.921875
+        }
+      ],
+      "train_step_ms": 64.01645000005374,
+      "val_batch_ms": 18.44151250406867,
+      "protocol_epoch_s": 22.9324663131556,
+      "protocol_200_epochs_h": 1.2740259062864223,
+      "peak_rss_mb_after_training": 998.796875
+    },
+    {
+      "config": "phase2_blip_nll",
+      "device": "cpu",
+      "threads": 24,
+      "n_parameters": 740953,
+      "frames_timed": 256,
+      "batch_size": 32,
+      "peak_rss_mb_after_setup": 806.26953125,
+      "mc": [
+        {
+          "num_mc_samples": 1,
+          "ms_per_frame": 0.5410195310560084,
+          "ms_per_frame_per_sample": 0.5410195310560084,
+          "peak_rss_mb": 806.26953125
+        },
+        {
+          "num_mc_samples": 2,
+          "ms_per_frame": 0.9895703126403532,
+          "ms_per_frame_per_sample": 0.4947851563201766,
+          "peak_rss_mb": 852.1015625
+        },
+        {
+          "num_mc_samples": 5,
+          "ms_per_frame": 2.704156640675137,
+          "ms_per_frame_per_sample": 0.5408313281350274,
+          "peak_rss_mb": 874.65234375
+        },
+        {
+          "num_mc_samples": 10,
+          "ms_per_frame": 4.975480078201144,
+          "ms_per_frame_per_sample": 0.49754800782011444,
+          "peak_rss_mb": 874.65234375
+        },
+        {
+          "num_mc_samples": 20,
+          "ms_per_frame": 9.587562890601475,
+          "ms_per_frame_per_sample": 0.47937814453007377,
+          "peak_rss_mb": 874.65234375
+        },
+        {
+          "num_mc_samples": 50,
+          "ms_per_frame": 24.032801562498207,
+          "ms_per_frame_per_sample": 0.48065603124996414,
+          "peak_rss_mb": 875.28125
+        },
+        {
+          "num_mc_samples": 100,
+          "ms_per_frame": 47.998682812476545,
+          "ms_per_frame_per_sample": 0.47998682812476545,
+          "peak_rss_mb": 875.55859375
+        }
+      ],
+      "train_step_ms": 262.0946874958463,
+      "val_batch_ms": 71.41248750122031,
+      "protocol_epoch_s": 93.24739772389148,
+      "protocol_200_epochs_h": 5.180410984660638,
+      "peak_rss_mb_after_training": 1296.7421875
+    },
+    {
+      "config": "phase3_graph_stochastic",
+      "device": "cpu",
+      "threads": 24,
+      "n_parameters": 385925,
+      "frames_timed": 256,
+      "batch_size": 32,
+      "peak_rss_mb_after_setup": 805.6640625,
+      "mc": [
+        {
+          "num_mc_samples": 1,
+          "ms_per_frame": 0.3583285156310012,
+          "ms_per_frame_per_sample": 0.3583285156310012,
+          "peak_rss_mb": 836.48828125
+        },
+        {
+          "num_mc_samples": 2,
+          "ms_per_frame": 0.6656554687651806,
+          "ms_per_frame_per_sample": 0.3328277343825903,
+          "peak_rss_mb": 839.5234375
+        },
+        {
+          "num_mc_samples": 5,
+          "ms_per_frame": 1.3146207031695667,
+          "ms_per_frame_per_sample": 0.26292414063391334,
+          "peak_rss_mb": 840.23828125
+        },
+        {
+          "num_mc_samples": 10,
+          "ms_per_frame": 2.759055468686711,
+          "ms_per_frame_per_sample": 0.2759055468686711,
+          "peak_rss_mb": 840.52734375
+        },
+        {
+          "num_mc_samples": 20,
+          "ms_per_frame": 5.475696093753868,
+          "ms_per_frame_per_sample": 0.2737848046876934,
+          "peak_rss_mb": 840.8203125
+        },
+        {
+          "num_mc_samples": 50,
+          "ms_per_frame": 14.012822265613067,
+          "ms_per_frame_per_sample": 0.28025644531226135,
+          "peak_rss_mb": 841.0390625
+        },
+        {
+          "num_mc_samples": 100,
+          "ms_per_frame": 27.56083671874876,
+          "ms_per_frame_per_sample": 0.2756083671874876,
+          "peak_rss_mb": 841.11328125
+        }
+      ],
+      "train_step_ms": 33.38657499989495,
+      "val_batch_ms": 8.447312502539717,
+      "protocol_epoch_s": 11.776226037865854,
+      "protocol_200_epochs_h": 0.6542347798814363,
+      "peak_rss_mb_after_training": 947.453125
+    }
+  ]
+}

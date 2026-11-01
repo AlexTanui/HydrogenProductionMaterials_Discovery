@@ -1,0 +1,235 @@
+{
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel",
+    "logical_cpus": 24,
+    "ram_gb": 31.4,
+    "python": "3.11.9",
+    "torch": "2.13.0+cu130",
+    "git_commit": "efb9818a58bc6aed63ba21d4a68e04a865eca874",
+    "git_dirty": false,
+    "git_dirty_ignores": [
+      "experiments/runs/"
+    ],
+    "gpu": "NVIDIA GeForce RTX 5070 Ti Laptop GPU",
+    "gpu_memory_gb": 11.9,
+    "cuda": "13.0"
+  },
+  "runs": [
+    {
+      "config": "phase1_baseline",
+      "device": "cuda",
+      "threads": 4,
+      "n_parameters": 384897,
+      "frames_timed": 256,
+      "batch_size": 32,
+      "peak_rss_mb_after_setup": 845.05078125,
+      "single_pass_ms_per_frame": 0.14547773434969713,
+      "peak_rss_mb_after_inference": 1682.0546875,
+      "train_step_ms": 15.19877499958966,
+      "val_batch_ms": 4.577112500555813,
+      "protocol_epoch_s": 5.475823237458826,
+      "protocol_200_epochs_h": 0.3042124020810459,
+      "peak_rss_mb_after_training": 1999.984375,
+      "peak_cuda_allocated_mb_training": 134.81494140625
+    },
+    {
+      "config": "phase2_blip",
+      "device": "cuda",
+      "threads": 4,
+      "n_parameters": 740953,
+      "frames_timed": 256,
+      "batch_size": 32,
+      "peak_rss_mb_after_setup": 846.83203125,
+      "mc": [
+        {
+          "num_mc_samples": 1,
+          "ms_per_frame": 0.3265851562446187,
+          "ms_per_frame_per_sample": 0.3265851562446187,
+          "peak_rss_mb": 1716.55859375,
+          "peak_cuda_allocated_mb": 110.8857421875
+        },
+        {
+          "num_mc_samples": 2,
+          "ms_per_frame": 0.6364105468037451,
+          "ms_per_frame_per_sample": 0.31820527340187255,
+          "peak_rss_mb": 1717.1875,
+          "peak_cuda_allocated_mb": 147.89697265625
+        },
+        {
+          "num_mc_samples": 5,
+          "ms_per_frame": 1.480301953279195,
+          "ms_per_frame_per_sample": 0.296060390655839,
+          "peak_rss_mb": 1717.2109375,
+          "peak_cuda_allocated_mb": 149.03369140625
+        },
+        {
+          "num_mc_samples": 10,
+          "ms_per_frame": 2.682501562503603,
+          "ms_per_frame_per_sample": 0.2682501562503603,
+          "peak_rss_mb": 1717.37109375,
+          "peak_cuda_allocated_mb": 150.62158203125
+        },
+        {
+          "num_mc_samples": 20,
+          "ms_per_frame": 5.413859765667439,
+          "ms_per_frame_per_sample": 0.27069298828337196,
+          "peak_rss_mb": 1717.38671875,
+          "peak_cuda_allocated_mb": 151.77783203125
+        },
+        {
+          "num_mc_samples": 50,
+          "ms_per_frame": 13.821649218925813,
+          "ms_per_frame_per_sample": 0.27643298437851627,
+          "peak_rss_mb": 1717.48046875,
+          "peak_cuda_allocated_mb": 151.77783203125
+        },
+        {
+          "num_mc_samples": 100,
+          "ms_per_frame": 27.674805468677732,
+          "ms_per_frame_per_sample": 0.2767480546867773,
+          "peak_rss_mb": 1717.63671875,
+          "peak_cuda_allocated_mb": 151.77783203125
+        }
+      ],
+      "train_step_ms": 36.56557499925839,
+      "val_batch_ms": 14.04292500228621,
+      "protocol_epoch_s": 13.64976420012681,
+      "protocol_200_epochs_h": 0.7583202333403783,
+      "peak_rss_mb_after_training": 2049.14453125,
+      "peak_cuda_allocated_mb_training": 168.10205078125
+    },
+    {
+      "config": "phase2_blip_nll",
+      "device": "cuda",
+      "threads": 4,
+      "n_parameters": 740953,
+      "frames_timed": 256,
+      "batch_size": 32,
+      "peak_rss_mb_after_setup": 847.63671875,
+      "mc": [
+        {
+          "num_mc_samples": 1,
+          "ms_per_frame": 0.2768937501969049,
+          "ms_per_frame_per_sample": 0.2768937501969049,
+          "peak_rss_mb": 1716.94140625,
+          "peak_cuda_allocated_mb": 110.8857421875
+        },
+        {
+          "num_mc_samples": 2,
+          "ms_per_frame": 0.553298437353078,
+          "ms_per_frame_per_sample": 0.276649218676539,
+          "peak_rss_mb": 1717.42578125,
+          "peak_cuda_allocated_mb": 147.89697265625
+        },
+        {
+          "num_mc_samples": 5,
+          "ms_per_frame": 1.4536953126480512,
+          "ms_per_frame_per_sample": 0.29073906252961024,
+          "peak_rss_mb": 1717.5078125,
+          "peak_cuda_allocated_mb": 149.03369140625
+        },
+        {
+          "num_mc_samples": 10,
+          "ms_per_frame": 2.6126417967589077,
+          "ms_per_frame_per_sample": 0.2612641796758908,
+          "peak_rss_mb": 1717.53515625,
+          "peak_cuda_allocated_mb": 150.62158203125
+        },
+        {
+          "num_mc_samples": 20,
+          "ms_per_frame": 5.371649999915462,
+          "ms_per_frame_per_sample": 0.2685824999957731,
+          "peak_rss_mb": 1717.55078125,
+          "peak_cuda_allocated_mb": 151.77783203125
+        },
+        {
+          "num_mc_samples": 50,
+          "ms_per_frame": 13.60030117189126,
+          "ms_per_frame_per_sample": 0.2720060234378252,
+          "peak_rss_mb": 1717.58984375,
+          "peak_cuda_allocated_mb": 151.77783203125
+        },
+        {
+          "num_mc_samples": 100,
+          "ms_per_frame": 27.360271875068065,
+          "ms_per_frame_per_sample": 0.27360271875068065,
+          "peak_rss_mb": 1717.83203125,
+          "peak_cuda_allocated_mb": 151.77783203125
+        }
+      ],
+      "train_step_ms": 126.02920000063023,
+      "val_batch_ms": 40.074262498819735,
+      "protocol_epoch_s": 45.73879881251196,
+      "protocol_200_epochs_h": 2.5410443784728867,
+      "peak_rss_mb_after_training": 1992.05078125,
+      "peak_cuda_allocated_mb_training": 426.37744140625
+    },
+    {
+      "config": "phase3_graph_stochastic",
+      "device": "cuda",
+      "threads": 4,
+      "n_parameters": 385925,
+      "frames_timed": 256,
+      "batch_size": 32,
+      "peak_rss_mb_after_setup": 845.265625,
+      "mc": [
+        {
+          "num_mc_samples": 1,
+          "ms_per_frame": 0.18345703119848622,
+          "ms_per_frame_per_sample": 0.18345703119848622,
+          "peak_rss_mb": 1720.8359375,
+          "peak_cuda_allocated_mb": 118.70849609375
+        },
+        {
+          "num_mc_samples": 2,
+          "ms_per_frame": 0.3239718748773157,
+          "ms_per_frame_per_sample": 0.16198593743865786,
+          "peak_rss_mb": 1720.921875,
+          "peak_cuda_allocated_mb": 121.974609375
+        },
+        {
+          "num_mc_samples": 5,
+          "ms_per_frame": 0.832148437439173,
+          "ms_per_frame_per_sample": 0.1664296874878346,
+          "peak_rss_mb": 1720.94140625,
+          "peak_cuda_allocated_mb": 121.986328125
+        },
+        {
+          "num_mc_samples": 10,
+          "ms_per_frame": 1.7375027343859983,
+          "ms_per_frame_per_sample": 0.17375027343859983,
+          "peak_rss_mb": 1720.96875,
+          "peak_cuda_allocated_mb": 122.005859375
+        },
+        {
+          "num_mc_samples": 20,
+          "ms_per_frame": 3.497346484437003,
+          "ms_per_frame_per_sample": 0.17486732422185014,
+          "peak_rss_mb": 1720.98828125,
+          "peak_cuda_allocated_mb": 122.044921875
+        },
+        {
+          "num_mc_samples": 50,
+          "ms_per_frame": 8.658705859488691,
+          "ms_per_frame_per_sample": 0.17317411718977382,
+          "peak_rss_mb": 1721.08203125,
+          "peak_cuda_allocated_mb": 122.162109375
+        },
+        {
+          "num_mc_samples": 100,
+          "ms_per_frame": 17.7902441405422,
+          "ms_per_frame_per_sample": 0.177902441405422,
+          "peak_rss_mb": 1721.2109375,
+          "peak_cuda_allocated_mb": 122.357421875
+        }
+      ],
+      "train_step_ms": 21.494000000529923,
+      "val_batch_ms": 7.1196500066434965,
+      "protocol_epoch_s": 7.845407051208895,
+      "protocol_200_epochs_h": 0.43585594728938304,
+      "peak_rss_mb_after_training": 2039.078125,
+      "peak_cuda_allocated_mb_training": 137.1142578125
+    }
+  ]
+}

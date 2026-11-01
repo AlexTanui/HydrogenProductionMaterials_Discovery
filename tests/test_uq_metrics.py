@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 import torch
 
+from ml.utils import uq_metrics
 from ml.utils.contract import ModelOutput, ReferenceData, Units
 from ml.utils.uq_metrics import UQAccumulator
 
@@ -248,3 +249,30 @@ def test_force_block_is_computed_independently_of_energy():
     record = acc.compute()["per_key"][0]
     assert record["force"]["n"] == 3  # one frame, one atom, 3 components
     assert record["force"]["nll_gaussian"] == pytest.approx(0.9189385332046727)
+
+
+# --------------------------------------------------------------------------
+# 8. quantity_block: the public array-level entry point (SCRUM-68)
+# --------------------------------------------------------------------------
+
+def test_quantity_block_is_public_and_the_old_private_name_still_works():
+    assert "quantity_block" in uq_metrics.__all__
+    assert uq_metrics._quantity_block is uq_metrics.quantity_block
+
+
+def _flatten(value, prefix=""):
+    """{"a": {"b": 1}, "c": [{"d": 2}]} -> {"a.b": 1, "c.0.d": 2}; pytest.approx can't nest."""
+    if isinstance(value, dict):
+        return {k: v for key, item in value.items() for k, v in _flatten(item, f"{prefix}{key}.").items()}
+    if isinstance(value, list):
+        return {k: v for i, item in enumerate(value) for k, v in _flatten(item, f"{prefix}{i}.").items()}
+    return {prefix.rstrip("."): value}
+
+
+def test_quantity_block_on_arrays_equals_what_the_accumulator_reports():
+    rng = np.random.default_rng(3)
+    errors, stds = rng.normal(0.0, 1.5, 400), rng.uniform(0.5, 2.0, 400)
+    from_accumulator = energy_block(build(errors.tolist(), stds.tolist()))
+    # The accumulator stores variance and takes its square root, so std can
+    # differ from the input in the last bit - hence approx, not ==.
+    assert _flatten(uq_metrics.quantity_block(errors, stds)) == pytest.approx(_flatten(from_accumulator))
