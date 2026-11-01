@@ -53,13 +53,22 @@ def _numeric_leaves(tree: Any, prefix: str = "") -> Iterator[tuple[str, Any]]:
 
 
 def compare(stored: dict, fresh: dict) -> dict[str, float]:
-    """Relative difference of every numeric metric: the metrics tree plus the benchmark row."""
+    """Relative difference of every numeric metric the stored record holds:
+    the metrics tree plus the benchmark row.
+
+    Only stored fields are compared: the question is whether a re-score
+    reproduces what was reported. A newer evaluate.py can record fields an
+    older record predates (e.g. per-quantity UQ keys in the benchmark row);
+    those are new, not a mismatch. A stored field the re-score no longer
+    produces is one, and raises.
+    """
     stored_leaves = dict(_numeric_leaves({"metrics": stored["metrics"],
                                           "benchmark_row": stored["benchmark_row"]}))
     fresh_leaves = dict(_numeric_leaves({"metrics": fresh["metrics"],
                                          "benchmark_row": fresh["benchmark_row"]}))
-    if stored_leaves.keys() != fresh_leaves.keys():
-        raise ValueError(f"metric fields differ: {sorted(stored_leaves.keys() ^ fresh_leaves.keys())}")
+    missing = sorted(stored_leaves.keys() - fresh_leaves.keys())
+    if missing:
+        raise ValueError(f"the re-score no longer produces stored metric fields: {missing}")
     differences = {}
     for path, old in stored_leaves.items():
         new = fresh_leaves[path]

@@ -1,13 +1,16 @@
 """API tests against the real ethanol/DFT checkpoints (Phase 1-3).
 
-Writes to the shared dev SQLite DB (app/models/db.py) - fine for local
-dev per CLAUDE.md's own note on that file; these are write-only
-PredictionLog rows, nothing reads them back.
+Every request's database session comes from a throwaway SQLite file with
+the tables created (`_isolated_database`), never the developer's
+`backend/app.db`: the client isn't started with `with`, so the app's
+startup `init_db()` never runs, and against a dev DB with no tables the
+PredictionLog writes failed ("no such table: prediction_logs").
 
 Skips outright if no checkpoint has been trained yet (fresh clone,
 `experiments/checkpoints/` empty - it's gitignored) rather than failing:
 these are integration tests against real trained artifacts, not something
-a fresh checkout can satisfy on its own.
+a fresh checkout can satisfy on its own. Tests that need a molecule's gold
+file skip when it isn't present, the same way.
 """
 from __future__ import annotations
 
@@ -17,9 +20,12 @@ import time
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from app.core.config import GOLD_DIR, PHASE_CHECKPOINTS
 from app.main import app
+from app.models.db import Base, get_db
 
 ANY_CHECKPOINT_TRAINED = any(path.exists() for path in PHASE_CHECKPOINTS.values())
 pytestmark = pytest.mark.skipif(
@@ -30,12 +36,38 @@ pytestmark = pytest.mark.skipif(
 client = TestClient(app)
 
 
+def _has_gold(molecule: str) -> bool:
+    return any(GOLD_DIR.glob(f"{molecule}_*.npz"))
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _isolated_database(tmp_path_factory):
+    engine = create_engine(f"sqlite:///{tmp_path_factory.mktemp('db') / 'api_tests.db'}",
+                           connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+    def get_test_db():
+        db = session()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = get_test_db
+    yield
+    app.dependency_overrides.pop(get_db, None)
+    engine.dispose()
+
+
 def test_health():
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
+@pytest.mark.skipif(not (_has_gold("azobenzene") and _has_gold("paracetamol")),
+                    reason="azobenzene/paracetamol gold data not present")
 def test_molecules_catalog_is_read_from_the_real_gold_files():
     response = client.get("/molecules")
     assert response.status_code == 200
@@ -93,6 +125,7 @@ def test_predict_ethanol_against_every_trained_phase(phase, expect_uncertainty):
     assert abs(data["predicted_force_rms"] - data["true_force_rms"]) < 50.0
 
 
+@pytest.mark.skipif(not _has_gold("aspirin"), reason="aspirin gold data not present")
 def test_predict_rejects_a_molecule_with_no_trained_checkpoint():
     response = client.post("/predictions", json={"molecule": "aspirin", "frame_index": 0})
     assert response.status_code == 503
@@ -177,6 +210,7 @@ def test_jobs_train_rejects_an_unknown_phase():
     assert response.status_code == 422
 
 
+@pytest.mark.skipif(not _has_gold("aspirin"), reason="aspirin gold data not present")
 def test_jobs_train_rejects_a_mismatched_theory():
     response = client.post("/jobs/train", json={"molecule": "aspirin", "phase": "mpnn", "theory": "dft"})
     assert response.status_code == 422
