@@ -121,8 +121,10 @@ Supersedes the first v1 run (`d9f3814`, energy MAE 0.0891, force MAE 0.1791), re
 ## 7. Uncertainty quantification
 
 None. Phase 1 is deterministic, so ECE and the uncertainty-error Spearman
-correlation are empty in the benchmark table. Their definitions are
-Dongxiao's; Phase 2 (BLIP) adds the uncertainty on this backbone.
+correlation are empty in the benchmark table. Their definitions are UQ
+protocol v1.0 (`ml/utils/uq_metrics.py`), Fazin's since 23 Oct 2026
+(previously Dongxiao's); Phase 2 (BLIP) adds the uncertainty on this
+backbone.
 
 ---
 
