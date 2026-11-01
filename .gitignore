@@ -47,6 +47,19 @@ checkpoints/
 mlruns/
 wandb/
 
+# Per-job scratch written by backend/app/services/jobs.py for ad-hoc training
+# jobs (POST /jobs/train) - JOB_CONFIGS_DIR / JOB_LOGS_DIR in
+# backend/app/core/config.py. Same category as checkpoints/ above: disposable
+# outputs of a live job, not part of the committed experiment set. Missing
+# from this file was a real bug, not just an oversight - an untracked file
+# here makes the whole working tree read as git_dirty=True to
+# ml/training/train.py's git_state(), so any training run started while a
+# stray job config/log sat here got git_dirty=True baked into its run.json
+# forever and was permanently refused by ml/training/benchmark.py's SCRUM-48
+# clean-commit gate, with no way to fix it short of retraining.
+experiments/configs/jobs/
+experiments/job_logs/
+
 # Backend
 backend/*.db
 backend/**/__pycache__/
