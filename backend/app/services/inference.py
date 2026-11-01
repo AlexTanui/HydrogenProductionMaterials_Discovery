@@ -218,8 +218,16 @@ class InferenceService:
             # trained live on another molecule). Additive: `uncertainty`
             # keeps meaning exactly what it always has (the model's raw,
             # uncalibrated std), `uncertainty_calibrated` is new.
+            #
+            # std_scale_energy, not q_energy: q_energy is calibrate.py's raw
+            # empirical-quantile fit statistic (std*q already covers 90% of
+            # calibration errors directly); std_scale_energy = q_energy /
+            # norm.ppf(0.95) is the actual std multiplier, so that this
+            # uncertainty_calibrated, read as a genuine Gaussian std, gives
+            # the same +-90% interval rather than overshooting it by 1.645x
+            # (SCRUM-68 calibration review).
             calibration = calibration_module.get_calibration(checkpoint_path)
-            uncertainty_calibrated = uncertainty * calibration["q_energy"] if calibration else None
+            uncertainty_calibrated = uncertainty * calibration["std_scale_energy"] if calibration else None
         else:
             energy, forces = model.predict_energy_and_forces(data.x, data.pos, data.edge_index, data.edge_attr, None)
             predicted_energy = float(energy.item())

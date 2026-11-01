@@ -42,6 +42,7 @@ from typing import Any
 
 import numpy as np
 import torch
+from scipy.stats import norm
 from torch_geometric.loader import DataLoader
 
 from ml.data.datasets import MD17Dataset
@@ -161,6 +162,20 @@ def calibrate_and_report(
     q_energy = conformal_scale(val["e_error"], val["e_std"], alpha)
     q_force = conformal_scale(val["f_error"], val["f_std"], alpha)
 
+    # q_* is already the multiplier that makes std*q cover 1-alpha of errors
+    # directly (conformal_scale's own empirical quantile) - std*q IS the
+    # 1-alpha interval's half-width. But _quantity_block (via its coverage
+    # table / ECE) treats whatever std it's given as a genuine Gaussian std,
+    # scoring the 90% interval as +-norm.ppf(0.95)*std =~ +-1.645*std. Passing
+    # std*q straight into _quantity_block therefore double-applies that
+    # 1.645 factor, overshooting every "after" coverage/ECE number by
+    # norm.ppf(1-alpha/2) (SCRUM-68, Fazin's calibration review). Dividing
+    # q by that same z-value converts it into a real std multiplier first,
+    # so _quantity_block's own 1.645 reproduces exactly std*q, not std*q*1.645.
+    z = norm.ppf(1 - alpha / 2)
+    std_scale_energy = q_energy / z
+    std_scale_force = q_force / z
+
     test = _collect_errors_and_stds(model, test_ds, batch_size=batch_size)
 
     return {
@@ -170,13 +185,17 @@ def calibrate_and_report(
         "n_test": int(test["e_error"].size),
         "q_energy": q_energy,
         "q_force": q_force,
+        # The multiplier callers (inference.py, benchmarks.py) should actually
+        # apply to a raw std - q_* above is only the empirical fit statistic.
+        "std_scale_energy": std_scale_energy,
+        "std_scale_force": std_scale_force,
         "before": {
             "energy": _quantity_block(test["e_error"], test["e_std"]),
             "force": _quantity_block(test["f_error"], test["f_std"]),
         },
         "after": {
-            "energy": _quantity_block(test["e_error"], test["e_std"] * q_energy),
-            "force": _quantity_block(test["f_error"], test["f_std"] * q_force),
+            "energy": _quantity_block(test["e_error"], test["e_std"] * std_scale_energy),
+            "force": _quantity_block(test["f_error"], test["f_std"] * std_scale_force),
         },
     }
 
@@ -185,6 +204,8 @@ def _print_summary(report: dict[str, Any]) -> None:
     print(f"checkpoint: {report['checkpoint']}")
     print(f"calibration set: {report['n_calibration']} val frames; test subset: {report['n_test']} frames")
     print(f"q_energy = {report['q_energy']:.4f}   q_force = {report['q_force']:.4f}")
+    print(f"std_scale_energy = {report['std_scale_energy']:.4f}   "
+          f"std_scale_force = {report['std_scale_force']:.4f}  (apply this to a raw std, not q_*)")
     print()
     print(f"{'':10} {'ECE before':>12} {'ECE after':>12} {'cov@90 before':>15} {'cov@90 after':>15} "
           f"{'sharp before':>13} {'sharp after':>13}")
