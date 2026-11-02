@@ -267,20 +267,32 @@ def load_runs(runs_dir: Path = RUNS_DIR, name_prefix: str = "",
     return results
 
 
+_POST_OPTION_A_SELECTION = (
+    "lowest validation data loss (energy and force terms, no KL) on the val subset; "
+    "early stopping and the LR scheduler use the same quantity"
+)
+_COMPARABLE_SELECTION_SENTINEL = "<selected by val_data_loss (energy+force MSE, no KL) - SCRUM-24>"
+
+
 def _comparable_selection(run: dict[str, Any]) -> str:
     """`protocol.selection`'s text changed in SCRUM-24's train-fixes Option
     A (dropping KL from what checkpoint selection/scheduling/stopping act
-    on). For a `kl_weight=0` model - every Phase 1 model - the old and new
-    rules pick the same epoch by construction: there is no KL to drop, so
-    the wording difference alone must not force a retrain just to get a
-    matching `selection` string. Normalise it away in that case only; a
-    `kl_weight>0` run's selection text still compares literally, since
-    there the rule genuinely changed (pre-fix BLIP/Phase3 runs select on a
-    KL-inclusive quantity, post-fix ones do not - those must not share a
-    table either)."""
+    on): train.py now always writes `_POST_OPTION_A_SELECTION`, regardless
+    of `kl_weight`, since that is the real criterion for every run trained
+    since. A run never retrained under it (every committed Phase 1 record)
+    still carries the pre-Option-A wording - but for those, `kl_weight=0`
+    makes it the same real criterion by construction (there is no KL to
+    drop), so both the post-Option-A text and the pre-Option-A-with-
+    kl_weight=0 text normalise to one sentinel. A pre-Option-A run with
+    `kl_weight>0` (e.g. the original, since-retrained phase2_blip/phase3
+    records) does NOT normalise: the rule genuinely changed for it - it
+    was selected on a KL-inclusive quantity - so it must not silently
+    share a table with runs selected on val_data_loss alone."""
     text = run["protocol"].get("selection")
+    if text == _POST_OPTION_A_SELECTION:
+        return _COMPARABLE_SELECTION_SENTINEL
     if text is not None and float(run["protocol"].get("kl_weight", 0.0)) == 0.0:
-        return "<kl_weight=0: selection wording is immaterial, SCRUM-24>"
+        return _COMPARABLE_SELECTION_SENTINEL
     return text
 
 
