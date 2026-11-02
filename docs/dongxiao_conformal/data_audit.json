@@ -1,0 +1,40 @@
+{
+  "status": "BLOCKED_REAL_EVALUATION",
+  "dataset_sha256": "245697fe36518a4f4ed7df8ebaf7f3559157901e690e9f4298ea1e74f3653182",
+  "dataset": "data\\gold\\md17\\ethanol_dft.npz",
+  "n_frames": 555092,
+  "keys": [
+    "z",
+    "R",
+    "E",
+    "F",
+    "train_idx",
+    "val_idx",
+    "test_idx",
+    "molecule",
+    "theory",
+    "used_literature_split"
+  ],
+  "splits": {
+    "train_idx": {
+      "count": 444074,
+      "min": 0,
+      "max": 444073
+    },
+    "val_idx": {
+      "count": 55509,
+      "min": 444074,
+      "max": 499582
+    },
+    "test_idx": {
+      "count": 55509,
+      "min": 499583,
+      "max": 555091
+    }
+  },
+  "unassigned_frame_count": 0,
+  "calibration_split_present": false,
+  "mpnn_checkpoint_present": false,
+  "remote_main_inspected": "46b5f99e107d2ee5c75634ce9da63bc4ea5dc155",
+  "audit_date": "2026-10-29"
+}

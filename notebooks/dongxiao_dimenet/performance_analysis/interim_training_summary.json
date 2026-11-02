@@ -1,0 +1,26 @@
+{
+  "completed_epochs": 144,
+  "planned_epochs": 200,
+  "status_at_snapshot": "running",
+  "selected_epoch": 144,
+  "old_validation": {
+    "energy_mae": 1.634225703843005,
+    "energy_rmse": 1.7499916430196756,
+    "force_mae": 1.5637693169005005,
+    "force_rmse": 2.1782891980364436
+  },
+  "new_validation": {
+    "energy_mae": 1.2389287011580423,
+    "energy_rmse": 1.3329006183067158,
+    "force_mae": 1.3623338252278638,
+    "force_rmse": 1.858780597377868
+  },
+  "relative_reduction_percent": {
+    "energy_mae": 24.18864185989683,
+    "energy_rmse": 23.833886657495903,
+    "force_mae": 12.881407090906208,
+    "force_rmse": 14.667868754368683
+  },
+  "first_100_epochs_exact_match": true,
+  "new_test_evaluation": false
+}
