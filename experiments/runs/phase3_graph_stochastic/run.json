@@ -5,7 +5,7 @@
   "reportable": true,
   "overrides": {},
   "status": "complete",
-  "git_commit": "fdc23536f078f5be892602209f3cbe4750330dcc",
+  "git_commit": "1eaea763b4b80d2bad2611a49b8493b960f9e44e",
   "git_dirty": false,
   "git_dirty_ignores": [
     "experiments/runs/"
@@ -54,7 +54,9 @@
     "num_rbf": 50,
     "cutoff": 5.0,
     "num_mc_samples": 20,
-    "kl_weight": 0.01
+    "kl_weight": 0.01,
+    "train_num_mc_samples": 1,
+    "nll_warmup_epochs": 0
   },
   "n_parameters": 385925,
   "subsets": {
@@ -117,7 +119,7 @@
     "patience": 20,
     "max_batches_per_epoch": null,
     "shuffle": "torch.Generator seeded with data.seed",
-    "selection": "lowest val loss on the val subset"
+    "selection": "lowest validation data loss (energy and force terms, no KL) on the val subset; early stopping and the LR scheduler use the same quantity"
   },
   "environment": {
     "device": "cpu",
@@ -129,17 +131,17 @@
     "platform": "macOS-14.4-arm64-arm-64bit",
     "processor": "arm"
   },
-  "setup_s": 0.5732711250893772,
-  "started_at": "2026-10-22T08:00:43+00:00",
+  "setup_s": 0.6474087908864021,
+  "started_at": "2026-11-02T00:20:00+00:00",
   "checkpoint": "experiments/checkpoints/phase3_graph_stochastic.pt",
   "history_csv": "experiments/runs/phase3_graph_stochastic/history.csv",
   "epochs_run": 200,
   "best_epoch": 197,
-  "best_val_loss": 34.20228800196556,
+  "best_val_loss": 27.29289640258452,
   "stop_reason": "max_epochs",
-  "wall_clock_s": 2641.6503847499844,
-  "finished_at": "2026-10-22T08:44:45+00:00",
-  "checkpoint_sha256": "9412d66409d10c67da4a48a16f5d40565da03ec560281688b4553caa16b4991f",
+  "wall_clock_s": 2764.8540657081176,
+  "finished_at": "2026-11-02T02:56:25+00:00",
+  "checkpoint_sha256": "6133b4b921f4c87eb97bdb64507a944f9cadbafa48f8149471cf9893f14fa26b",
   "test": {
     "metrics_json": "test_metrics.json",
     "benchmark_row": {
@@ -148,12 +150,16 @@
       "energy_mae": 0.0897160257796033,
       "energy_mae_field": "energy_mae_total",
       "energy_mae_unit": "kcal/mol",
-      "force_mae": 0.20882165299395306,
+      "force_mae": 0.208821652990851,
       "force_mae_field": "force_mae_component",
       "force_mae_unit": "kcal/mol/Ang",
       "ece": 0.15375276982111005,
       "uncertainty_correlation": 0.002088680944834243,
-      "uncertainty_note": "computed under ml.utils.uq_metrics's provisional definition (Normal distribution assumed from E_var/F_var) - not yet Dongxiao's confirmed definition; see that module's docstring and SCRUM-39"
+      "ece_energy": 0.15375276982111005,
+      "ece_force": 0.29690137835506153,
+      "uncertainty_correlation_energy": 0.002088680944834243,
+      "uncertainty_correlation_force": 0.2622127339824752,
+      "uncertainty_note": "computed under UQ protocol v1.0 (ml.utils.uq_metrics: Normal distribution assumed from E_var/F_var, binning and Spearman convention as documented there); ratified 2026-10-23, Fazin, previously Dongxiao's to confirm; see that module's docstring and SCRUM-39"
     }
   }
 }

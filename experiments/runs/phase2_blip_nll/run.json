@@ -5,7 +5,7 @@
   "reportable": true,
   "overrides": {},
   "status": "complete",
-  "git_commit": "fdada3b38cf77c81f096289f7e147bffebb6463d",
+  "git_commit": "1eaea763b4b80d2bad2611a49b8493b960f9e44e",
   "git_dirty": false,
   "git_dirty_ignores": [
     "experiments/runs/"
@@ -96,9 +96,9 @@
   },
   "protocol": {
     "loss": "energy_loss_weight * MSE(E) + force_loss_weight * MSE(F), absolute E, plus kl_weight * model.kl_divergence() / n_batches when the model defines kl_weight (BLIP only; see ml/models/blip.py)",
-    "loss_override": "after nll_warmup_epochs epochs of the base loss, Gaussian NLL(E) + Gaussian NLL(F) on the train_num_mc_samples-sample mean/variance from predict_training_distribution replace the MSE terms, weighted by energy_loss_weight/force_loss_weight; variance floor (added, not clamped) = the last warmup epoch's validation MSE, or 1e-6 with no warmup; best-val selection and the LR scheduler reset at the first NLL epoch",
-    "nll_min_energy_var": 21.781623257193594,
-    "nll_min_force_var": 7.361692723195264,
+    "loss_override": "after nll_warmup_epochs epochs of the base loss, Gaussian NLL(E) + Gaussian NLL(F) on the train_num_mc_samples-sample mean/variance from predict_training_distribution replace the MSE terms, weighted by energy_loss_weight/force_loss_weight; variance floor (added, not clamped) = the last warmup epoch's training MSE, or 1e-6 with no warmup; best-selection and the LR scheduler reset at the first NLL epoch",
+    "nll_min_energy_var": 12.560001263603235,
+    "nll_min_force_var": 6.326860668560187,
     "nll_min_var_epoch": 20,
     "energy_loss_weight": 1.0,
     "force_loss_weight": 100.0,
@@ -121,7 +121,7 @@
     "patience": 20,
     "max_batches_per_epoch": null,
     "shuffle": "torch.Generator seeded with data.seed",
-    "selection": "lowest val loss on the val subset"
+    "selection": "lowest validation data loss (energy and force terms, no KL) on the val subset; early stopping and the LR scheduler use the same quantity"
   },
   "environment": {
     "device": "cpu",
@@ -133,31 +133,35 @@
     "platform": "macOS-14.4-arm64-arm-64bit",
     "processor": "arm"
   },
-  "setup_s": 0.5916141249472275,
-  "started_at": "2026-10-21T18:53:47+00:00",
+  "setup_s": 0.5901124582160264,
+  "started_at": "2026-11-01T18:57:21+00:00",
   "checkpoint": "experiments/checkpoints/phase2_blip_nll.pt",
   "history_csv": "experiments/runs/phase2_blip_nll/history.csv",
   "epochs_run": 200,
   "best_epoch": 200,
-  "best_val_loss": 199.3847040067053,
+  "best_val_loss": 15.424570448316967,
   "stop_reason": "max_epochs",
-  "wall_clock_s": 13882.171565041994,
-  "finished_at": "2026-10-21T22:45:09+00:00",
-  "checkpoint_sha256": "bf6c13fb152dd7617904a5ff552bf1e5a750e4952a6a91d87dccf9d80bb0ba54",
+  "wall_clock_s": 14337.046867541969,
+  "finished_at": "2026-11-02T00:07:51+00:00",
+  "checkpoint_sha256": "dd0e93543bf54aa99be8d8b5e12a19fe34c6a53c474d7bdd171af45b1c4abe41",
   "test": {
     "metrics_json": "test_metrics.json",
     "benchmark_row": {
       "phase": "blip",
       "model": "BLIP",
-      "energy_mae": 0.1721901234484498,
+      "energy_mae": 0.07499389175629177,
       "energy_mae_field": "energy_mae_total",
       "energy_mae_unit": "kcal/mol",
-      "force_mae": 0.19495017234791243,
+      "force_mae": 0.17870150798646525,
       "force_mae_field": "force_mae_component",
       "force_mae_unit": "kcal/mol/Ang",
-      "ece": 0.7717277828820551,
-      "uncertainty_correlation": 0.002576066837816982,
-      "uncertainty_note": "computed under ml.utils.uq_metrics's provisional definition (Normal distribution assumed from E_var/F_var) - not yet Dongxiao's confirmed definition; see that module's docstring and SCRUM-39"
+      "ece": 0.6469507197031112,
+      "uncertainty_correlation": 0.01896876778394791,
+      "ece_energy": 0.6469507197031112,
+      "ece_force": 0.7379202855326097,
+      "uncertainty_correlation_energy": 0.01896876778394791,
+      "uncertainty_correlation_force": 0.283550748432959,
+      "uncertainty_note": "computed under UQ protocol v1.0 (ml.utils.uq_metrics: Normal distribution assumed from E_var/F_var, binning and Spearman convention as documented there); ratified 2026-10-23, Fazin, previously Dongxiao's to confirm; see that module's docstring and SCRUM-39"
     }
   }
 }

@@ -8,7 +8,9 @@
     "num_rbf": 50,
     "cutoff": 5.0,
     "num_mc_samples": 20,
-    "kl_weight": 0.01
+    "kl_weight": 0.01,
+    "train_num_mc_samples": 1,
+    "nll_warmup_epochs": 0
   },
   "energy_scaling": {
     "shift_per_atom": -10799.53515625,
@@ -96,10 +98,10 @@
         "energy_rmse_total": 0.11262150969714282,
         "energy_mae_per_atom": 0.00996844730884482,
         "energy_rmse_per_atom": 0.012513501077460312,
-        "force_mae_component": 0.20882165299395306,
-        "force_rmse_component": 0.3263707651259439,
-        "force_mae_atom_norm": 0.4178349448436351,
-        "force_rmse_atom_norm": 0.5652907473032635,
+        "force_mae_component": 0.208821652990851,
+        "force_rmse_component": 0.3263707651252661,
+        "force_mae_atom_norm": 0.41783494484083206,
+        "force_rmse_atom_norm": 0.5652907473020895,
         "fields": {
           "energy_mae_total": {
             "quantity": "energy",
@@ -168,10 +170,10 @@
         "force": "kcal/mol/Ang"
       },
       "excluded": {},
-      "force_mae_component": 0.20882165299395306,
-      "force_rmse_component": 0.3263707651259439,
-      "force_mae_atom_norm": 0.4178349448436351,
-      "force_rmse_atom_norm": 0.5652907473032635,
+      "force_mae_component": 0.208821652990851,
+      "force_rmse_component": 0.3263707651252661,
+      "force_mae_atom_norm": 0.41783494484083206,
+      "force_rmse_atom_norm": 0.5652907473020895,
       "energy_mae_total": 0.0897160257796033,
       "energy_rmse_total": 0.11262150969714282,
       "energy_mae_per_atom": 0.00996844730884482,
@@ -231,7 +233,7 @@
   },
   "uq_metrics": {
     "schema_version": 1,
-    "distribution_assumption": "Normal(mean, variance) per frame (energy) / per component (force), from ModelOutput.E_var/F_var - provisional, see this module's docstring and SCRUM-39 for Dongxiao's sign-off",
+    "distribution_assumption": "Normal(mean, variance) per frame (energy) / per component (force), from ModelOutput.E_var/F_var - UQ protocol v1.0, see this module's docstring (SCRUM-39)",
     "coverage_levels": [
       0.5,
       0.8,
@@ -334,74 +336,74 @@
             "95%": 0.6470482264137347
           },
           "ece": 0.29690137835506153,
-          "spearman_uncertainty_error": 0.262212733953868,
+          "spearman_uncertainty_error": 0.2622127339824752,
           "risk_coverage": [
             {
               "coverage": 0.1,
               "n": 149874,
-              "mae": 0.13044967427376694
+              "mae": 0.1304496742610406
             },
             {
               "coverage": 0.2,
               "n": 299749,
-              "mae": 0.13782031263177513
+              "mae": 0.13782031262700278
             },
             {
               "coverage": 0.3,
               "n": 449623,
-              "mae": 0.1431829956991243
+              "mae": 0.1431829956932914
             },
             {
               "coverage": 0.4,
               "n": 599497,
-              "mae": 0.14844624818066227
+              "mae": 0.1484462481723106
             },
             {
               "coverage": 0.5,
               "n": 749372,
-              "mae": 0.15412045160545665
+              "mae": 0.15412045160004795
             },
             {
               "coverage": 0.6,
               "n": 899246,
-              "mae": 0.16121003337351794
+              "mae": 0.16121003336901069
             },
             {
               "coverage": 0.7,
               "n": 1049120,
-              "mae": 0.17067763415234113
+              "mae": 0.17067763414785284
             },
             {
               "coverage": 0.8,
               "n": 1198994,
-              "mae": 0.1813672688022974
+              "mae": 0.18136726879837015
             },
             {
               "coverage": 0.9,
               "n": 1348869,
-              "mae": 0.19262981508334387
+              "mae": 0.19262981507989715
             },
             {
               "coverage": 1.0,
               "n": 1498743,
-              "mae": 0.20882165299395306
+              "mae": 0.208821652990851
             }
           ],
-          "nll_gaussian": 2.390079909920393,
-          "crps_gaussian": 0.16667631323497023,
-          "sharpness_mean_std": 0.11374414511203959
+          "nll_gaussian": 2.390079909949495,
+          "crps_gaussian": 0.16667631323289886,
+          "sharpness_mean_std": 0.11374414511361197
         }
       }
     ]
   },
   "timing": {
-    "eval_wall_clock_s": 369.1836057920009,
-    "model_inference_s": 363.7891795762116,
-    "inference_s_per_config": 0.006553697230651094,
-    "wall_clock_s_per_config": 0.006650878340305192,
+    "eval_wall_clock_s": 370.84853387484327,
+    "model_inference_s": 365.1861651970539,
+    "inference_s_per_config": 0.0065788640616306175,
+    "wall_clock_s_per_config": 0.006680872180634551,
     "batch_size": 32,
     "n_batches": 1735,
-    "train_wall_clock_s": 2641.6503847499844
+    "train_wall_clock_s": 2764.8540657081176
   },
   "environment": {
     "device": "cpu",
@@ -416,12 +418,16 @@
     "energy_mae": 0.0897160257796033,
     "energy_mae_field": "energy_mae_total",
     "energy_mae_unit": "kcal/mol",
-    "force_mae": 0.20882165299395306,
+    "force_mae": 0.208821652990851,
     "force_mae_field": "force_mae_component",
     "force_mae_unit": "kcal/mol/Ang",
     "ece": 0.15375276982111005,
     "uncertainty_correlation": 0.002088680944834243,
-    "uncertainty_note": "computed under ml.utils.uq_metrics's provisional definition (Normal distribution assumed from E_var/F_var) - not yet Dongxiao's confirmed definition; see that module's docstring and SCRUM-39"
+    "ece_energy": 0.15375276982111005,
+    "ece_force": 0.29690137835506153,
+    "uncertainty_correlation_energy": 0.002088680944834243,
+    "uncertainty_correlation_force": 0.2622127339824752,
+    "uncertainty_note": "computed under UQ protocol v1.0 (ml.utils.uq_metrics: Normal distribution assumed from E_var/F_var, binning and Spearman convention as documented there); ratified 2026-10-23, Fazin, previously Dongxiao's to confirm; see that module's docstring and SCRUM-39"
   },
   "warnings": []
 }

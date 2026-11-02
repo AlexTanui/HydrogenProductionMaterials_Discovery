@@ -8,7 +8,9 @@
     "num_rbf": 50,
     "cutoff": 5.0,
     "num_mc_samples": 20,
-    "kl_weight": 0.01
+    "kl_weight": 0.01,
+    "train_num_mc_samples": 1,
+    "nll_warmup_epochs": 0
   },
   "energy_scaling": {
     "shift_per_atom": -10799.53515625,
@@ -17,6 +19,7 @@
     "formula": "E = scale * E_model + n_atoms * shift; F = scale * F_model"
   },
   "seed": 0,
+  "num_mc_samples": 20,
   "n_parameters": 740953,
   "data": {
     "gold_path": "/Users/alextanui/Desktop/Hydrogen_production/data/gold/md17/ethanol_dft.npz",
@@ -91,14 +94,14 @@
           "length": "Ang",
           "force": "kcal/mol/Ang"
         },
-        "energy_mae_total": 0.15767136297717488,
-        "energy_rmse_total": 0.17999044775271184,
-        "energy_mae_per_atom": 0.017519040330797223,
-        "energy_rmse_per_atom": 0.019998938639190212,
-        "force_mae_component": 0.20646554294358654,
-        "force_rmse_component": 0.3129735388376281,
-        "force_mae_atom_norm": 0.4128792069382728,
-        "force_rmse_atom_norm": 0.542086070691403,
+        "energy_mae_total": 0.09196481651624061,
+        "energy_rmse_total": 0.11203378942734309,
+        "energy_mae_per_atom": 0.010218312946248958,
+        "energy_rmse_per_atom": 0.012448198825260333,
+        "force_mae_component": 0.182611403026181,
+        "force_rmse_component": 0.2828276036175442,
+        "force_mae_atom_norm": 0.36515697757729815,
+        "force_rmse_atom_norm": 0.4898717792485378,
         "fields": {
           "energy_mae_total": {
             "quantity": "energy",
@@ -167,14 +170,14 @@
         "force": "kcal/mol/Ang"
       },
       "excluded": {},
-      "force_mae_component": 0.20646554294358654,
-      "force_rmse_component": 0.3129735388376281,
-      "force_mae_atom_norm": 0.4128792069382728,
-      "force_rmse_atom_norm": 0.542086070691403,
-      "energy_mae_total": 0.15767136297717488,
-      "energy_rmse_total": 0.17999044775271184,
-      "energy_mae_per_atom": 0.017519040330797223,
-      "energy_rmse_per_atom": 0.019998938639190212,
+      "force_mae_component": 0.182611403026181,
+      "force_rmse_component": 0.2828276036175442,
+      "force_mae_atom_norm": 0.36515697757729815,
+      "force_rmse_atom_norm": 0.4898717792485378,
+      "energy_mae_total": 0.09196481651624061,
+      "energy_rmse_total": 0.11203378942734309,
+      "energy_mae_per_atom": 0.010218312946248958,
+      "energy_rmse_per_atom": 0.012448198825260333,
       "fields": {
         "energy_mae_total": {
           "quantity": "energy",
@@ -230,7 +233,7 @@
   },
   "uq_metrics": {
     "schema_version": 1,
-    "distribution_assumption": "Normal(mean, variance) per frame (energy) / per component (force), from ModelOutput.E_var/F_var - provisional, see this module's docstring and SCRUM-39 for Dongxiao's sign-off",
+    "distribution_assumption": "Normal(mean, variance) per frame (energy) / per component (force), from ModelOutput.E_var/F_var - UQ protocol v1.0, see this module's docstring (SCRUM-39)",
     "coverage_levels": [
       0.5,
       0.8,
@@ -261,146 +264,146 @@
         "energy": {
           "n": 55509,
           "coverage": {
-            "50%": 0.038155974706804305,
-            "80%": 0.07537516438775695,
-            "90%": 0.09965951467329623,
-            "95%": 0.12343944225260768
+            "50%": 0.09221927975643589,
+            "80%": 0.17557513196058297,
+            "90%": 0.2262515988398278,
+            "95%": 0.2704966762146679
           },
-          "ece": 0.7033424759948836,
-          "spearman_uncertainty_error": 0.004669765842538918,
+          "ece": 0.5963643283071214,
+          "spearman_uncertainty_error": -0.0024620799419266854,
           "risk_coverage": [
             {
               "coverage": 0.1,
               "n": 5551,
-              "mae": 0.15568844577553595
+              "mae": 0.09380770356692487
             },
             {
               "coverage": 0.2,
               "n": 11102,
-              "mae": 0.15612262993154385
+              "mae": 0.09078108111151144
             },
             {
               "coverage": 0.3,
               "n": 16653,
-              "mae": 0.15825977301387137
+              "mae": 0.09091267339218159
             },
             {
               "coverage": 0.4,
               "n": 22204,
-              "mae": 0.15735938625923257
+              "mae": 0.09146015357593226
             },
             {
               "coverage": 0.5,
               "n": 27754,
-              "mae": 0.15737202295164662
+              "mae": 0.09212523420047561
             },
             {
               "coverage": 0.6,
               "n": 33305,
-              "mae": 0.1569117343491968
+              "mae": 0.09219547552919982
             },
             {
               "coverage": 0.7,
               "n": 38856,
-              "mae": 0.15728929412445955
+              "mae": 0.09217246049516162
             },
             {
               "coverage": 0.8,
               "n": 44407,
-              "mae": 0.1568428823158511
+              "mae": 0.091962028790506
             },
             {
               "coverage": 0.9,
               "n": 49958,
-              "mae": 0.1574546056187197
+              "mae": 0.0921685153028544
             },
             {
               "coverage": 1.0,
               "n": 55509,
-              "mae": 0.15767136297717488
+              "mae": 0.09196481651624061
             }
           ],
-          "nll_gaussian": 20.28768905432324,
-          "crps_gaussian": 0.1429401229927418,
-          "sharpness_mean_std": 0.027596393459418826
+          "nll_gaussian": 9.992760643463043,
+          "crps_gaussian": 0.08063044295081913,
+          "sharpness_mean_std": 0.023061483894506764
         },
         "force": {
           "n": 1498743,
           "coverage": {
-            "50%": 0.0545096791110951,
-            "80%": 0.1032585306486836,
-            "90%": 0.1322381489021133,
-            "95%": 0.15707229324840882
+            "50%": 0.05651135651676104,
+            "80%": 0.10709974959015656,
+            "90%": 0.13725501970651405,
+            "95%": 0.16298391385314226
           },
-          "ece": 0.6757303370224248,
-          "spearman_uncertainty_error": 0.2730471382034822,
+          "ece": 0.6715374900833565,
+          "spearman_uncertainty_error": 0.2640741056850872,
           "risk_coverage": [
             {
               "coverage": 0.1,
               "n": 149874,
-              "mae": 0.12534992402806774
+              "mae": 0.11143418556284586
             },
             {
               "coverage": 0.2,
               "n": 299749,
-              "mae": 0.13445379801127333
+              "mae": 0.11940993525692202
             },
             {
               "coverage": 0.3,
               "n": 449623,
-              "mae": 0.14124340978974584
+              "mae": 0.12529046884863226
             },
             {
               "coverage": 0.4,
               "n": 599497,
-              "mae": 0.14776697775356853
+              "mae": 0.1308863855912647
             },
             {
               "coverage": 0.5,
               "n": 749372,
-              "mae": 0.15475421512368512
+              "mae": 0.13703797015067004
             },
             {
               "coverage": 0.6,
               "n": 899246,
-              "mae": 0.1622150190696037
+              "mae": 0.14351538317833962
             },
             {
               "coverage": 0.7,
               "n": 1049120,
-              "mae": 0.17053242382130102
+              "mae": 0.1509928166481567
             },
             {
               "coverage": 0.8,
               "n": 1198994,
-              "mae": 0.18009311905513395
+              "mae": 0.15947761860509008
             },
             {
               "coverage": 0.9,
               "n": 1348869,
-              "mae": 0.19119670325740587
+              "mae": 0.16886693909234604
             },
             {
               "coverage": 1.0,
               "n": 1498743,
-              "mae": 0.20646554294358654
+              "mae": 0.182611403026181
             }
           ],
-          "nll_gaussian": 81.38150693622745,
-          "crps_gaussian": 0.19439040060710414,
-          "sharpness_mean_std": 0.0230915115462123
+          "nll_gaussian": 82.21007551680788,
+          "crps_gaussian": 0.1718741648005925,
+          "sharpness_mean_std": 0.02059868420301516
         }
       }
     ]
   },
   "timing": {
-    "eval_wall_clock_s": 655.1540683750063,
-    "model_inference_s": 650.1417381979991,
-    "inference_s_per_config": 0.011712366250481887,
-    "wall_clock_s_per_config": 0.011802663863067364,
+    "eval_wall_clock_s": 627.1396845830604,
+    "model_inference_s": 622.1962953188922,
+    "inference_s_per_config": 0.011208926396059958,
+    "wall_clock_s_per_config": 0.011297982031437432,
     "batch_size": 32,
     "n_batches": 1735,
-    "train_wall_clock_s": 4783.498613125004
+    "train_wall_clock_s": 4403.858505917015
   },
   "environment": {
     "device": "cpu",
@@ -412,15 +415,19 @@
   "benchmark_row": {
     "phase": "blip",
     "model": "BLIP",
-    "energy_mae": 0.15767136297717488,
+    "energy_mae": 0.09196481651624061,
     "energy_mae_field": "energy_mae_total",
     "energy_mae_unit": "kcal/mol",
-    "force_mae": 0.20646554294358654,
+    "force_mae": 0.182611403026181,
     "force_mae_field": "force_mae_component",
     "force_mae_unit": "kcal/mol/Ang",
-    "ece": 0.7033424759948836,
-    "uncertainty_correlation": 0.004669765842538918,
-    "uncertainty_note": "computed under ml.utils.uq_metrics's provisional definition (Normal distribution assumed from E_var/F_var) - not yet Dongxiao's confirmed definition; see that module's docstring and SCRUM-39"
+    "ece": 0.5963643283071214,
+    "uncertainty_correlation": -0.0024620799419266854,
+    "ece_energy": 0.5963643283071214,
+    "ece_force": 0.6715374900833565,
+    "uncertainty_correlation_energy": -0.0024620799419266854,
+    "uncertainty_correlation_force": 0.2640741056850872,
+    "uncertainty_note": "computed under UQ protocol v1.0 (ml.utils.uq_metrics: Normal distribution assumed from E_var/F_var, binning and Spearman convention as documented there); ratified 2026-10-23, Fazin, previously Dongxiao's to confirm; see that module's docstring and SCRUM-39"
   },
   "warnings": []
 }
