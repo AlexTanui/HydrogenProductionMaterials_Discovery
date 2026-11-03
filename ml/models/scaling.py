@@ -130,6 +130,36 @@ class ScaledEnergyModel(nn.Module):
             scale_sq * f_var,
         )
 
+    def predict_samples(
+        self,
+        z: Tensor,
+        pos: Tensor,
+        edge_index: Tensor,
+        edge_attr: Optional[Tensor],
+        batch: Optional[Tensor] = None,
+        num_mc_samples: Optional[int] = None,
+    ) -> tuple[Tensor, Tensor]:
+        """Rescaled raw per-sample (E_samples [n, B], F_samples [n, N, 3])
+        in absolute kcal/mol / kcal/mol/A - the uncollapsed stack behind
+        `predict_distribution`. Only valid when `supports_distribution` is
+        True; the wrapped model defines `predict_samples` whenever it
+        defines `predict_distribution` (BLIP, GraphStochastic - both
+        implement the former and derive the latter from it), so the same
+        probe covers both.
+        """
+        if not self.supports_distribution:
+            raise AttributeError(
+                f"{type(self.model).__name__} has no predict_distribution; "
+                "check supports_distribution before calling this"
+            )
+        if batch is None:
+            batch = torch.zeros(pos.shape[0], dtype=torch.long, device=pos.device)
+        e_samples, f_samples = self.model.predict_samples(
+            z, pos, edge_index, edge_attr, batch=batch, num_mc_samples=num_mc_samples
+        )
+        n_atoms = torch.bincount(batch, minlength=e_samples.shape[1]).to(e_samples.dtype)
+        return self.scale * e_samples + n_atoms * self.shift, self.scale * f_samples
+
     @property
     def supports_training_distribution(self) -> bool:
         """Whether the wrapped model exposes `predict_training_distribution`
