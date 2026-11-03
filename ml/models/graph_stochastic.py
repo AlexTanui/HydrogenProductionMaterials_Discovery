@@ -316,14 +316,17 @@ class GraphStochastic(nn.Module):
         return energy, forces
 
     @torch.no_grad()
-    def predict_distribution(self, z: torch.Tensor, pos: torch.Tensor,
-                              edge_index: torch.Tensor, edge_attr: torch.Tensor,
-                              batch: Optional[torch.Tensor] = None,
-                              num_mc_samples: Optional[int] = None,
-                              ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def predict_samples(self, z: torch.Tensor, pos: torch.Tensor,
+                         edge_index: torch.Tensor, edge_attr: torch.Tensor,
+                         batch: Optional[torch.Tensor] = None,
+                         num_mc_samples: Optional[int] = None,
+                         ) -> tuple[torch.Tensor, torch.Tensor]:
         """Run `num_mc_samples` independent stochastic forward passes and
-        return (E_mean, E_var, F_mean, F_var). Same contract and same
-        no_grad/enable_grad reasoning as ml/models/blip.py's."""
+        return the raw, uncollapsed stack: (E_samples [n, B], F_samples
+        [n, N, 3]). Same contract and same no_grad/enable_grad reasoning
+        as ml/models/blip.py's `predict_samples` - see that docstring for
+        why this exists as a method of its own rather than being folded
+        straight into `predict_distribution`'s mean/var collapse."""
         n = num_mc_samples or self.num_mc_samples
         energies, forces = [], []
         for _ in range(n):
@@ -333,8 +336,19 @@ class GraphStochastic(nn.Module):
             energies.append(e.detach())
             forces.append(f.detach())
 
-        e_stack = torch.stack(energies, dim=0)
-        f_stack = torch.stack(forces, dim=0)
+        return torch.stack(energies, dim=0), torch.stack(forces, dim=0)
+
+    @torch.no_grad()
+    def predict_distribution(self, z: torch.Tensor, pos: torch.Tensor,
+                              edge_index: torch.Tensor, edge_attr: torch.Tensor,
+                              batch: Optional[torch.Tensor] = None,
+                              num_mc_samples: Optional[int] = None,
+                              ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Run `num_mc_samples` independent stochastic forward passes and
+        return (E_mean, E_var, F_mean, F_var). Thin wrapper around
+        `predict_samples` - see that method for the sampling/grad-context
+        reasoning, same contract as ml/models/blip.py's."""
+        e_stack, f_stack = self.predict_samples(z, pos, edge_index, edge_attr, batch=batch, num_mc_samples=num_mc_samples)
         return e_stack.mean(0), e_stack.var(0, unbiased=True), f_stack.mean(0), f_stack.var(0, unbiased=True)
 
     def predict_training_distribution(self, z: torch.Tensor, pos: torch.Tensor,
