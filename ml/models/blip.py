@@ -304,13 +304,21 @@ class BLIP(nn.Module):
         return energy, forces
 
     @torch.no_grad()
-    def predict_distribution(self, z: torch.Tensor, pos: torch.Tensor,
-                              edge_index: torch.Tensor, edge_attr: torch.Tensor,
-                              batch: Optional[torch.Tensor] = None,
-                              num_mc_samples: Optional[int] = None,
-                              ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """The actual Phase 2 deliverable: run `num_mc_samples` independent
-        stochastic forward passes and return (E_mean, E_var, F_mean, F_var).
+    def predict_samples(self, z: torch.Tensor, pos: torch.Tensor,
+                         edge_index: torch.Tensor, edge_attr: torch.Tensor,
+                         batch: Optional[torch.Tensor] = None,
+                         num_mc_samples: Optional[int] = None,
+                         ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Run `num_mc_samples` independent stochastic forward passes and
+        return the raw, uncollapsed stack: (E_samples [n, B], F_samples
+        [n, N, 3]). `predict_distribution` below is this same loop
+        followed by `.mean(0)`/`.var(0)`; this method exists separately so
+        a caller that needs the actual predictive distribution - not just
+        its first two Gaussian moments - can get it without duplicating
+        the sampling loop. ml.training.calibrate's CQR-style conformal
+        calibration is the motivating caller: it conformalizes the
+        empirical quantiles of this stack directly, rather than assuming
+        the per-point residual is Normal(mean, var).
 
         @torch.no_grad() here because this is for inference/evaluation, not
         training - forces are obtained per-sample via a local
@@ -327,8 +335,20 @@ class BLIP(nn.Module):
             energies.append(e.detach())
             forces.append(f.detach())
 
-        e_stack = torch.stack(energies, dim=0)  # [n, B]
-        f_stack = torch.stack(forces, dim=0)    # [n, N, 3]
+        return torch.stack(energies, dim=0), torch.stack(forces, dim=0)  # [n, B], [n, N, 3]
+
+    @torch.no_grad()
+    def predict_distribution(self, z: torch.Tensor, pos: torch.Tensor,
+                              edge_index: torch.Tensor, edge_attr: torch.Tensor,
+                              batch: Optional[torch.Tensor] = None,
+                              num_mc_samples: Optional[int] = None,
+                              ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """The actual Phase 2 deliverable: run `num_mc_samples` independent
+        stochastic forward passes and return (E_mean, E_var, F_mean, F_var).
+        Thin wrapper around `predict_samples` - see that method for the
+        sampling/grad-context reasoning.
+        """
+        e_stack, f_stack = self.predict_samples(z, pos, edge_index, edge_attr, batch=batch, num_mc_samples=num_mc_samples)
         return e_stack.mean(0), e_stack.var(0, unbiased=True), f_stack.mean(0), f_stack.var(0, unbiased=True)
 
     def predict_training_distribution(self, z: torch.Tensor, pos: torch.Tensor,
