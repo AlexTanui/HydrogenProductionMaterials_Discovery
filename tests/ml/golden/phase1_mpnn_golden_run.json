@@ -1,0 +1,63 @@
+{
+  "what": "SCRUM-38 golden run; see tests/ml/test_golden_run.py",
+  "reason": "First reference for the SCRUM-38 golden run: phase1_baseline MPNN, 1 epoch, 512 train / 256 val frames, 1 torch thread.",
+  "generated_at": "2026-10-31T15:03:00+00:00",
+  "git_commit": "aaa1d5115569b79b245a8c30abc308d32deb4e36",
+  "budget": {
+    "base_config": "experiments/configs/phase1_baseline.yaml",
+    "name": "golden_phase1_mpnn",
+    "epochs": 1,
+    "train_frames": 512,
+    "val_frames": 256,
+    "torch_num_threads": 1
+  },
+  "metrics": {
+    "energy_mae_per_atom": 8.99850124782986,
+    "energy_mae_total": 80.98651123046875,
+    "energy_rmse_per_atom": 9.008430050596589,
+    "energy_rmse_total": 81.0758704553693,
+    "force_mae_atom_norm": 29.971151938160446,
+    "force_mae_component": 14.962025328646027,
+    "force_rmse_atom_norm": 35.95696496976781,
+    "force_rmse_component": 20.75976340453739
+  },
+  "units": {
+    "energy": "kcal/mol",
+    "length": "Ang",
+    "force": "kcal/mol/Ang"
+  },
+  "scored": {
+    "split": "val",
+    "n_frames": 256
+  },
+  "frames": {
+    "source": "data/gold/md17/ethanol_dft.npz",
+    "selection": "numpy.linspace(0, len(split_idx), n, endpoint=False).astype(int) over the real train_idx and val_idx",
+    "train_frames": 512,
+    "val_frames": 256,
+    "train_first_last_gold_index": [
+      0,
+      443206
+    ],
+    "val_first_last_gold_index": [
+      444074,
+      499366
+    ],
+    "gold_indices_sha256": "b33c4375fc212b83eead272bba8ba95d72d8a7edb648f263f174f47296492d86",
+    "data_sha256": "4513c46547f8ac123072625cfa4e4d8393a488ece7e54f8a8b73aae8498327a8"
+  },
+  "best_epoch": 1,
+  "epochs_run": 1,
+  "torch_num_threads": 1,
+  "environment": {
+    "device": "cpu",
+    "torch": "2.13.0+cu130",
+    "torch_geometric": "2.8.0.post1",
+    "numpy": "2.4.6",
+    "torch_num_threads": 1,
+    "python": "3.11.9",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel"
+  },
+  "seconds": 4.099340100015979
+}

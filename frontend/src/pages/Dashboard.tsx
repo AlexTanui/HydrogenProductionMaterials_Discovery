@@ -79,9 +79,9 @@ export default function Dashboard() {
         <div className="stat-tile">
           <p className="stat-label">Serving model</p>
           <p className="stat-value" style={{ fontSize: 16 }}>
-            <span className="badge badge-warning">
+            <span className="badge badge-good">
               <span className="badge-dot" />
-              Phase 1 (preview)
+              Phase 1–3 (live)
             </span>
           </p>
         </div>
@@ -108,12 +108,20 @@ export default function Dashboard() {
       <div className="card">
         <p className="card-title">Try it</p>
         <p style={{ margin: "0 0 8px", fontSize: 14, lineHeight: 1.6, color: "var(--ink-secondary)" }}>
+          <b style={{ color: "var(--ink-primary)" }}>EDA</b> — the real exploratory analysis this
+          project is built on: distributions, cutoff-radius check, split-integrity check.
+        </p>
+        <p style={{ margin: "0 0 8px", fontSize: 14, lineHeight: 1.6, color: "var(--ink-secondary)" }}>
           <b style={{ color: "var(--ink-primary)" }}>Predict</b> — pick an MD17 molecule and
           trajectory frame to see predicted energy, force magnitude, and uncertainty.
         </p>
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "var(--ink-secondary)" }}>
+        <p style={{ margin: "0 0 8px", fontSize: 14, lineHeight: 1.6, color: "var(--ink-secondary)" }}>
           <b style={{ color: "var(--ink-primary)" }}>Benchmarks</b> — compares all three phases as
           each is trained and evaluated.
+        </p>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "var(--ink-secondary)" }}>
+          <b style={{ color: "var(--ink-primary)" }}>Ethics &amp; Safety</b> — what this sprint's own
+          findings mean for trusting a model's confidence, and what that requires before deployment.
         </p>
       </div>
     </>

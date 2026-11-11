@@ -12,21 +12,56 @@
 
 ---
 
+## Phase 1 protocol v1 result
+
+Trained by the shared `ml/training/train.py` under the [Phase 1 protocol v1](../phase1_protocol.md)
+and scored once on the full test split by `ml/training/evaluate.py`. This is
+this model's row in the [Phase 1 benchmark](../../reports/phase1_benchmark.md);
+the run record is [`experiments/runs/phase1_physnet/`](../../experiments/runs/phase1_physnet/).
+
+| | |
+|---|---|
+| Config | [`experiments/configs/phase1_physnet.yaml`](../../experiments/configs/phase1_physnet.yaml) - hidden_channels 128, num_modules 3, num_layers 2, num_rbf 16 |
+| Parameters | 808,746 |
+| Trained at | `b1c2d89`, clean tree |
+| Data | ethanol DFT: 10,000 train / 5,000 val frames (stride subsets, seed 42); test: all 55,509 frames, seed 0, batch 32 |
+| Epochs | 200 run, best epoch 200; stopped by the 200-epoch cap, still improving (8 val improvements in the last 20 epochs, final lr 3.91e-06) |
+| Val / train loss at the best epoch | 1.77x |
+| Training time | 3,946 s (1.10 h), cpu, 4 threads |
+| Physics checks | 14 of 14 passed on the earlier `d9f3814` checkpoint (`tests/ml/test_painn_physics.py`: rotation, reflection, translation, permutation, finite-difference forces, zero net force, batching, gradient path from `pos`); not yet re-run on this retrained one |
+
+| Test metric | Value |
+|---|---|
+| **Energy MAE** (total) | **0.0611** kcal/mol |
+| Energy RMSE (total) | 0.0779 kcal/mol |
+| Energy MAE (per atom) | 0.00678 kcal/mol/atom |
+| **Force MAE** (component) | **0.1738** kcal/mol/Å |
+| Force RMSE (component) | 0.2596 kcal/mol/Å |
+| Force MAE (atom norm) | 0.3479 kcal/mol/Å |
+| Inference | 0.600 ms/frame (forward + force backward, batch 32) |
+
+One seed, at the epoch cap; see the protocol's limitations before comparing
+close rows.
+
+Supersedes the first v1 run (`d9f3814`, energy MAE 0.0590, force MAE 0.1675), retrained with the same config and seed on another machine on 19 Oct for run-record schema consistency.
+
+---
+
 ## 1. Status
 
 | | |
 |---|---|
 | Implementation | **Complete** |
 | Unit tests | **Complete** — 22 checks, `pytest tests/test_physnet.py` |
-| Trained checkpoint | **Not produced yet** |
-| Results | **Not produced yet** — §5 below is blank on purpose |
+| Trained checkpoint | **Produced** under the Phase 1 protocol v1 - see *Phase 1 protocol v1 result* above |
+| Results | Phase 1 protocol v1 result above; §5 holds an earlier subset run under a different protocol |
 
 Training is blocked on `ml/training/train.py` (Ruturaj, SCRUM-50 epic),
 which is 0 bytes on `main`. `ml/training/train_physnet.py` is included as
 standalone scaffolding so this entry can be trained before that lands; if
 it is used, **say so in the results**, because a bake-off whose entries
 were trained by different code is not a controlled comparison. Re-run
-through `train.py` once it exists.
+through `train.py` once it exists. *(Done: see Phase 1 protocol v1 result above.)*
 
 ---
 
@@ -131,9 +166,13 @@ model reads `edge_attr` on the force path has silently-zero forces.
 
 ---
 
-## 5. Results
+## 5. Earlier result (different protocol)
 
-**Subset run — not a full-dataset result.** See the scope note below the table.
+**Earlier subset run, not comparable with the Phase 1 protocol v1 result above:**
+trained by the standalone `ml/training/train_physnet.py` with an **L1** loss on a
+contiguous 20,000-frame prefix of `train_idx` for 20 epochs, with
+`init_shift_from_energies`, and scored on 2,000 **validation** configs. See the
+scope note below the table.
 
 | Metric | Value |
 |---|---|

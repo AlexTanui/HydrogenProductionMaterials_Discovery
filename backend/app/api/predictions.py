@@ -12,25 +12,18 @@ router = APIRouter(prefix="/predictions", tags=["predictions"])
 
 @router.post("", response_model=PredictionResponse)
 def predict(request: PredictionRequest, db: Session = Depends(get_db)) -> PredictionResponse:
-    energy, force_rms, uncertainty = inference_service.predict(request.molecule, request.frame_index)
+    result = inference_service.predict(request.molecule, request.frame_index, request.phase)
 
     db.add(
         PredictionLog(
             molecule=request.molecule,
             frame_index=request.frame_index,
-            phase=inference_service.phase,
-            predicted_energy=energy,
-            predicted_force_rms=force_rms,
-            uncertainty=uncertainty,
+            phase=result["phase"],
+            predicted_energy=result["predicted_energy"],
+            predicted_force_rms=result["predicted_force_rms"],
+            uncertainty=result["uncertainty"],
         )
     )
     db.commit()
 
-    return PredictionResponse(
-        molecule=request.molecule,
-        frame_index=request.frame_index,
-        predicted_energy=energy,
-        predicted_force_rms=force_rms,
-        uncertainty=uncertainty,
-        phase=inference_service.phase,
-    )
+    return PredictionResponse(molecule=request.molecule, frame_index=request.frame_index, **result)

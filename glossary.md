@@ -131,6 +131,8 @@ one way — never add a dependency in the reverse direction.
 | `docs/api.md` | Expanded version of §4, kept in sync as endpoints are built | Alex |
 | `docs/technical_report.md` | Deliverable 5: final technical report, built around the Three-Phase Technical Summary table | Dongxiao, assembled with input from all |
 | `docs/model_cards/` | One card per checkpoint (one per phase, minimum) | Ruturaj / Fazin |
+| `docs/sprint_process.md` | **Implemented.** Course-assessment doc: sprint calendar (5 fortnightly sprints mapped onto this roadmap), Jira/hours setup, sprint review + retro cadence | Alex |
+| `docs/retrospectives/` | **Implemented (template).** One retrospective per sprint, copied from `TEMPLATE.md` | Whole team, after each Sprint Review |
 
 ### `tests/` — owner: Fazin
 
@@ -252,12 +254,22 @@ Liveness check. Response:
 
 Predict energy, force magnitude, and (for stochastic phases) uncertainty
 for one MD17 configuration. Every call is logged for later analysis.
+**Implemented** (`backend/app/services/inference.py`) against real
+trained checkpoints for `ethanol` (DFT) only — every other catalog entry
+in `GET /molecules` has real gold data but no trained model, and is
+refused with a clear error (503) rather than scored out-of-distribution.
 
 Request:
 
 ```json
-{ "molecule": "aspirin", "frame_index": 0 }
+{ "molecule": "aspirin", "frame_index": 0, "phase": "phase2_blip" }
 ```
+
+`frame_index` indexes the gold file's held-out **test** split, not the
+raw trajectory — `[0, n_test_frames - 1]`, refused with a 422 outside that
+range. `phase` is optional (default `"phase1_deterministic"`); accepts
+the three canonical phase names below or the short aliases `"phase1"` /
+`"phase2"` / `"phase3"`, refused with a 422 if unrecognised.
 
 Response:
 
@@ -268,7 +280,10 @@ Response:
   "predicted_energy": -406234.5,
   "predicted_force_rms": 12.3,
   "uncertainty": 0.08,
-  "phase": "phase1_deterministic"
+  "phase": "phase1_deterministic",
+  "true_energy": -406234.1,
+  "true_force_rms": 12.1,
+  "uncertainty_calibrated": 0.21
 }
 ```
 
@@ -276,11 +291,35 @@ Response:
 mean-square over all atoms — the per-atom force vector field itself isn't
 serialized here, only its summary magnitude). `uncertainty` is `null` for
 the Phase 1 deterministic model, which has none by construction.
+`true_energy`/`true_force_rms` are the real DFT values at that exact
+frame, read from the gold file's test split — not predicted — so a caller
+can see how far off a live prediction actually is. `phase` in the
+response is always one of the three canonical names, even when the
+request used a short alias; Phase 2 is served by whichever BLIP
+checkpoint is the current clean/fixed run (see
+`app.core.config.PHASE_CHECKPOINTS`'s own comment for which one and why),
+not necessarily the first BLIP run ever trained.
+
+`uncertainty_calibrated` (SCRUM-68, additive) is `uncertainty` scaled by a
+post-hoc conformal correction fit offline on the held-out validation
+split (`ml/training/calibrate.py`), loaded from
+`reports/calibration/*.json` by `backend/app/services/calibration.py`.
+`null` whenever `uncertainty` is `null`, and also `null` when this
+checkpoint has never been calibrated (e.g. a molecule just trained live
+through `POST /jobs/train`) — `uncertainty` always keeps its original,
+uncalibrated meaning regardless.
 
 ### `GET /molecules`
 
 The fixed catalog of MD17 molecules available to predict on — a static
 reference list, not a live database (MD17's molecule set doesn't change).
+**Implemented**: read straight from `data/gold/md17/*.npz` at startup
+(`app.services.inference.MD17_MOLECULES_CATALOG`), not hand-maintained —
+it reflects whatever gold files actually exist, so it can't name a
+molecule with no data or omit one that has it. When a molecule has more
+than one theory level (only `ethanol` does), DFT wins, since that's the
+theory every trained checkpoint uses; this endpoint has no theory field
+either way.
 
 ```json
 [
@@ -292,14 +331,20 @@ reference list, not a live database (MD17's molecule set doesn't change).
 
 ### `GET /benchmarks`
 
-Every entry from `experiments/results/*.json` — the Three-Phase Technical
-Summary, in the shape the report table (§6 of the proposal) needs directly:
+One row per project phase (Phase 1/2/3), read from each phase's own
+checkpoint's scored results file (`experiments/results/*.json`'s
+`benchmark_row`) - **implemented** (`backend/app/api/benchmarks.py`),
+sharing one source of truth (`app.core.config.PHASE_CHECKPOINTS`) with
+`POST /predictions` for which checkpoint serves which phase. Not one row
+per `experiments/runs/` entry or per Phase 1 bake-off architecture: a
+phase whose checkpoint hasn't been trained/scored yet is simply absent
+from the list, not a crash:
 
 ```json
 [
   {
     "phase": "phase1_deterministic",
-    "model": "mpnn",
+    "model": "MPNN",
     "energy_mae": 0.42,
     "force_mae": 1.15,
     "ece": null,
@@ -307,7 +352,7 @@ Summary, in the shape the report table (§6 of the proposal) needs directly:
   },
   {
     "phase": "phase2_blip",
-    "model": "blip_mpnn",
+    "model": "BLIP",
     "energy_mae": 0.39,
     "force_mae": 1.08,
     "ece": 0.05,
@@ -318,6 +363,19 @@ Summary, in the shape the report table (§6 of the proposal) needs directly:
 
 `ece` and `uncertainty_correlation` are `null` for the deterministic phase
 (no uncertainty to calibrate).
+
+Six further fields (SCRUM-68, additive) carry the same post-hoc
+calibration as `POST /predictions`'s `uncertainty_calibrated`, applied to
+the metrics suite instead of one prediction: `energy_ece_calibrated`,
+`force_ece_calibrated`, `energy_coverage_90_calibrated`,
+`force_coverage_90_calibrated`, `energy_sharpness_calibrated`,
+`force_sharpness_calibrated` — each the "after" counterpart of the
+existing uncalibrated field of the same name, read from
+`reports/calibration/*.json`. `null` for every row with no calibration
+report yet (currently Phase 1, which has no uncertainty to calibrate in
+the first place). Deliberately shown alongside the raw numbers rather
+than replacing them, so a caller can see both the model's own raw
+uncertainty and the effect of the post-hoc fix.
 
 ### Auth
 
@@ -372,24 +430,30 @@ the silver → gold step.
 
 Every training run must be defined by a YAML file in `experiments/configs/`
 matching this shape — no hardcoded hyperparameters in training scripts.
+`ml/config.py` loads it, and unknown keys fail loudly: at the top level and
+in `data:` / `train:` when the file is loaded, and in `model:` when
+`ml/models/registry.py` builds the model.
 
 ```yaml
-name: phase1_baseline
+name: phase1_baseline         # also names the checkpoint and the run record, experiments/runs/<name>/
 data:
   dataset: md17               # md17 | md22 — which top-level folder under data/
   molecule: aspirin           # see §3 inventory for the current bronze roster
   theory: ccsd                 # dft | ccsd | ccsd_t — must match, never pool across levels
   gold_path: data/gold/md17/aspirin_ccsd.npz  # training reads gold only, never bronze/silver directly
-  cutoff_radius: 5.0         # Å, for neighbor graph construction
-  train_split: 0.8           # contiguous trajectory blocks, not random — see §5
-  val_split: 0.1
+  cutoff_radius: 5.0         # Å, for neighbor graph construction; each model's own cutoff must equal it
+  train_split: 0.8           # contiguous trajectory blocks, not random — see §5. A record of how the
+  val_split: 0.1             #   gold file's train/val/test_idx were made; never re-derived at train time
   test_split: 0.1
   use_literature_split: true # true for aspirin/malonaldehyde/toluene/ccsd_t-ethanol — see §3
-  seed: 42
+  num_rbf: 16                # width of the dataset's RBF edge_attr; no model reads it (each recomputes
+                             #   distances from pos with its own basis), so it is the same everywhere
+  seed: 42                   # torch seed: initialisation and shuffle order
 model:
-  phase: mpnn               # mpnn | blip | graph_stochastic
-  hidden_channels: 128
-  num_layers: 4
+  phase: mpnn                # registry key: mpnn | schnet | painn | physnet | dimenet (Phase 1),
+                             #   blip (Phase 2), graph_stochastic (Phase 3, not yet registered)
+  hidden_channels: 128       # every other key goes to that model's constructor unchanged,
+  num_layers: 4              #   so the accepted keys differ per model
   num_mc_samples: 20         # stochastic forward passes for UQ (blip / graph_stochastic only)
   perturbation_strength: 0.1 # graph_stochastic only
 train:
@@ -400,7 +464,14 @@ train:
   force_loss_weight: 100.0   # forces conventionally weighted much higher than energy
   patience: 20
   device: cpu                # cpu | cuda
+  train_subset: 10000        # optional: frames from train_idx, a fixed stride with a seeded offset;
+                             #   omit for the whole split. Never re-splits anything
+  train_subset_seed: 42      # required when either subset is set
+  val_subset: 5000           # optional: same method over val_idx; early stopping, checkpoint selection
 ```
+
+The test split is never subset or read during training; it is scored once,
+afterwards, by `ml/training/evaluate.py`.
 
 ---
 

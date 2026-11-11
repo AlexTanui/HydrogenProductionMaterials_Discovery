@@ -309,6 +309,21 @@ a {
   }
 }
 
+.badge-good {
+  background: color-mix(in srgb, var(--status-good) 18%, transparent);
+  color: #0a7d0a;
+}
+
+:root[data-theme="dark"] .badge-good {
+  color: var(--status-good);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .badge-good {
+    color: var(--status-good);
+  }
+}
+
 .badge-dot {
   width: 6px;
   height: 6px;

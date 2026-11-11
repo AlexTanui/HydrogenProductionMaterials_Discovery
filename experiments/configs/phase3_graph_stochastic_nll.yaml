@@ -1,0 +1,88 @@
+# Phase 3 - graph-space stochasticity, NLL variant (SCRUM-70). Same backbone,
+# same data, same training budget as phase3_graph_stochastic.yaml - the one
+# and only difference is train_num_mc_samples/nll_warmup_epochs below, which
+# switch the loss from plain MSE on one stochastic sample to Gaussian NLL on
+# a K-sample mean/variance (ml/models/graph_stochastic.py,
+# ml/training/train.py's batch_loss). Mirrors phase2_blip_nll.yaml exactly -
+# same fix, same two hooks, ported from BLIP's SCRUM-61 to Phase 3's own
+# force-uncertainty overconfidence.
+#
+# Why this file exists rather than editing phase3_graph_stochastic.yaml in
+# place: the first real run (phase3_graph_stochastic, kl_weight=0.01,
+# train_num_mc_samples=1 implicitly) is a committed, reported result -
+# energy coverage@90% 99.52%, but force coverage@90% only 57.19% (badly
+# overconfident) even though post-hoc conformal calibration (SCRUM-68) can
+# only push that to ~98% overshoot, not real calibration. This config is the
+# test of whether NLL training fixes the force channel at the source,
+# scored against the SAME baseline rather than overwriting it.
+name: phase3_graph_stochastic_nll
+
+# ---------------------------------------------------------------------------
+# Same data:/train: blocks as phase3_graph_stochastic.yaml and the six
+# locked Phase 1/2 configs, copied verbatim for a fair comparison. Not one
+# of the seven configs tests/ml/test_harness.py locks - a Phase 3 variant,
+# not an eighth entry in that lock - but it still shouldn't drift from them
+# for no reason.
+# ---------------------------------------------------------------------------
+data:
+  dataset: md17
+  molecule: ethanol
+  theory: dft
+  gold_path: data/gold/md17/ethanol_dft.npz   # gold only; if missing, run `python -m ml.data.preprocessing`
+  cutoff_radius: 5.0          # A; each model's own cutoff must equal it (train.py checks)
+  train_split: 0.8            # how the gold file's contiguous trajectory blocks were made;
+  val_split: 0.1              #   the split is baked in as train/val/test_idx and never re-derived
+  test_split: 0.1
+  use_literature_split: false # ethanol_dft ships no literature-standard split
+  num_rbf: 16                 # width of the dataset's edge_attr; no model reads it
+  seed: 42                    # torch seed: initialisation and shuffle order
+
+model:
+  phase: graph_stochastic
+  hidden_channels: 128
+  num_layers: 4
+  num_rbf: 50
+  # MC samples ml/training/evaluate.py draws via predict_distribution to
+  # populate ModelOutput.E_var/F_var at evaluation time. Unchanged from
+  # phase3_graph_stochastic.yaml - this is the eval-time sample count, not
+  # training's.
+  num_mc_samples: 20
+  # Bayes-by-backprop complexity cost - unchanged from
+  # phase3_graph_stochastic.yaml. Deliberately held fixed here so this run
+  # isolates one variable (the loss function); retuning kl_weight is a
+  # separate follow-up.
+  kl_weight: 0.01
+  # THE variable this config tests (SCRUM-70). >1 switches batch_loss to
+  # Gaussian NLL on a train_num_mc_samples-sample mean/variance instead of
+  # MSE on one sample - the loss that can actually reward the force channel
+  # for matching its own error, which plain MSE on the mean never could
+  # (see ml/models/graph_stochastic.py's module docstring for why force
+  # uncertainty specifically needs this). 4, same choice phase2_blip_nll.yaml
+  # made for the identical reason: each training step now costs ~4x the
+  # forward+backward passes (and roughly 4x the memory, all K samples'
+  # graphs held at once) - expect training to take roughly 4x
+  # phase3_graph_stochastic's own wall-clock time, not the same budget.
+  train_num_mc_samples: 4
+  # Same reasoning as phase2_blip_nll.yaml's: NLL-from-scratch diverges
+  # (log_sigma starts at softplus(-3) ~= 0.049 - small noise at init - so an
+  # untrained model's variance is tiny while its error is not). 20 epochs of
+  # plain MSE first gives the mean prediction a real start before NLL - and
+  # its division by a still-small variance - turns on. Not tuned; revisit if
+  # train_loss still spikes around epoch 21.
+  nll_warmup_epochs: 20
+
+train:
+  epochs: 200
+  batch_size: 32
+  lr: 0.0005
+  energy_loss_weight: 1.0
+  force_loss_weight: 100.0    # forces weighted far above energy (glossary.md section 6)
+  patience: 20
+  device: cpu
+  # Compute budget: 10,000 of 444,074 train frames and 5,000 of 55,509 val
+  # frames, each a fixed stride over its block with a seeded offset, so every
+  # model sees exactly the same frames. Nothing is re-split; the test split is
+  # never read in training and is scored whole by ml/training/evaluate.py.
+  train_subset: 10000
+  train_subset_seed: 42
+  val_subset: 5000

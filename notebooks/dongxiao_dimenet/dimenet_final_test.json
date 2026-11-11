@@ -1,0 +1,32 @@
+{
+  "selection": {
+    "run": "dongxiao_dimenet_ethanol_lr1e4_100",
+    "best_epoch": 100,
+    "criterion": "validation energy MSE + 100 * force component MSE",
+    "validation": {
+      "energy_mae": 1.634225703843005,
+      "energy_rmse": 1.7499916430196756,
+      "force_mae": 1.5637693169005005,
+      "force_rmse": 2.1782891980364436
+    },
+    "checkpoint_sha256": "aa560b100f943232b8701c8ad43ac94bb05ed4a01565542896a492ded12bbc46",
+    "test_used_for_selection": false
+  },
+  "n_test": 1000,
+  "n_atoms": 9,
+  "gold_sha256": "8e6571e1c0f0ac5a4fbab8a3236c26abff0095f54772866ad6ffa7f525deb441",
+  "energy_mae_total": 1.6071288336023863,
+  "energy_rmse_total": 1.7360993893471441,
+  "energy_mae_per_atom": 0.17856987040026512,
+  "energy_rmse_per_atom": 0.1928999321496827,
+  "force_mae_component": 1.5296153928717529,
+  "force_rmse_component": 2.140271014385432,
+  "force_mae_atom_norm": 3.0540896003025044,
+  "force_rmse_atom_norm": 3.7070581388825485,
+  "energy_signed_bias": 1.576001267982996,
+  "units": {
+    "energy": "kcal/mol",
+    "force": "kcal/mol/Angstrom"
+  },
+  "test_used_for_tuning": false
+}

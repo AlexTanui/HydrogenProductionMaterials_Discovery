@@ -1,0 +1,45 @@
+{
+  "status": "completed",
+  "selection": {
+    "run": "dongxiao_dimenet_ethanol_lr1e4_200",
+    "best_epoch": 200,
+    "criterion": "validation energy MSE + 100 * force component MSE",
+    "checkpoint_sha256": "861ce3d11d8cf24fe79feb2e393c3738a37f9bff5bb206c5180674f72c221ba0",
+    "test_used_for_selection": false
+  },
+  "n_test": 1000,
+  "n_atoms": 9,
+  "gold_sha256": "8e6571e1c0f0ac5a4fbab8a3236c26abff0095f54772866ad6ffa7f525deb441",
+  "original_energy": {
+    "mae_total": 1.8047948453183926,
+    "rmse_total": 1.8732681353595815,
+    "mae_per_atom": 0.20053276059093253,
+    "rmse_per_atom": 0.2081409039288424,
+    "signed_bias": 1.8038964364066488
+  },
+  "train_fitted_offset": {
+    "offset_to_subtract": 1.7493008001076409,
+    "fit_split": "train",
+    "fit_samples": 889,
+    "test_evaluation": {
+      "mae_total": 0.3914480045408983,
+      "rmse_total": 0.5080077136971943,
+      "mae_per_atom": 0.04349422272676647,
+      "rmse_per_atom": 0.05644530152191048,
+      "signed_bias": 0.054595636299007835
+    }
+  },
+  "force": {
+    "mae_component": 1.1646210647036357,
+    "rmse_component": 1.617158567562093,
+    "mae_atom_norm": 2.3297022628134463,
+    "rmse_atom_norm": 2.801000802912852
+  },
+  "units": {
+    "energy": "kcal/mol",
+    "force": "kcal/mol/Angstrom"
+  },
+  "test_used_for_tuning": false,
+  "follow_up_to_previous_test_inspection": true,
+  "test_policy": "Frozen follow-up evaluation after all training and offset decisions; no further tuning permitted."
+}

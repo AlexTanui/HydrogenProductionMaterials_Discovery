@@ -1,0 +1,40 @@
+{
+  "checkpoint_sha256": "aa560b100f943232b8701c8ad43ac94bb05ed4a01565542896a492ded12bbc46",
+  "selected_epoch": 100,
+  "gold_sha256": "8e6571e1c0f0ac5a4fbab8a3236c26abff0095f54772866ad6ffa7f525deb441",
+  "energy_offset_to_subtract_kcal_per_mol": 1.5159157856541006,
+  "fit_split": "train",
+  "fit_samples": 889,
+  "fit_objective": "minimum training energy MSE with one additive offset",
+  "application": "E_calibrated = E_original - offset; original energy includes its training-mean restoration",
+  "training": {
+    "original": {
+      "mae": 1.5403990020129494,
+      "rmse": 1.6818866503700187,
+      "signed_bias": 1.5159157856541006,
+      "n": 889
+    },
+    "calibrated": {
+      "mae": 0.5706208951236533,
+      "rmse": 0.7285204427451523,
+      "signed_bias": -6.993530863780514e-18,
+      "n": 889
+    }
+  },
+  "validation": {
+    "original": {
+      "mae": 1.6342256747592327,
+      "rmse": 1.7499916106337092,
+      "signed_bias": 1.6224685140450428,
+      "n": 111
+    },
+    "calibrated": {
+      "mae": 0.517222895870532,
+      "rmse": 0.664394492864284,
+      "signed_bias": 0.10655272839094222,
+      "n": 111
+    }
+  },
+  "test_evaluated": false,
+  "force_effect": "A position-independent constant has zero derivative; no force correction is applied."
+}
