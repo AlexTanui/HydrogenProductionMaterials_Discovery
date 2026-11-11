@@ -128,6 +128,21 @@ shapes.
 | `train_idx`, `val_idx`, `test_idx` | int[] | disjoint index arrays into `R`/`E`/`F` |
 | `molecule`, `theory` | str | dataset identity |
 | `used_literature_split` | bool | whether `test_idx` came from the shipped split or a trajectory-block split |
+| `source_sha256` | str | sha256 of the raw bytes of `z`, `R`, `E`, `F` (content, not the `.npz` file, so it is stable across regenerations) |
+| `split_method` | str | `trajectory_block`, or `literature_test+block_train_val` when the shipped test set is kept |
+| `split_params` | str (JSON) | `train`/`val`/`test` fractions, `purge_frames`, and `purge_exemption` (empty unless the file keeps an older split) |
+| `git_commit` | str | commit that wrote the file, suffixed `-dirty` if the tree had uncommitted changes; empty outside git |
+
+The last four keys were added in SCRUM-72; gold files written before it
+lack them until regenerated.
+
+**Purge buffer (SCRUM-72).** `silver_to_gold` drops
+`PURGE_BUFFER_FRAMES = 10` frames at the start of `val` and of `test`
+(for literature splits, only at the start of `val`; the shipped test set
+is untouched), so no held-out frame sits one MD step from the previous
+block. Those frames are in no split. Files listed in `PURGE_EXEMPT`
+(`ethanol_dft`, `ethanol_ccsd_t`) keep their original split because every
+benchmarked run used it; see `docs/reviews/leakage-audit-2026-10-31.md`.
 
 ---
 

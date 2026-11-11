@@ -12,6 +12,9 @@ see git history for what changed and why. Run directly:
 """
 from __future__ import annotations
 
+import hashlib
+import json
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -42,6 +45,22 @@ MD17_SOURCES: list[tuple[str, str, str, bool]] = [
     ("toluene_ccsd_t.zip", "toluene", "ccsd_t", True),
     ("md17_uracil.npz", "uracil", "dft", False),
 ]
+
+# SCRUM-72 / SCRUM-47 (docs/reviews/leakage-audit-2026-10-31.md): frames
+# dropped at each train/val/test block boundary so no held-out frame sits
+# one MD step from a frame in the previous block. The boundary ramp clears
+# the bulk after ~4 frames; 10 gives margin for 20 frames per file.
+PURGE_BUFFER_FRAMES = 10
+
+# Gold files kept on their existing split (no buffer) because every
+# benchmarked run was trained and scored on it - re-splitting would mean
+# retraining and re-scoring all of them. The frames those runs actually
+# used already sit 4,114 / 519 frames apart (audit, "actually used").
+# Keyed by gold-file stem; the value is recorded in the file's provenance.
+PURGE_EXEMPT: dict[str, str] = {
+    "ethanol_dft": "SCRUM-47: existing split kept; all benchmarked runs use it",
+    "ethanol_ccsd_t": "SCRUM-47: existing split kept; pinned in tests/ml/test_split_leakage.py",
+}
 
 
 def validate_sample(sample: MD17Sample) -> list[str]:
@@ -104,17 +123,56 @@ def bronze_to_silver(bronze_path: str | Path, silver_dir: str | Path,
     return out_path
 
 
-def trajectory_block_split(n_configs: int, train: float = 0.8, val: float = 0.1, test: float = 0.1):
+def trajectory_block_split(n_configs: int, train: float = 0.8, val: float = 0.1, test: float = 0.1,
+                          purge: int = 0):
+    """Contiguous train | val | test blocks, in trajectory order.
+
+    Block sizes come from the fractions of all frames, exactly as before;
+    `purge` then drops that many frames from the *start* of val and of test,
+    so train and the earlier blocks keep their indices. `purge=0` is the
+    original, pinned split.
+    """
     assert abs(train + val + test - 1.0) < 1e-6, "splits must sum to 1.0"
+    assert purge >= 0, "purge must be >= 0"
     n_train = int(round(n_configs * train))
     n_val = int(round(n_configs * val))
     idx = np.arange(n_configs)
-    return idx[:n_train], idx[n_train:n_train + n_val], idx[n_train + n_val:]
+    tr = idx[:n_train]
+    va = idx[n_train + purge:n_train + n_val]
+    te = idx[n_train + n_val + purge:]
+    assert len(va) > 0 and len(te) > 0, f"purge={purge} leaves an empty val or test block"
+    return tr, va, te
+
+
+def _content_sha256(*arrays: np.ndarray) -> str:
+    """sha256 of the arrays' raw bytes. Hashes content, not the .npz file,
+    because savez_compressed writes zip timestamps that change on every run."""
+    h = hashlib.sha256()
+    for a in arrays:
+        h.update(np.ascontiguousarray(a).tobytes())
+    return h.hexdigest()
+
+
+def _git_commit() -> str:
+    """HEAD commit, suffixed `-dirty` if the tree has uncommitted changes;
+    empty string outside a git checkout."""
+    def git(*args: str) -> Optional[str]:
+        try:
+            out = subprocess.run(["git", *args], cwd=ROOT_DIR, capture_output=True, text=True, check=True)
+            return out.stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            return None
+    head = git("rev-parse", "HEAD")
+    if not head:
+        return ""
+    return head + ("-dirty" if git("status", "--porcelain", "--untracked-files=no") else "")
 
 
 def silver_to_gold(silver_path: str | Path, gold_path: str | Path,
                     train: float = 0.8, val: float = 0.1, test: float = 0.1,
-                    use_literature_split: Optional[bool] = None) -> Path:
+                    use_literature_split: Optional[bool] = None,
+                    purge: Optional[int] = None) -> Path:
+    """`purge` defaults to PURGE_BUFFER_FRAMES, or 0 for a PURGE_EXEMPT file."""
     silver_path = Path(silver_path)
     gold_path = Path(gold_path)
     gold_path.parent.mkdir(parents=True, exist_ok=True)
@@ -127,15 +185,24 @@ def silver_to_gold(silver_path: str | Path, gold_path: str | Path,
     if use_literature_split is None:
         use_literature_split = has_lit_split
 
-    if use_literature_split and has_lit_split:
+    exemption = PURGE_EXEMPT.get(gold_path.stem, "")
+    if purge is None:
+        purge = 0 if exemption else PURGE_BUFFER_FRAMES
+
+    literature = bool(use_literature_split and has_lit_split)
+    if literature:
+        # The literature test set is fixed by the source; only the
+        # train/val boundary is ours to purge.
         test_mask = data["literature_test_mask"]
         test_idx = np.where(test_mask)[0]
         remaining = np.where(~test_mask)[0]
         n_train_of_remaining = int(round(len(remaining) * (train / (train + val))))
         train_idx = remaining[:n_train_of_remaining]
-        val_idx = remaining[n_train_of_remaining:]
+        val_idx = remaining[n_train_of_remaining + purge:]
+        split_method = "literature_test+block_train_val"
     else:
-        train_idx, val_idx, test_idx = trajectory_block_split(n_configs, train, val, test)
+        train_idx, val_idx, test_idx = trajectory_block_split(n_configs, train, val, test, purge=purge)
+        split_method = "trajectory_block"
 
     assert set(train_idx).isdisjoint(test_idx), "train/test leakage detected"
     assert set(val_idx).isdisjoint(test_idx), "val/test leakage detected"
@@ -145,7 +212,16 @@ def silver_to_gold(silver_path: str | Path, gold_path: str | Path,
         gold_path, z=z, R=R, E=E, F=F,
         train_idx=train_idx, val_idx=val_idx, test_idx=test_idx,
         molecule=str(data["molecule"]), theory=str(data["theory"]),
-        used_literature_split=bool(use_literature_split and has_lit_split),
+        used_literature_split=literature,
+        # Split provenance (SCRUM-72): enough to tell which split a run
+        # was scored on, and to regenerate it.
+        source_sha256=_content_sha256(z, R, E, F),
+        split_method=split_method,
+        split_params=json.dumps({
+            "train": train, "val": val, "test": test,
+            "purge_frames": int(purge), "purge_exemption": exemption,
+        }, sort_keys=True),
+        git_commit=_git_commit(),
     )
     return gold_path
 
