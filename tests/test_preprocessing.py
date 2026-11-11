@@ -61,3 +61,61 @@ def test_a_declared_unit_other_than_the_project_units_is_reported():
     """The check CLAUDE.md relies on: metrics assume kcal/mol and A without converting."""
     problems = validate_sample(_sample(r_unit="Bohr", e_unit="eV"))
     assert problems == ["unexpected r_unit 'Bohr', expected 'Ang'", "unexpected e_unit 'eV', expected 'kcal/mol'"]
+
+
+# --- SCRUM-72: purge buffer and split provenance -------------------------
+
+def test_purge_zero_is_the_original_split():
+    for got, expected in zip(trajectory_block_split(555092, purge=0), trajectory_block_split(555092)):
+        assert np.array_equal(got, expected)
+
+
+def test_purge_leaves_a_gap_of_exactly_that_many_frames_and_keeps_train():
+    tr0, _, _ = trajectory_block_split(1000)
+    tr, va, te = trajectory_block_split(1000, purge=10)
+    assert np.array_equal(tr, tr0)
+    assert va[0] - tr[-1] - 1 == 10 and te[0] - va[-1] - 1 == 10
+    assert te[-1] == 999
+
+
+def test_purge_that_empties_a_block_is_rejected():
+    with pytest.raises(AssertionError):
+        trajectory_block_split(100, purge=10)
+
+
+def _silver(tmp_path, n=1000):
+    rng = np.random.default_rng(0)
+    path = tmp_path / "silver.npz"
+    np.savez_compressed(path, z=np.array([6, 1, 1]), R=rng.random((n, 3, 3)), E=rng.random(n),
+                        F=rng.random((n, 3, 3)), molecule="x", theory="dft",
+                        has_literature_split=False, literature_test_mask=np.zeros(n, bool))
+    return path
+
+
+def test_gold_file_records_its_split_provenance(tmp_path):
+    import json
+    from ml.data.preprocessing import PURGE_BUFFER_FRAMES, silver_to_gold
+    g = np.load(silver_to_gold(_silver(tmp_path), tmp_path / "uracil_dft.npz"), allow_pickle=False)
+    for key in ("source_sha256", "split_method", "split_params", "git_commit"):
+        assert key in g.files
+    assert str(g["split_method"]) == "trajectory_block"
+    assert json.loads(str(g["split_params"]))["purge_frames"] == PURGE_BUFFER_FRAMES
+    assert g["val_idx"][0] - g["train_idx"][-1] - 1 == PURGE_BUFFER_FRAMES
+
+
+def test_exempt_gold_file_keeps_the_unpurged_split(tmp_path):
+    import json
+    from ml.data.preprocessing import silver_to_gold
+    g = np.load(silver_to_gold(_silver(tmp_path), tmp_path / "ethanol_dft.npz"), allow_pickle=False)
+    for got, expected in zip((g["train_idx"], g["val_idx"], g["test_idx"]), trajectory_block_split(1000)):
+        assert np.array_equal(got, expected)
+    params = json.loads(str(g["split_params"]))
+    assert params["purge_frames"] == 0 and params["purge_exemption"]
+
+
+def test_source_hash_is_stable_across_regenerations(tmp_path):
+    from ml.data.preprocessing import silver_to_gold
+    silver = _silver(tmp_path)
+    a = np.load(silver_to_gold(silver, tmp_path / "a" / "uracil_dft.npz"))["source_sha256"]
+    b = np.load(silver_to_gold(silver, tmp_path / "b" / "uracil_dft.npz"))["source_sha256"]
+    assert str(a) == str(b)
