@@ -165,7 +165,7 @@ def test_benchmarks_returns_one_row_per_checkpoint_with_a_unique_phase_key():
     assert len(phases_present) == len(rows)
     assert phases_present <= set(PHASE_CHECKPOINTS)
     # The full Phase 1 bake-off (5 architectures) plus both BLIP runs plus
-    # Phase 3 - every trained checkpoint, not a collapsed subset.
+    # both Phase 3 runs - every trained checkpoint, not a collapsed subset.
     assert {"phase1_deterministic", "phase1_schnet", "phase1_painn", "phase1_physnet", "phase1_dimenet"} <= phases_present
 
     for row in rows:

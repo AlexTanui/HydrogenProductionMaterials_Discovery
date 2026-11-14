@@ -11,7 +11,8 @@ const PHASE_LABELS: Record<string, string> = {
   phase1_dimenet: "Phase 1 — DimeNet++",
   phase2_blip_k1: "Phase 2 — BLIP (K=1)",
   phase2_blip: "Phase 2 — BLIP (K=4 NLL)",
-  phase3_graph_stochastic: "Phase 3 — graph-space",
+  phase3_graph_stochastic_base: "Phase 3 — graph-space (K=1, base)",
+  phase3_graph_stochastic: "Phase 3 — graph-space (K=4 NLL, matched)",
 };
 
 // Phase 1's five architectures are a separate comparison from Phase 2/3
