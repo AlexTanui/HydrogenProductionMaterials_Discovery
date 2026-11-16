@@ -1,0 +1,90 @@
+{
+  "commit": "cb949a5cb472e20dff00c33f8174f604c9c10cef",
+  "files": [
+    {
+      "path": "docs/reviews/scrum-36-phase3-vs-phase1-2-analysis-2026-11-09.md",
+      "sha256": "57c8f7767073eea8d5ad7f33496cad9b2f771e53b48f776ea337b8dd2904fc66",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/docs/reviews/scrum-36-phase3-vs-phase1-2-analysis-2026-11-09.md"
+    },
+    {
+      "path": "docs/reviews/scrum-40-protocol-fairness-resolution-2026-11-12.md",
+      "sha256": "c68d15e33932a378e575c1350cb9fb0426b4e43c2bb68689bcbda2b3db747da7",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/docs/reviews/scrum-40-protocol-fairness-resolution-2026-11-12.md"
+    },
+    {
+      "path": "docs/reviews/scrum-49-mc-stability-2026-11-14.md",
+      "sha256": "47ce05cd3f620a312cf700a6c8664bc10cc0a93a474c616156b988a25bce81a2",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/docs/reviews/scrum-49-mc-stability-2026-11-14.md"
+    },
+    {
+      "path": "reports/phase2_vs_phase3_nll.md",
+      "sha256": "df52763a28426ec347dd9f1333e4a237e5c96b600a8647b09abbb0724e416c10",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/reports/phase2_vs_phase3_nll.md"
+    },
+    {
+      "path": "ml/training/calibrate.py",
+      "sha256": "bd9da3cbd14ba4902b3a786a7bed11a7441e6b45ce99b558cfe6db63eaadd683",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/ml/training/calibrate.py"
+    },
+    {
+      "path": "experiments/runs/phase2_blip_nll/run.json",
+      "sha256": "9fe0f0a47c3cc53354d991f42dd193dc700bb11952c85ce055e20ba7ca1adf1c",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/experiments/runs/phase2_blip_nll/run.json"
+    },
+    {
+      "path": "experiments/runs/phase2_blip_nll/test_metrics.json",
+      "sha256": "b840d7ceb5b0f2454c50c55eee22fd3e2bcf1d9cc7ba74d4b909e50aaade0aff",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/experiments/runs/phase2_blip_nll/test_metrics.json"
+    },
+    {
+      "path": "reports/calibration/cqr/calibrate_cqr_phase2_blip_nll.json",
+      "sha256": "03813406272473187d602c7843cbb7dd718b417891a6672b75e8884686f18b63",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/reports/calibration/cqr/calibrate_cqr_phase2_blip_nll.json"
+    },
+    {
+      "path": "reports/calibration/calibrate_blip_nll.json",
+      "sha256": "da1f6fa185a6d3de1196db28316252d247f0beb22de989b4dc477af5a8f748fa",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/reports/calibration/calibrate_blip_nll.json"
+    },
+    {
+      "path": "experiments/runs/phase3_graph_stochastic/run.json",
+      "sha256": "a4fc0bbee58e663db8b5e3065a586f29c8be327c1017a3c1a9f9277ff8fb6fda",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/experiments/runs/phase3_graph_stochastic/run.json"
+    },
+    {
+      "path": "experiments/runs/phase3_graph_stochastic/test_metrics.json",
+      "sha256": "f2bdd800c0f28189a6f48e7caabd818e6b8bfc7998a26a35c5b6aa322b02fa59",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/experiments/runs/phase3_graph_stochastic/test_metrics.json"
+    },
+    {
+      "path": "reports/calibration/cqr/calibrate_cqr_phase3_graph_stochastic.json",
+      "sha256": "61cd74aabbc7fcb40dce54b5a684fd2defa66aebbdc0ca5f55f174f950208e5d",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/reports/calibration/cqr/calibrate_cqr_phase3_graph_stochastic.json"
+    },
+    {
+      "path": "reports/calibration/calibrate_graph_stochastic.json",
+      "sha256": "9b3e66f1c9bff5429da46a6e98623befcb5857e22cf73d0064f0a846e71e22f4",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/reports/calibration/calibrate_graph_stochastic.json"
+    },
+    {
+      "path": "experiments/runs/phase3_graph_stochastic_nll/run.json",
+      "sha256": "c9ea84b90cd3da5e2ae07a57fc4bd26f74fb21091c7dd5a7770f560109c1220d",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/experiments/runs/phase3_graph_stochastic_nll/run.json"
+    },
+    {
+      "path": "experiments/runs/phase3_graph_stochastic_nll/test_metrics.json",
+      "sha256": "32c274c0034eb013da193c5437a371ba57eb3d335b5ad51758a201b49d0d990e",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/experiments/runs/phase3_graph_stochastic_nll/test_metrics.json"
+    },
+    {
+      "path": "reports/calibration/cqr/calibrate_cqr_phase3_graph_stochastic_nll.json",
+      "sha256": "b29c49952d715cac32b8e72eab5c728a14798a933113cce3ecbcb57d61aee714",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/reports/calibration/cqr/calibrate_cqr_phase3_graph_stochastic_nll.json"
+    },
+    {
+      "path": "reports/calibration/calibrate_graph_stochastic_nll.json",
+      "sha256": "a26843f17cba3a87b017b2a5447316b3d855df9d514754aff9a55a21bfa5e942",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/cb949a5cb472e20dff00c33f8174f604c9c10cef/reports/calibration/calibrate_graph_stochastic_nll.json"
+    }
+  ]
+}
