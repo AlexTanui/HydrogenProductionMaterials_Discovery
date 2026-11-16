@@ -59,8 +59,17 @@ PURGE_BUFFER_FRAMES = 10
 # Keyed by gold-file stem; the value is recorded in the file's provenance.
 PURGE_EXEMPT: dict[str, str] = {
     "ethanol_dft": "SCRUM-47: existing split kept; all benchmarked runs use it",
-    "ethanol_ccsd_t": "SCRUM-47: existing split kept; pinned in tests/ml/test_split_leakage.py",
+    "ethanol_ccsd_t": ("SCRUM-47: literature split frames are not in trajectory order "
+                       "(lag-1 RMSD ~ random-pair RMSD), so a buffer would separate nothing; "
+                       "existing split kept"),
 }
+
+# Paths left out of the gold file's `-dirty` check. Mirrors
+# ml.training.train.DIRTY_CHECK_EXCLUDES so a gold file and a run record made
+# from the same tree agree on whether it was dirty (tests/test_preprocessing.py
+# checks the two stay equal). Copied rather than imported so ml/data does not
+# depend on ml/training.
+GIT_DIRTY_EXCLUDES: tuple[str, ...] = ("experiments/runs/",)
 
 
 def validate_sample(sample: MD17Sample) -> list[str]:
@@ -155,7 +164,10 @@ def _content_sha256(*arrays: np.ndarray) -> str:
 
 def _git_commit() -> str:
     """HEAD commit, suffixed `-dirty` if the tree has uncommitted changes;
-    empty string outside a git checkout."""
+    empty string outside a git checkout.
+
+    Same rule as ml.training.train.git_state(): tracked and untracked
+    changes both count, except under GIT_DIRTY_EXCLUDES."""
     def git(*args: str) -> Optional[str]:
         try:
             out = subprocess.run(["git", *args], cwd=ROOT_DIR, capture_output=True, text=True, check=True)
@@ -165,7 +177,8 @@ def _git_commit() -> str:
     head = git("rev-parse", "HEAD")
     if not head:
         return ""
-    return head + ("-dirty" if git("status", "--porcelain", "--untracked-files=no") else "")
+    pathspec = [".", *(f":(exclude){path}" for path in GIT_DIRTY_EXCLUDES)]
+    return head + ("-dirty" if git("status", "--porcelain", "--", *pathspec) else "")
 
 
 def silver_to_gold(silver_path: str | Path, gold_path: str | Path,

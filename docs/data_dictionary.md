@@ -131,10 +131,11 @@ shapes.
 | `source_sha256` | str | sha256 of the raw bytes of `z`, `R`, `E`, `F` (content, not the `.npz` file, so it is stable across regenerations) |
 | `split_method` | str | `trajectory_block`, or `literature_test+block_train_val` when the shipped test set is kept |
 | `split_params` | str (JSON) | `train`/`val`/`test` fractions, `purge_frames`, and `purge_exemption` (empty unless the file keeps an older split) |
-| `git_commit` | str | commit that wrote the file, suffixed `-dirty` if the tree had uncommitted changes; empty outside git |
+| `git_commit` | str | commit that wrote the file, suffixed `-dirty` if the tree had uncommitted changes (tracked or untracked, except `experiments/runs/` - the same rule as run records' `git_dirty`); empty outside git |
 
 The last four keys were added in SCRUM-72; gold files written before it
-lack them until regenerated.
+lack them, and `tests/ml/test_split_leakage.py` fails on them until they are
+regenerated with `python -m ml.data.preprocessing`.
 
 **Purge buffer (SCRUM-72).** `silver_to_gold` drops
 `PURGE_BUFFER_FRAMES = 10` frames at the start of `val` and of `test`

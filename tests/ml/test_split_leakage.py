@@ -146,15 +146,16 @@ def test_purge_buffer_meets_the_agreed_size(name):
         )
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "SCRUM-47 finding: gold files record no source hash, split method/parameters or git commit. "
-    "Fix in ml/data/preprocessing.py (silver_to_gold), then delete this marker - strict, so a "
-    "fixed file turns this into a failure until it is."))
 @pytest.mark.parametrize("name", SPLIT_FINGERPRINTS)
 def test_gold_file_records_how_its_split_was_made(name):
+    """SCRUM-47 finding, fixed in SCRUM-72: silver_to_gold now writes these.
+    A gold file made before that fails here - regenerate it."""
     d = _gold(name)
     missing = [key for key in PROVENANCE_KEYS if key not in d.files]
-    assert not missing, f"{name} records no {', '.join(missing)}"
+    assert not missing, (
+        f"{name} records no {', '.join(missing)}: it predates SCRUM-72. Regenerate with "
+        "`python -m ml.data.preprocessing` (ethanol indices don't change; no re-scoring needed)."
+    )
 
 
 # --------------------------------------------------------------------------

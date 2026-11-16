@@ -119,3 +119,12 @@ def test_source_hash_is_stable_across_regenerations(tmp_path):
     a = np.load(silver_to_gold(silver, tmp_path / "a" / "uracil_dft.npz"))["source_sha256"]
     b = np.load(silver_to_gold(silver, tmp_path / "b" / "uracil_dft.npz"))["source_sha256"]
     assert str(a) == str(b)
+
+
+def test_gold_dirty_rule_matches_the_run_records():
+    """A gold file and a run record made from the same tree must agree on
+    whether it was dirty (SCRUM-72 review)."""
+    pytest.importorskip("torch_geometric")
+    from ml.data.preprocessing import GIT_DIRTY_EXCLUDES
+    from ml.training.train import DIRTY_CHECK_EXCLUDES
+    assert tuple(GIT_DIRTY_EXCLUDES) == tuple(DIRTY_CHECK_EXCLUDES)
