@@ -1,0 +1,67 @@
+# Phase 3 - graph-space stochasticity, NLL variant, longer warmup (SCRUM-70
+# diagnostic). Identical to phase3_graph_stochastic_nll.yaml except
+# nll_warmup_epochs below - everything else (data/train blocks, kl_weight,
+# train_num_mc_samples) is copied verbatim so this isolates one variable.
+#
+# Why this file exists: comparing phase3_graph_stochastic_nll against
+# phase2_blip_nll (SCRUM-40's protocol-matched pair) found energy MAE
+# regresses +72% under matched NLL hooks, while force MAE/calibration
+# improve sharply (docs/reviews/scrum-40-protocol-fairness-resolution-2026-11-12.md).
+# One candidate mechanism (posted to SCRUM-70): nll_warmup_epochs=20 was
+# copied unchanged from phase2_blip_nll.yaml without checking it suits
+# Phase 3's own convergence rate. The NLL variance floor is set once, from
+# whatever that warmup-end epoch's training energy MSE happens to be, and
+# never revisited - phase3_graph_stochastic_nll's floor
+# (nll_min_energy_var, recorded in run.json) came out ~2.2x BLIP-NLL's
+# (27.47 vs 12.56) because Phase 3's energy MSE hadn't converged as far
+# by epoch 20 (GraphStochastic's log_sigma inits ~7x larger than BLIP's
+# weight_rho - ml/models/graph_stochastic.py vs ml/models/blip.py - so its
+# per-step training signal is inherently noisier from epoch 1). This
+# config doubles the warmup to see whether a longer MSE-only phase lets
+# Phase 3's energy MSE converge closer to BLIP's level before the floor
+# is set, and whether that recovers energy accuracy without losing the
+# force-calibration win NLL training already confirmed.
+#
+# Pure config change - no edit to ml/models/graph_stochastic.py's maths,
+# consistent with CLAUDE.md's model-ownership rule (Ruturaj owns that
+# file's forward maths; this is a training-recipe experiment, Fazin's lane).
+name: phase3_graph_stochastic_nll_warmup40
+
+data:
+  dataset: md17
+  molecule: ethanol
+  theory: dft
+  gold_path: data/gold/md17/ethanol_dft.npz   # gold only; if missing, run `python -m ml.data.preprocessing`
+  cutoff_radius: 5.0          # A; each model's own cutoff must equal it (train.py checks)
+  train_split: 0.8            # how the gold file's contiguous trajectory blocks were made;
+  val_split: 0.1              #   the split is baked in as train/val/test_idx and never re-derived
+  test_split: 0.1
+  use_literature_split: false # ethanol_dft ships no literature-standard split
+  num_rbf: 16                 # width of the dataset's edge_attr; no model reads it
+  seed: 42                    # torch seed: initialisation and shuffle order
+
+model:
+  phase: graph_stochastic
+  hidden_channels: 128
+  num_layers: 4
+  num_rbf: 50
+  num_mc_samples: 20
+  kl_weight: 0.01
+  train_num_mc_samples: 4
+  # THE variable this config tests (SCRUM-70 diagnostic): doubled from
+  # phase3_graph_stochastic_nll.yaml's 20, to let Phase 3's own,
+  # slower-converging mean-energy path get further before the NLL
+  # variance floor is set from this epoch's training MSE.
+  nll_warmup_epochs: 40
+
+train:
+  epochs: 200
+  batch_size: 32
+  lr: 0.0005
+  energy_loss_weight: 1.0
+  force_loss_weight: 100.0    # forces weighted far above energy (glossary.md section 6)
+  patience: 20
+  device: cpu
+  train_subset: 10000
+  train_subset_seed: 42
+  val_subset: 5000
