@@ -1,0 +1,60 @@
+# Phase 3 - graph-space stochasticity, structural force-uncertainty fix
+# (SCRUM-70, fix 2). Identical data:/train:/model: block to
+# phase3_graph_stochastic_nll.yaml - same NLL hooks, same hyperparameters,
+# same everything - except this trains against the updated
+# ml/models/graph_stochastic.py, where RepresentationNoise now perturbs
+# each message multiplicatively before aggregation instead of the node
+# state additively after it. That is the only variable this config
+# isolates: not a new training recipe, a fix to where/how the noise enters
+# the forward pass (see that file's module docstring for the full argument).
+#
+# Why this file exists rather than overwriting phase3_graph_stochastic_nll
+# in place: that run is a committed, reported result under the OLD
+# mechanism (force coverage@90% 57.19% -> 86.31% via NLL training alone,
+# at a +44% energy MAE cost - docs/reviews/scrum-70-structural-root-cause-2026-11-12.md).
+# This config's before/after is against that same checkpoint, scored with
+# identical hyperparameters, so any difference is attributable to the
+# mechanism change alone, not to a confound in the training recipe.
+#
+# Ownership note: this edits ml/models/graph_stochastic.py's forward maths,
+# which CLAUDE.md assigns to Ruturaj. Done directly at Alex's explicit
+# request (SCRUM-70, same-day deadline), mirroring the SCRUM-61/fix-1
+# precedent - pushed for Ruturaj's review, not merged unilaterally.
+name: phase3_graph_stochastic_structural_fix
+
+data:
+  dataset: md17
+  molecule: ethanol
+  theory: dft
+  gold_path: data/gold/md17/ethanol_dft.npz   # gold only; if missing, run `python -m ml.data.preprocessing`
+  cutoff_radius: 5.0          # A; each model's own cutoff must equal it (train.py checks)
+  train_split: 0.8            # how the gold file's contiguous trajectory blocks were made;
+  val_split: 0.1              #   the split is baked in as train/val/test_idx and never re-derived
+  test_split: 0.1
+  use_literature_split: false # ethanol_dft ships no literature-standard split
+  num_rbf: 16                 # width of the dataset's edge_attr; no model reads it
+  seed: 42                    # torch seed: initialisation and shuffle order
+
+model:
+  phase: graph_stochastic
+  hidden_channels: 128
+  num_layers: 4
+  num_rbf: 50
+  num_mc_samples: 20
+  kl_weight: 0.01
+  train_num_mc_samples: 4
+  # Unchanged from phase3_graph_stochastic_nll.yaml on purpose - this
+  # config tests the mechanism change alone, not a retuned recipe.
+  nll_warmup_epochs: 20
+
+train:
+  epochs: 200
+  batch_size: 32
+  lr: 0.0005
+  energy_loss_weight: 1.0
+  force_loss_weight: 100.0    # forces weighted far above energy (glossary.md section 6)
+  patience: 20
+  device: cpu
+  train_subset: 10000
+  train_subset_seed: 42
+  val_subset: 5000

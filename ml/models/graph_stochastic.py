@@ -51,38 +51,68 @@ what Phase 1's MPNNLayer would have produced from the same input, so a
 plus zero-centered noise around the mean - not an architecture change in
 disguise.
 
-**SCRUM-70 (force uncertainty is badly overconfident):** the first real
-run scored energy coverage@90% at 99.52% but force coverage@90% at only
-57.19% - forces are far more overconfident than energy. Root cause, per
-Fazin's review: every `eps` drawn in `RepresentationNoise.forward` is a
-plain `torch.randn_like(h)` with no functional dependence on `pos`, so
-`d(eps)/dR = 0`. Energy reads `h_final` (which contains `eps` additively)
-directly through the readout, so its variance across MC samples reflects
-the full noise magnitude. Forces are `-dE/dR` (`predict_energy_and_forces`
-below): differentiating a term like `scale(h)*sigma*eps` w.r.t. `pos`
-kills the `eps`-direct contribution entirely (constant w.r.t. R) and
-leaves only the much weaker `d(scale(h))/dR * sigma * eps` term - a
-noise source with a strong, direct effect on energy and only an
-incidental, derivative-mediated effect on force. No amount of MC
-resampling or post-hoc conformal scaling (SCRUM-68) fixes a structurally
-undersized signal; conformal just inflates it until *marginal* coverage
-looks right (force coverage overshoots to ~98%), which is why that fix
-reads as a patch rather than a repair.
+**SCRUM-70 (force uncertainty is badly overconfident) - root cause and the
+two fixes applied, in order:**
 
-Mitigation applied here, mirroring BLIP's SCRUM-61 fix exactly
-(`train_num_mc_samples` / `nll_warmup_epochs` / `predict_training_distribution`
-below): nothing in training previously rewarded the model for making its
-*force* variance track its actual force error - the representation-noise
-mechanism was only ever trained through plain MSE on the mean. Switching
-to Gaussian NLL on a K-sample mean/variance gives `scale(h)`/`log_sigma`
-an actual gradient signal to grow the (structurally weak) force-channel
-pathway until it matches real force residuals, the same way it already
-fixed BLIP's unregularized-gate collapse. This does not change the
-mean-prediction path (`h_new` is still bit-for-bit Phase 1's backbone,
-`kl_weight=0` still reduces to zero-centered noise with no NLL term), so
-a checkpoint trained with `train_num_mc_samples=1` (the default) is
-identical to before this change - strictly opt-in, same contract BLIP's
-hooks give.
+The first real run scored energy coverage@90% at 99.52% but force
+coverage@90% at only 57.19% - forces are far more overconfident than
+energy. Root cause, per Fazin's review: every `eps` drawn in
+`RepresentationNoise` was a plain `torch.randn_like` with no functional
+dependence on `pos`, so `d(eps)/dR = 0`. Energy read the noisy
+representation directly through the readout, so its variance across MC
+samples reflected the full noise magnitude. Forces are `-dE/dR`
+(`predict_energy_and_forces` below): differentiating a noise term that is
+constant w.r.t. `pos` kills its direct contribution to the force Jacobian
+entirely, leaving only a much weaker derivative-mediated pathway. No
+amount of MC resampling or post-hoc conformal scaling (SCRUM-68) fixes a
+structurally undersized signal; conformal just inflates it until
+*marginal* coverage looks right (force coverage overshoots to ~98%),
+which is why that fix reads as a patch rather than a repair.
+
+**Fix 1 (training-time, kept, still available via `train_num_mc_samples`
+/ `nll_warmup_epochs` / `predict_training_distribution` below):**
+mirroring BLIP's SCRUM-61 fix, switching from plain MSE on one stochastic
+sample to Gaussian NLL on a K-sample mean/variance gives the noise
+mechanism's parameters an actual gradient signal to grow the force
+channel until it matches real force residuals. This measurably narrowed
+the gap (`phase3_graph_stochastic_nll`: force coverage@90% 57.19% ->
+86.31%, force ECE 0.2969 -> 0.0277) but is a training fix layered on a
+structurally weak pathway, not a repair of the pathway itself - it came
+with an energy-accuracy cost (energy MAE +44%) and a warmup-length
+dial trading one against the other (`docs/reviews/scrum-70-structural-root-cause-2026-11-12.md`
+documents the trade-off and why it is structural, not a tuning
+artifact).
+
+**Fix 2 (mechanism, this version):** `RepresentationNoise` no longer
+perturbs the post-aggregation node state additively. It now perturbs each
+*message* multiplicatively, before aggregation:
+`m_out = m * (1 + scale(m) * sigma * eps)`. Each message `m` is
+`message_mlp(h[col], edge_rbf(dist))` - a function of the live
+inter-atomic distance - so unlike the old node-state noise, `d(m)/dR` is
+generically nonzero, and the noise term `scale(m)*sigma*eps` now
+multiplies that nonzero Jacobian rather than an opaque constant. Forces
+(`-dE/dR`) therefore inherit the noise at the same differential order as
+the mean signal, the same way BLIP's weight noise (multiplicative on the
+activation `x`, `ml/models/blip.py`'s `StochasticLinear`) does - this is
+option 2 of the three fixes ranked in the root-cause doc above, chosen
+because it addresses the asymmetry directly without abandoning "noise in
+representations, not weights". Independently prototyped by Ruturaj in his
+own exploratory reimplementation (`raj_mpnn/phase3/Phase3_showcase.ipynb`'s
+`rep_noise`, applied inside the message block) before being ported here
+into the production path at Alex's request under the SCRUM-70 deadline;
+still flagged to Ruturaj for review per CLAUDE.md's model-ownership rule -
+see the SCRUM-70 Jira history for the handoff.
+
+This is a real architecture change to `GraphStochasticLayer`'s forward
+pass (where the noise enters, not just how it is trained), so a
+checkpoint trained under the old additive-node-state mechanism is not a
+valid initialization or comparison point for this one - it needs a fresh
+clean-commit retrain, same NLL hyperparameters as
+`phase3_graph_stochastic_nll.yaml` for a fair before/after isolating this
+one change. `kl_weight=0` still reduces this file to Phase 1's backbone
+plus zero-centered noise with no NLL/KL term, so the mean-prediction path
+is unaffected by this change's presence; it only changes what the noise
+multiplies.
 """
 from __future__ import annotations
 
@@ -116,11 +146,20 @@ class GaussianRBF(nn.Module):
 
 
 class RepresentationNoise(nn.Module):
-    """Adds input-dependent Gaussian noise to a node representation.
+    """Multiplicative, input-dependent Gaussian noise on a message (SCRUM-70
+    fix 2 - see module docstring for the full root-cause/fix history).
 
-        scale_i = softplus(gate(h_i))     # per node, input-dependent - BLIP's noise_gate pattern
+        scale_i = softplus(gate(m_i))     # per edge, input-dependent - BLIP's noise_gate pattern
         sigma   = softplus(log_sigma)     # learned, shared across channels
-        h_out_i = h_i + scale_i * sigma * eps_i,   eps_i ~ N(0, I)
+        m_out_i = m_i * (1 + scale_i * sigma * eps_i),   eps_i ~ N(0, I)
+
+    Multiplicative on `m`, not additive, and applied to the per-edge
+    message (a function of the live inter-atomic distance) rather than
+    the post-aggregation node state - both changes are deliberate, so that
+    `d(m_out)/dR` inherits a real contribution through `d(m)/dR` instead of
+    being killed by a position-independent additive term. See the module
+    docstring for the full argument and its relationship to BLIP's
+    multiplicative weight noise.
 
     A fresh `eps` is sampled on every forward call, train or eval - same
     reasoning as BLIP's weight noise: the uncertainty estimate comes from
@@ -136,25 +175,25 @@ class RepresentationNoise(nn.Module):
         # signal before training has shaped it.
         self.log_sigma = nn.Parameter(torch.full((hidden_channels,), -3.0))
 
-    def forward(self, h: torch.Tensor) -> torch.Tensor:
-        scale = F.softplus(self.gate(h))       # (n_nodes, 1)
+    def forward(self, m: torch.Tensor) -> torch.Tensor:
+        scale = F.softplus(self.gate(m))       # (n_edges, 1)
         sigma = F.softplus(self.log_sigma)      # (hidden_channels,)
-        eps = torch.randn_like(h)
-        return h + scale * sigma * eps
+        eps = torch.randn_like(m)
+        return m * (1 + scale * sigma * eps)
 
-    def kl_divergence(self, h: torch.Tensor) -> torch.Tensor:
-        """KL(N(0, (scale(h)*sigma)^2) || N(0, PRIOR_SIGMA^2)), summed over
-        nodes and channels. Zero-mean on both sides (the noise this module
-        adds is zero-mean by construction - h_out's mean is h itself), so
+    def kl_divergence(self, m: torch.Tensor) -> torch.Tensor:
+        """KL(N(0, (scale(m)*sigma)^2) || N(0, PRIOR_SIGMA^2)), summed over
+        edges and channels. Zero-mean on both sides (the noise this module
+        adds is zero-mean by construction - m_out's mean is m itself), so
         this is the var-ratio-only term of the usual two-Gaussian KL, not
         the full form ml/models/blip.py's StochasticLinear.kl_divergence
         uses for its non-zero-mean weight posterior.
 
-        Takes `h` explicitly - the KL depends on this forward call's own
-        per-node gate output, not just the shared `sigma` parameter - see
+        Takes `m` explicitly - the KL depends on this forward call's own
+        per-edge gate output, not just the shared `sigma` parameter - see
         the module docstring for why that matters.
         """
-        scale = F.softplus(self.gate(h))
+        scale = F.softplus(self.gate(m))
         sigma = F.softplus(self.log_sigma)
         sigma_eff = scale * sigma
         var_ratio = (sigma_eff / PRIOR_SIGMA) ** 2
@@ -164,9 +203,10 @@ class RepresentationNoise(nn.Module):
 class GraphStochasticLayer(nn.Module):
     """Same structure as ml/models/mpnn.py's MPNNLayer - ordinary
     deterministic nn.Linear throughout - plus a RepresentationNoise
-    perturbation of the updated node representation. Compare to
-    ml/models/blip.py's BLIPLayer, which keeps representations
-    deterministic and makes the *weights* stochastic instead."""
+    perturbation applied to each message before aggregation (SCRUM-70 fix
+    2 - see module docstring). Compare to ml/models/blip.py's BLIPLayer,
+    which keeps representations deterministic and makes the *weights*
+    stochastic instead."""
 
     def __init__(self, hidden_channels: int, num_rbf: int):
         super().__init__()
@@ -185,12 +225,14 @@ class GraphStochasticLayer(nn.Module):
     def forward(self, h: torch.Tensor, edge_index: torch.Tensor, edge_rbf: torch.Tensor) -> torch.Tensor:
         row, col = edge_index
         messages = self.message_mlp(torch.cat([h[col], edge_rbf], dim=-1))
+        layer_kl = self.noise.kl_divergence(messages)
+        noisy_messages = self.noise(messages)
 
         aggregated = torch.zeros_like(h)
-        aggregated.index_add_(0, row, messages)
+        aggregated.index_add_(0, row, noisy_messages)
 
         h_new = h + self.update_mlp(torch.cat([h, aggregated], dim=-1))
-        return self.noise(h_new), self.noise.kl_divergence(h_new)
+        return h_new, layer_kl
 
 
 class GraphStochastic(nn.Module):
