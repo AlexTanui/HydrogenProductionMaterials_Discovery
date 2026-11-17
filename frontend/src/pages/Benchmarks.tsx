@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { IconChart } from "../components/icons";
-import { BenchmarkResult, fetchBenchmarks } from "../api/client";
+import { BenchmarkResult, downloadBenchmarkReport, fetchBenchmarks } from "../api/client";
 
 const PHASE_LABELS: Record<string, string> = {
   phase1_deterministic: "Phase 1 — MPNN",
@@ -92,6 +92,7 @@ function MetricChart({
 export default function Benchmarks() {
   const [results, setResults] = useState<BenchmarkResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reportState, setReportState] = useState<"idle" | "building" | "error">("idle");
 
   useEffect(() => {
     fetchBenchmarks()
@@ -99,12 +100,38 @@ export default function Benchmarks() {
       .catch((err) => setError(err.message));
   }, []);
 
+  async function handleBuildReport() {
+    setReportState("building");
+    try {
+      await downloadBenchmarkReport();
+      setReportState("idle");
+    } catch {
+      setReportState("error");
+    }
+  }
+
   return (
     <>
-      <div className="page-header">
-        <h1>Three-phase benchmark</h1>
-        <p>Deterministic MPNN vs. BLIP weight-space UQ vs. graph-space UQ, on held-out MD17 trajectory blocks.</p>
+      <div className="page-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+        <div>
+          <h1>Three-phase benchmark</h1>
+          <p>Deterministic MPNN vs. BLIP weight-space UQ vs. graph-space UQ, on held-out MD17 trajectory blocks.</p>
+        </div>
+        {results && results.length > 0 && (
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleBuildReport}
+            disabled={reportState === "building"}
+            title="Download a PDF report covering Phase 1 through Phase 3, built from the data on this page"
+          >
+            {reportState === "building" ? "Building…" : "Build report (Phase 1–3)"}
+          </button>
+        )}
       </div>
+      {reportState === "error" && (
+        <div className="error-block">Could not build the report — try again, or check the backend log.</div>
+      )}
 
       {error && <div className="error-block">{error}</div>}
 
@@ -301,6 +328,23 @@ export default function Benchmarks() {
                 near-duplicate frames, see CLAUDE.md) violate the exchangeability assumption
                 conformal prediction relies on between the validation calibration set and test set.
                 Reported honestly rather than claimed as a perfect fix — see SCRUM-68.
+              </p>
+            </div>
+          )}
+
+          {results.some((r) => r.phase.startsWith("phase3_graph_stochastic")) && (
+            <div className="card">
+              <p className="card-title">Known issue — Phase 3 force-uncertainty calibration (SCRUM-70)</p>
+              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "var(--ink-secondary)" }}>
+                The post-hoc calibration above fixes Phase 3's energy ECE sharply but only partially fixes
+                force ECE — and it is not expected to do better. A structural root-cause analysis found
+                that Phase 3 injects stochasticity additively into graph representations, where it has no
+                first-order coupling to atomic position, while BLIP injects it multiplicatively on the
+                activation itself, which does. That is a property of where noise enters the forward pass,
+                not a miscalibrated scalar, so no post-hoc correction can fully close it. Three fixes to
+                the mechanism itself are proposed and pending the architecture owner's decision — this is
+                reported as an open, root-caused issue rather than an unexplained residual in the numbers
+                above.
               </p>
             </div>
           )}

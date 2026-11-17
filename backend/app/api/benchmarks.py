@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 from app.core.config import PHASE_CHECKPOINTS, RESULTS_DIR
 from app.models.schemas import BenchmarkResult
 from app.services import calibration as calibration_module
+from app.services import report as report_module
 
 router = APIRouter(prefix="/benchmarks", tags=["benchmarks"])
 
@@ -33,26 +34,13 @@ def _calibrated_field(calibration: dict | None, quantity: str, field: str):
     return calibration.get("after", {}).get(quantity, {}).get(field)
 
 
-@router.get("", response_model=list[BenchmarkResult])
-def list_benchmarks() -> list[BenchmarkResult]:
-    """One row per project phase - the checkpoints /predictions serves
-    (app.core.config.PHASE_CHECKPOINTS, now four: Phase 1, BLIP at K=1,
-    BLIP at K=4/NLL, Phase 3) - read from each one's own scored results
-    file, never recomputed here. The four summary fields (energy_mae,
-    force_mae, ece, uncertainty_correlation) come from `benchmark_row`,
-    the same row ml/training/evaluate.py computes; everything else comes
-    from that same file's `metrics`/`uq_metrics` blocks directly, for a
-    caller that wants more than the four-number summary (see
-    BenchmarkResult's own comment for why each one is there).
-
-    Not one row per architecture or per run file: a results file's own
-    `phase` field is the model *registry* key (e.g. "blip"), the same for
-    every BLIP run regardless of which checkpoint - reading it directly
-    would produce duplicate, ambiguous rows. PHASE_CHECKPOINTS's keys are
-    the unambiguous labels this endpoint (and /predictions) actually use.
-
-    Skips a phase whose checkpoint has never been trained/scored - an
-    absent row, not a crash.
+def get_benchmark_results() -> list[BenchmarkResult]:
+    """Shared data-gathering behind `GET /benchmarks` and
+    `GET /benchmarks/report` - one row per project phase, read from each
+    phase's own scored results file. See `list_benchmarks`'s own
+    docstring (unchanged below) for the full contract; split out so the
+    report builder (`app.services.report`) doesn't have to re-fetch
+    through HTTP or duplicate this reading logic.
     """
     results = []
     for phase, checkpoint_path in PHASE_CHECKPOINTS.items():
@@ -97,3 +85,52 @@ def list_benchmarks() -> list[BenchmarkResult]:
             )
         )
     return results
+
+
+@router.get("", response_model=list[BenchmarkResult])
+def list_benchmarks() -> list[BenchmarkResult]:
+    """One row per project phase - the checkpoints /predictions serves
+    (app.core.config.PHASE_CHECKPOINTS, now four: Phase 1, BLIP at K=1,
+    BLIP at K=4/NLL, Phase 3) - read from each one's own scored results
+    file, never recomputed here. The four summary fields (energy_mae,
+    force_mae, ece, uncertainty_correlation) come from `benchmark_row`,
+    the same row ml/training/evaluate.py computes; everything else comes
+    from that same file's `metrics`/`uq_metrics` blocks directly, for a
+    caller that wants more than the four-number summary (see
+    BenchmarkResult's own comment for why each one is there).
+
+    Not one row per architecture or per run file: a results file's own
+    `phase` field is the model *registry* key (e.g. "blip"), the same for
+    every BLIP run regardless of which checkpoint - reading it directly
+    would produce duplicate, ambiguous rows. PHASE_CHECKPOINTS's keys are
+    the unambiguous labels this endpoint (and /predictions) actually use.
+
+    Skips a phase whose checkpoint has never been trained/scored - an
+    absent row, not a crash.
+    """
+    return get_benchmark_results()
+
+
+@router.get("/report")
+def build_benchmark_report() -> Response:
+    """A single PDF report built from the same rows `GET /benchmarks`
+    serves, spanning Phase 1 (bake-off) through Phase 3 (graph-space UQ)
+    - the dashboard's "build report" action. Generated fresh on every
+    call from `experiments/results/*.json` (via `get_benchmark_results`)
+    and `reports/calibration/*.json` (via `app.services.calibration`,
+    already folded into those same rows) - never cached, so it always
+    reflects whichever checkpoints are currently scored, and never
+    recomputes a metric itself (same never-recompute-here discipline as
+    `list_benchmarks`).
+
+    Returned as `application/pdf` with a download filename rather than
+    as JSON, since the whole point is a document a person reads or hands
+    to someone else, not a payload a caller parses further.
+    """
+    results = get_benchmark_results()
+    pdf_bytes = report_module.build_phase_report(results)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=phase1_3_report.pdf"},
+    )

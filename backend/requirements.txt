@@ -3,3 +3,5 @@ uvicorn[standard]>=0.29
 sqlalchemy>=2.0
 pydantic-settings>=2.2
 python-multipart>=0.0.9
+reportlab>=4.2
+pypdf>=5.0  # backend/tests only: reads the generated report PDF back to assert its contents
