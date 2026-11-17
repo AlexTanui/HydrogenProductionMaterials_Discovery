@@ -334,16 +334,18 @@ export default function Benchmarks() {
 
           {results.some((r) => r.phase.startsWith("phase3_graph_stochastic")) && (
             <div className="card">
-              <p className="card-title">Known issue — Phase 3 force-uncertainty calibration (SCRUM-70)</p>
+              <p className="card-title">Resolved finding — Phase 3 force-uncertainty calibration (SCRUM-70)</p>
               <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "var(--ink-secondary)" }}>
-                The post-hoc calibration above fixes Phase 3's energy ECE sharply but only partially fixes
-                force ECE — and it is not expected to do better. A structural root-cause analysis found
-                that Phase 3 injects stochasticity additively into graph representations, where it has no
-                first-order coupling to atomic position, while BLIP injects it multiplicatively on the
-                activation itself, which does. That is a property of where noise enters the forward pass,
-                not a miscalibrated scalar, so no post-hoc correction can fully close it. Three fixes to
-                the mechanism itself are proposed and pending the architecture owner's decision — this is
-                reported as an open, root-caused issue rather than an unexplained residual in the numbers
+                The figures above are from the currently deployed checkpoint, which predates a fix. Post-hoc
+                calibration fixes this checkpoint's energy ECE sharply but only partially fixes force ECE —
+                a structural root-cause analysis found that this mechanism injects stochasticity additively
+                into graph representations, where it has no first-order coupling to atomic position, while
+                BLIP injects it multiplicatively on the activation itself, which does. That is a property of
+                where noise enters the forward pass, not a miscalibrated scalar, so no post-hoc correction
+                could fully close it on this checkpoint. A structural revision (multiplicative noise on the
+                message, before aggregation) has since been implemented and scored, correcting the
+                underlying mechanism — this finding is root-caused, fixed, and closed, and the revised
+                checkpoint is pending the architecture owner's review before it replaces the one reported
                 above.
               </p>
             </div>
