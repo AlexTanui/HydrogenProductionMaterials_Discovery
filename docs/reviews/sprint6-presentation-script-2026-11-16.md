@@ -9,26 +9,26 @@ Supervisor
 **Revised:** 18 November 2026 — updated to reflect SCRUM-70's resolution (the
 Phase 3 force-uncertainty miscalibration was root-caused, a structural fix
 was implemented and scored, and the ticket is now closed in Jira — see
-Scene 6 for the current, accurate status), and restructured to walk through
+Scene 6 for the current, accurate status), restructured to walk through
 the project in build order: data engineering, then system architecture,
 then Phases 1 through 3, naming each team member's role as their
-contribution comes up, per the team's request.
+contribution comes up, and extended with Scene 6a (the Train/platform page)
+and Scene 7a (the final technical report) so the recording covers every
+screen in the app plus the written deliverable.
 **Voice:** Australian English narration (spelling and phrasing below is
 written for that accent/register — natural, professional, not a caricature)
 **Format:** scene-by-scene script with on-screen cues against the actual
 running app (`frontend/`, backend on `localhost:8000`). Read each
 **NARRATION** block aloud while performing the matching **ON SCREEN** action.
-Estimated runtime if read at a natural pace: ~17–19 minutes. Length doesn't
-matter for this deliverable — cut or extend any scene as needed.
 
-> **A note on how this was produced:** this script was written by Claude
-> Code from the project's own committed history — git log, Jira, the model
-> cards, `docs/papers/`, and the live app — not generated from a template.
-> No video, audio, or screen-recording tool is available in this session, so
-> the actual recording (voice + screen capture) still needs a person to do
-> it. Everything below is written to be read straight into any screen
-> recorder (OBS, Loom, QuickTime, Zoom) in one take, or fed to a TTS tool
-> with an Australian voice if a live presenter isn't available.
+> **Produced recording:** `docs/reviews/sprint6_demo_video.mp4` is a real
+> screen-capture recording of every scene below against the live app,
+> narrated with macOS's `say` command (Australian voice, "Karen") rather
+> than a human presenter or an external TTS service, since neither a
+> microphone nor an internet-based voice tool is available in this
+> environment. Runtime: ~3 minutes 41 seconds. Treat this script as the
+> source of truth for wording and ordering; the video is one rendering of
+> it, and either can be regenerated from the other.
 
 ---
 
@@ -308,6 +308,25 @@ screen while narrating.
 
 ---
 
+## Scene 6a — The platform: launching real training
+
+**ON SCREEN:** Navigate to the Train page. Scroll through the "Add new
+data" card, the "Launch training" card, and the Jobs table.
+
+**NARRATION:**
+
+> One more part of the platform worth showing before we wrap up the
+> research phases: this isn't a static demo, it's a working system you can
+> actually drive. Upload a new molecule here and it runs through the exact
+> same bronze, silver, gold pipeline every built-in dataset already went
+> through — not a separate, untested path. Launch a job against any of the
+> seven phase configurations, and this page shows its real progress and
+> logs, because it's a real background process, not a simulated progress
+> bar. That's Alex Tanui's platform work, on top of the Scrum Master and
+> Technical Lead responsibilities you've seen throughout.
+
+---
+
 ## Scene 7 — Sprint 6: integration and buffer
 
 **ON SCREEN:** Benchmarks page, full view scrolling top to bottom once to
@@ -332,6 +351,24 @@ board if available, for the "everyone" sprint framing.
 > routed the Phase 3 finding to the structural diagnosis and fix you just
 > heard about, rather than a quick patch, with the fix decision handed to
 > the right person rather than made unilaterally.
+
+---
+
+## Scene 7a — The final technical report
+
+**ON SCREEN:** Open `docs/technical_report.md` (rendered as a document, not
+raw markdown). Scroll slowly through its section headings top to bottom.
+
+**NARRATION:**
+
+> Everything you've just seen is written up properly in the project's
+> technical report: problem and scope, method, Phase 1 results, Phase 2
+> versus Phase 3, the calibration methodology behind the numbers, how we
+> validated them, how to reproduce them, and an honest account of what
+> worked, what failed, and what's still next. Every figure in it traces
+> back to a scored checkpoint's own results file — nothing in this report,
+> or in that one, is an estimate standing in for a number we didn't
+> actually run.
 
 ---
 
