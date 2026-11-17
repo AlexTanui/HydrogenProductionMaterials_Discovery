@@ -1,0 +1,96 @@
+{
+  "retrieved_date": "2026-11-15",
+  "commit": "75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7",
+  "files": [
+    {
+      "path": "experiments/runs/phase1_baseline/run.json",
+      "local": "sources/phase1_baseline/run.json",
+      "sha256": "0fad731feadb439ef1d1d426b46cc684db57253c994ea1b5818fe89efa579a53",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7/experiments/runs/phase1_baseline/run.json"
+    },
+    {
+      "path": "experiments/runs/phase1_baseline/test_metrics.json",
+      "local": "sources/phase1_baseline/test_metrics.json",
+      "sha256": "8a924806b787ab230bc2234c1ebdf6864fe46e831ed0c330593b080b2ed3fc55",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7/experiments/runs/phase1_baseline/test_metrics.json"
+    },
+    {
+      "path": "experiments/runs/phase1_baseline/subsets.json",
+      "local": "sources/phase1_baseline/subsets.json",
+      "sha256": "b9a15f5b57ca3a6cf439ea0c86aab8886d8908ec9b15e64846bdffc87c6acd9b",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7/experiments/runs/phase1_baseline/subsets.json"
+    },
+    {
+      "path": "experiments/runs/phase2_blip/run.json",
+      "local": "sources/phase2_blip/run.json",
+      "sha256": "439b51a7e8ddbf7b36770dbce4d3b5586212ad88377dca634f1b90f9287e0634",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7/experiments/runs/phase2_blip/run.json"
+    },
+    {
+      "path": "experiments/runs/phase2_blip/test_metrics.json",
+      "local": "sources/phase2_blip/test_metrics.json",
+      "sha256": "3d6c33c62bce90320da329f841a0e76ead692b7e2c52c3a9df85d7a9a1770146",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7/experiments/runs/phase2_blip/test_metrics.json"
+    },
+    {
+      "path": "experiments/runs/phase2_blip/subsets.json",
+      "local": "sources/phase2_blip/subsets.json",
+      "sha256": "b9a15f5b57ca3a6cf439ea0c86aab8886d8908ec9b15e64846bdffc87c6acd9b",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7/experiments/runs/phase2_blip/subsets.json"
+    },
+    {
+      "path": "experiments/runs/phase2_blip_nll/run.json",
+      "local": "sources/phase2_blip_nll/run.json",
+      "sha256": "9fe0f0a47c3cc53354d991f42dd193dc700bb11952c85ce055e20ba7ca1adf1c",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7/experiments/runs/phase2_blip_nll/run.json"
+    },
+    {
+      "path": "experiments/runs/phase2_blip_nll/test_metrics.json",
+      "local": "sources/phase2_blip_nll/test_metrics.json",
+      "sha256": "0877d18eace9319e1928058f0f21b6beb3e3acdde03e296df5f7217be9fc7ff0",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7/experiments/runs/phase2_blip_nll/test_metrics.json"
+    },
+    {
+      "path": "experiments/runs/phase2_blip_nll/subsets.json",
+      "local": "sources/phase2_blip_nll/subsets.json",
+      "sha256": "b9a15f5b57ca3a6cf439ea0c86aab8886d8908ec9b15e64846bdffc87c6acd9b",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7/experiments/runs/phase2_blip_nll/subsets.json"
+    },
+    {
+      "path": "experiments/runs/phase3_graph_stochastic/run.json",
+      "local": "sources/phase3_graph_stochastic/run.json",
+      "sha256": "a4fc0bbee58e663db8b5e3065a586f29c8be327c1017a3c1a9f9277ff8fb6fda",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7/experiments/runs/phase3_graph_stochastic/run.json"
+    },
+    {
+      "path": "experiments/runs/phase3_graph_stochastic/test_metrics.json",
+      "local": "sources/phase3_graph_stochastic/test_metrics.json",
+      "sha256": "c86734678c0c8f3e1d345f4de922fcebff942b8087e60771909233defd89e43b",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7/experiments/runs/phase3_graph_stochastic/test_metrics.json"
+    },
+    {
+      "path": "experiments/runs/phase3_graph_stochastic/subsets.json",
+      "local": "sources/phase3_graph_stochastic/subsets.json",
+      "sha256": "b9a15f5b57ca3a6cf439ea0c86aab8886d8908ec9b15e64846bdffc87c6acd9b",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7/experiments/runs/phase3_graph_stochastic/subsets.json"
+    },
+    {
+      "path": "experiments/runs/phase3_graph_stochastic_nll/run.json",
+      "local": "sources/phase3_graph_stochastic_nll/run.json",
+      "sha256": "c9ea84b90cd3da5e2ae07a57fc4bd26f74fb21091c7dd5a7770f560109c1220d",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7/experiments/runs/phase3_graph_stochastic_nll/run.json"
+    },
+    {
+      "path": "experiments/runs/phase3_graph_stochastic_nll/test_metrics.json",
+      "local": "sources/phase3_graph_stochastic_nll/test_metrics.json",
+      "sha256": "e42ce4a56f40e43636cf843329c8bce4046deff6ecfa4dd8805b93453b6671d3",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7/experiments/runs/phase3_graph_stochastic_nll/test_metrics.json"
+    },
+    {
+      "path": "experiments/runs/phase3_graph_stochastic_nll/subsets.json",
+      "local": "sources/phase3_graph_stochastic_nll/subsets.json",
+      "sha256": "b9a15f5b57ca3a6cf439ea0c86aab8886d8908ec9b15e64846bdffc87c6acd9b",
+      "url": "https://github.com/AlexTanui/HydrogenProductionMaterials_Discovery/blob/75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7/experiments/runs/phase3_graph_stochastic_nll/subsets.json"
+    }
+  ]
+}

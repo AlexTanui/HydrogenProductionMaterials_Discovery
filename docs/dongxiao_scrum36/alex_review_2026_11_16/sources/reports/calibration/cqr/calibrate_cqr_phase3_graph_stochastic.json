@@ -1,0 +1,77 @@
+{
+  "checkpoint": "experiments/checkpoints/phase3_graph_stochastic.pt",
+  "alpha": 0.1,
+  "n_calibration": 55509,
+  "n_test": 5000,
+  "q_hat_energy": -0.08945312499417923,
+  "q_hat_force": 0.3174242019653324,
+  "before": {
+    "energy": {
+      "coverage_90": 0.983,
+      "mean_width": 0.622219140625323
+    },
+    "force": {
+      "coverage_90": 0.5176444444444445,
+      "mean_width": 0.3292846268663575
+    }
+  },
+  "after": {
+    "energy": {
+      "coverage_90": 0.9058,
+      "mean_width": 0.4433128906369646
+    },
+    "force": {
+      "coverage_90": 0.918725925925926,
+      "mean_width": 0.9641330307970218
+    }
+  },
+  "shape": {
+    "energy": {
+      "ensemble_skew": -0.011425926409854787,
+      "ensemble_excess_kurtosis": -0.3087761781360192,
+      "ensemble_jarque_bera_stat": 399.4372306732514,
+      "ensemble_jarque_bera_p": 1.8336119300234938e-87,
+      "residual_skew": -0.05352568374868958,
+      "residual_excess_kurtosis": 1.1640677664649335
+    },
+    "force": {
+      "ensemble_skew": -0.0022291708304206935,
+      "ensemble_excess_kurtosis": -0.28466463124753316,
+      "ensemble_jarque_bera_stat": 9118.555773036618,
+      "ensemble_jarque_bera_p": 0.0,
+      "residual_skew": 0.12252001661890108,
+      "residual_excess_kurtosis": 11.201727682849512
+    }
+  },
+  "shape_by_atom_type": {
+    "force": {
+      "H": {
+        "ensemble_skew": -0.0001051431686928069,
+        "ensemble_excess_kurtosis": -0.28371493711509865,
+        "ensemble_jarque_bera_stat": 6037.0657321926055,
+        "ensemble_jarque_bera_p": 0.0,
+        "residual_skew": 0.13232865889762666,
+        "residual_excess_kurtosis": 11.924021623709095,
+        "n_points": 90000
+      },
+      "C": {
+        "ensemble_skew": -0.002915839811763522,
+        "ensemble_excess_kurtosis": -0.2875738736619762,
+        "ensemble_jarque_bera_stat": 2068.3185325046425,
+        "ensemble_jarque_bera_p": 0.0,
+        "residual_skew": 0.16914260604421394,
+        "residual_excess_kurtosis": 8.853281868799444,
+        "n_points": 30000
+      },
+      "O": {
+        "ensemble_skew": -0.013599998838103328,
+        "ensemble_excess_kurtosis": -0.2845443112132573,
+        "ensemble_jarque_bera_stat": 1021.3163114676585,
+        "ensemble_jarque_bera_p": 1.6748689289613966e-222,
+        "residual_skew": -0.08609904894194313,
+        "residual_excess_kurtosis": 5.2207071081152225,
+        "n_points": 15000
+      }
+    }
+  }
+}

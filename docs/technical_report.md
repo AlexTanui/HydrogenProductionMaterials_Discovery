@@ -1,9 +1,13 @@
 # Technical report — Adaptive Graph-Space Uncertainty Modelling for MD17
 
-Status: skeleton only, started 9 Nov 2026 (SCRUM-26). Each section currently
-points at the source document it should be written from rather than
-duplicating that content — fill in-place, don't restate numbers here that
-would then need to be kept in sync with the reports they came from.
+Status: skeleton + Phase 1-3 findings, last extended 17 Nov 2026 (SCRUM-26 /
+SCRUM-36 merge). Base outline and §1-3/§6-10 text are Alex/Fazin's; §4-5 fold
+in Dongxiao's 16 Nov methodological review (`docs/dongxiao_scrum36/`), which
+is more careful about what the numbers do and don't prove and is treated as
+authoritative where the two drafts disagreed. Each section still points at
+the source document it should be written from rather than duplicating
+content that would then need to be kept in sync with the reports it came
+from.
 
 ## 1. Problem and scope
 
@@ -50,63 +54,167 @@ isn't supported by the table above.
 
 ## 4. Phase 2 vs Phase 3 — accuracy and uncertainty
 
-Full analysis: `docs/reviews/scrum-36-phase3-vs-phase1-2-analysis-2026-11-09.md`
-(SCRUM-36). **Protocol fairness resolved**: SCRUM-40 found the two runs
-that analysis compared were not hook-matched (`train_num_mc_samples`/
-`nll_warmup_epochs` differed); the actual fair, protocol-equal comparison
-is `docs/reviews/scrum-40-protocol-fairness-resolution-2026-11-12.md` and
-its table, `reports/phase2_vs_phase3_nll.md`. The numbers below are the
-matched-protocol ones; SCRUM-36's original (mismatched-hook) numbers are
-noted in parens for continuity, not as the headline anymore.
+Full analyses: `docs/reviews/scrum-36-phase3-vs-phase1-2-analysis-2026-11-09.md`
+(Alex's first pass) and `docs/dongxiao_scrum36/SCRUM36_Report.md` plus
+`docs/dongxiao_scrum36/alex_review_2026_11_16/Review.md` (Dongxiao's 16 Nov
+review of that pass). **Protocol fairness resolved**: SCRUM-40 found the two
+runs Alex's original analysis compared were not hook-matched
+(`train_num_mc_samples`/`nll_warmup_epochs` differed); the fair,
+protocol-equal comparison is `docs/reviews/scrum-40-protocol-fairness-resolution-2026-11-12.md`
+and `reports/phase2_vs_phase3_nll.md`. Dongxiao's review (16 Nov) re-audited
+that matched-protocol comparison against the upstream re-score records and
+is the version reported below; it corrects wording and emphasis rather than
+the underlying numbers, which it confirms independently.
 
-Moving stochasticity from BLIP's weight space (Phase 2) into node/edge
-representations (Phase 3) is not a strict improvement — it's a trade, and
-matching the training protocol (`train_num_mc_samples=4`,
-`nll_warmup_epochs=20` for both, instead of Phase 3 running at `1`/`0`)
-changes *which* trade it is. **Phase 3's force channel improves
-dramatically once matched**: force MAE is only +3.3% worse than BLIP-NLL
-(was +16.8% mismatched), force ECE is **26.6x better** (was 2.5x), and
-force uncertainty ranking now slightly *beats* BLIP-NLL (Spearman 0.2948
-vs 0.2836; was slightly behind at 0.2626 vs 0.2839). This is exactly what
-SCRUM-70 (training Phase 3 with NLL to fix force miscalibration at the
-source, not post-hoc) set out to do, and the matched-hook run confirms it
-worked. **But Phase 3's energy channel gets substantially worse**: energy
-MAE is now **+72.3% worse** than BLIP-NLL (was +19.6% mismatched) — more
-than triple the previously-reported gap. Energy ECE is still better than
-BLIP-NLL's (0.201 vs 0.647, 3.2x) but less so than the mismatched
-comparison suggested (was 4.2x). Training/inference cost advantage
-shrinks once MC samples are matched: 1.74x faster training (was reported
-as 5.2x), ~2.06x faster inference (unchanged, since eval-time MC count was
-always equal). Parameter count is unchanged (385,925 vs 740,953, 52%).
+**Point prediction (matched-protocol, lower is better):**
 
-This asymmetric effect — one quantity (force) improving sharply while the
-other (energy) regresses sharply, under the same training-recipe change —
-is itself a new, unexplained finding, not just a fairness correction. It
-suggests NLL-with-warmup training interacts differently with Phase 3's
-representation-space noise than with BLIP's weight-space noise, rather
-than being a uniform "more MC samples and warmup helps" effect. Not
-investigated further yet.
+| Model | Energy MAE | Energy RMSE | Force MAE | Force RMSE |
+|---|---|---|---|---|
+| MPNN | 0.0779 | 0.0962 | 0.1775 | 0.2774 |
+| BLIP MSE | 0.0920 | 0.1120 | 0.1826 | 0.2828 |
+| BLIP NLL | 0.0750 | 0.0943 | 0.1787 | 0.2788 |
+| Graph MSE | 0.0897 | 0.1126 | 0.2088 | 0.3264 |
+| Graph NLL | 0.1292 | 0.1612 | 0.1846 | 0.2919 |
 
-Per ROADMAP §4's requirement to state explicitly where Phase 3 does not
-win, under the now-fair comparison: **raw energy accuracy** is Phase 3's
-clear loss (not just a modest one). Phase 3's wins, now stronger than
-first reported: force accuracy (nearly matched), force calibration (both
-raw ECE and ranking), and parameter count; its win on training/inference
-cost is smaller than first reported once samples are matched. This is one
-run per phase per variant, not re-scored (SCRUM-38/71) — a first read, not
-a settled result.
+BLIP NLL has the lowest recorded energy MAE/RMSE; the deterministic MPNN has
+the lowest recorded force MAE/RMSE. **Phase 3 does not beat BLIP on point
+accuracy in any matched pairing**: Graph NLL vs BLIP NLL is +72.3% energy
+MAE / +3.3% force MAE; Graph MSE vs BLIP MSE is +14.35% force MAE despite a
+2.45% lower energy MAE (and its energy RMSE is actually 0.52% *higher*, so
+even that one bright spot doesn't hold under RMSE); both Phase 3 variants
+have higher energy and force error than deterministic MPNN. Exact deltas:
+`docs/dongxiao_scrum36/results/phase3_differences.csv`. These are single-run
+percentage differences with no significance assessment attached — read as
+descriptive, not as a tested claim that one model is reliably better.
 
-*Draft above is mine (Fazin/harness side); SCRUM-36 is assigned to
-Dongxiao for review and sign-off before this is treated as final.*
+**Raw (pre-post-hoc) uncertainty:**
+
+| Model | Energy ECE | Force ECE | Energy Spearman | Force Spearman | Energy cov@90% | Force cov@90% |
+|---|---|---|---|---|---|---|
+| BLIP MSE | 0.5964 | 0.6715 | -0.0025 | 0.2641 | 22.63% | 13.73% |
+| BLIP NLL | 0.6470 | 0.7379 | 0.0190 | 0.2836 | 16.62% | 5.86% |
+| Graph MSE | 0.1538 | 0.2969 | 0.0021 | 0.2622 | 99.46% | 57.37% |
+| Graph NLL | 0.2007 | 0.0277 | 0.0013 | 0.2948 | 99.99% | 86.31% |
+
+**Phase 3's real win is force calibration, not accuracy.** Once matched on
+MC samples/warmup: Graph NLL's force ECE is 26.6x better than BLIP NLL
+(0.0277 vs 0.7379) and its force coverage@90% (86.31%) is far closer to
+nominal than BLIP NLL's badly-undercovered 5.86% — BLIP's NLL training
+actually makes its calibration *worse* than its own MSE run, consistent
+with Fazin's 31 Oct variance-floor finding (comment 10117 on SCRUM-70: the
+training-time variance floor dominates BLIP's predicted spread, 610x the
+squared energy error at its worst). Graph NLL's force Spearman (0.2948)
+also edges out BLIP NLL (0.2836), though the gap is small enough that one
+run per variant doesn't support calling it a reliable ranking advantage.
+
+**Energy calibration is the opposite story — both Phase 3 variants are
+badly overcovered, not well-calibrated**, and NLL training makes Graph's
+energy *worse* on both axes versus Graph MSE (ECE 0.2007 vs 0.1538, mean
+predicted std 0.4969 vs 0.2143) while also carrying the worst energy MAE of
+any model in the table. Energy uncertainty-error Spearman is within noise
+of zero for every stochastic variant (BLIP and Graph alike) — none of the
+five models' energy uncertainty actually tracks error; only force
+uncertainty does, and only modestly (Spearman ~0.26-0.29 across BLIP/Graph
+NLL variants).
+
+**Read together, this is an asymmetric trade, not a win or a loss**: moving
+stochasticity into representations instead of weights (Phase 3 vs Phase 2)
+buys a large, real force-calibration improvement at the cost of energy
+accuracy and energy calibration both getting worse, under the same
+training-recipe change. One run per phase per variant (not yet re-scored
+per SCRUM-38/71 beyond the independent-rescore reproducibility check in
+§7) — a first read supported by a careful audit, not a settled result.
+Training/inference cost advantage for Phase 3 shrinks once MC samples are
+matched: 1.74x faster training (was reported as 5.2x before matching),
+~2.06x faster inference. Parameter count is unchanged (385,925 vs 740,953,
+52% smaller).
+
+**SCRUM-70 (Phase 3 force miscalibration, training-time fix):** the above
+NLL numbers are "fix 1" (training-time Gaussian NLL instead of MSE, no
+change to where noise enters the model). A second, structural fix
+(multiplicative noise on the pre-aggregation message instead of additive
+noise on the post-aggregation node state — see
+`docs/reviews/scrum-70-structural-root-cause-2026-11-12.md` and commit
+`633d1f2` on branch `alex`, not yet merged or reviewed by Ruturaj) pushes
+force coverage@90% to 91.61% but makes force ECE *worse* (0.0277 → 0.0424,
+under-coverage traded for over-coverage) and both energy and force MAE
+regress further. Dongxiao's review flags the open methodological gap this
+fix doesn't close on its own: the zero first derivative of additive noise
+"does not prove the remaining pathway weak, second-order, or an inevitable
+energy/force trade-off" — i.e. the root-cause argument is a plausible
+hypothesis consistent with the observed numbers, not a proof, and the
+multiplicative fix's own mixed result is itself evidence this needs a
+controlled test rather than being taken as closed. Tracked as a separate,
+clearly-labelled experiment per SCRUM-70's resolution, not a replacement
+for the Graph NLL numbers above.
+
+*Base analysis is Fazin/Alex's; methodological review and sign-off is
+Dongxiao's (SCRUM-36, 16 Nov) and is incorporated above.*
 
 ## 5. Calibration methodology
 
 Scalar (Kuleshov 2018) and CQR (Bao 2025) post-hoc corrections:
 `docs/reviews/cqr-calibration-report-2026-11-05.pdf`,
 `docs/reviews/cqr-conformal-calibration-2026-11-04.md`,
-`docs/reviews/scrum-68-calibration-review-2026-11-01.md`. Open item:
-SCRUM-70 (Phase 3 force miscalibration needs a training-time fix, not just
-post-hoc).
+`docs/reviews/scrum-68-calibration-review-2026-11-01.md`.
+
+**Post-hoc results** (separate 5,000-frame evaluation split, calibrated
+against the Gold validation split; all values are observed marginal
+coverage, not a finite-sample guarantee):
+
+| Method | Model | Energy cov@90% | Energy width | Force cov@90% | Force width |
+|---|---|---:|---:|---:|---:|
+| CQR | BLIP NLL | 91.54% | 0.3170 | 91.74% | 0.8373 |
+| CQR | Graph MSE | 90.58% | 0.4433 | 91.87% | 0.9641 |
+| CQR | Graph NLL | 90.30% | 0.7411 | 91.66% | 0.8390 |
+
+| Method | Model | Energy cov@90% | Energy ECE | Force cov@90% | Force ECE |
+|---|---|---:|---:|---:|---:|
+| Scalar | BLIP NLL | 91.54% | 0.0174 | 91.89% | 0.0447 |
+| Scalar | Graph MSE | 90.94% | 0.0110 | 92.00% | 0.0483 |
+| Scalar | Graph NLL | 91.08% | 0.0092 | 91.62% | 0.0415 |
+
+Post-hoc correction gets every model close to nominal 90% coverage on both
+quantities — expected, since that's what it's designed to do — but **it is
+not a substitute for fixing raw calibration** (SCRUM-70's point): Graph
+NLL's scalar-corrected force ECE is actually a bit *worse* than its raw
+force ECE (0.0415 vs 0.0277, on a different 5,000-frame subset), a reminder
+that "moves coverage toward nominal" and "lowers average error across all
+levels" are different properties and don't always move together. Open
+item: Phase 3 energy calibration diverges 13-33% between the scalar and CQR
+methods depending on configuration, unresolved (see §9).
+
+**Methodological caveats carried over from Dongxiao's 16 Nov review** (full
+list: `docs/dongxiao_scrum36/SCRUM36_Report.md` §"Calibration validity and
+statistical limits"), kept here because they bound what any calibration
+number in this report can be read as proving:
+
+1. Calibration uses the whole validation split, which training also uses
+   for selection/scheduling — not a calibration set independent of those
+   decisions. These reports are not a validated finite-sample coverage
+   guarantee on that basis alone.
+2. Calibration JSONs don't export exact frame IDs or full invocation
+   provenance; frame-level overlap and trajectory-boundary checks between
+   train/val/test remain to be done explicitly rather than assumed from
+   disjoint ID ranges.
+3. MD frames (and pooled force components within one structure) are
+   correlated, not independent observations — significance testing on the
+   pooled 1,498,743 force components as if independent is invalid.
+4. `calibrate.py`'s corrected-quantile implementation (NumPy
+   `method="higher"`, clamped out-of-range levels) is not the textbook
+   exact order-statistic correction
+   (`ceil((n+1)*(1-alpha))` with an infinite interval when the rank exceeds
+   `n`). Worth auditing against the metric owner (Fazin) before citing this
+   as "the standard" CQR correction in the final report.
+5. Each variant has exactly one training run; re-scoring or changing the
+   inference seed is not an independent training replication, so no
+   confidence interval or p-value is justified from these tables alone.
+6. SCRUM-49 found no tested MC sample count `K` meeting its own
+   three-inference-seed stability bar for BLIP NLL or Graph MSE — it didn't
+   test Graph NLL specifically, and a negative stability result for two
+   variants doesn't prove no `K` would work; small inter-variant ranking
+   differences (e.g. the Graph NLL vs BLIP NLL Spearman gap above) should
+   not be read as an established, stable advantage on that basis.
 
 ## 6. Validation: leakage audit and compute budget
 
@@ -117,13 +225,40 @@ buffer + split provenance, not yet applied).
 ## 7. Reproducibility
 
 Golden-run regression guard: `tests/ml/test_golden_run.py` (SCRUM-38).
-Open item: no real checkpoint has been independently re-scored yet
-(SCRUM-71) — only the synthetic golden run has.
+**Independent re-score (SCRUM-71, 14 Nov):** every real checkpoint with a
+local `.pt` file was independently re-scored and reproduces its recorded
+accuracy/benchmark metrics to within 7.748e-10 relative (BLIP NLL),
+1.374e-10 (Graph MSE) and 4.555e-11 (Graph NLL) — see each run's `rescore`
+block and `reports/all_phases.md`. This confirms the *recorded* numbers are
+reproducible from the *same* checkpoint; it says nothing about whether
+retraining from scratch with the same config reproduces them (that would
+need a repeated-seed study — see §5 caveat 5 and §9's open items), and it
+is a different question from the training-data provenance questions in §6.
+
+Dongxiao's 16 Nov review independently reran this reproducibility check
+(`docs/dongxiao_scrum36/alex_review_2026_11_16/verify_review.py`) against
+pinned source hashes and confirmed the same tolerances; it also flagged
+that some generated Markdown in the repo still said "not re-scored" after
+SCRUM-71 landed and was stale at the time of her review — worth a final
+pass before submission to make sure every generated report reflects the
+current re-score status.
 
 ## 8. Platform
 
 Backend/frontend wiring: SCRUM-42/43 (done). Three-phase dashboard
-comparison view: SCRUM-44 (open).
+comparison view: SCRUM-44 (done, SCRUM-71 merge). **Integration/demo
+readiness audit (SCRUM-46, Dongxiao, 15 Nov):** as of that audit, the
+checkout under review was an early interface scaffold whose prediction
+page served hash-generated placeholder outputs rather than real inference,
+with the frontend dependencies and runtime benchmark JSONs missing from
+that particular environment — a live end-to-end rehearsal had not been
+completed from that checkout. Per CLAUDE.md's current-state note, `backend/`
+and `frontend/` are wired to real checkpoints as of SCRUM-42/43, so this
+reads as a stale/incomplete local setup at audit time rather than a defect
+in the shipped code — but it hadn't been re-verified against a from-scratch
+checkout as of this report, and the default live Phase 3 route serves
+Graph MSE, not Graph NLL, which matters for correctly labelling any
+dashboard numbers against this section's tables.
 
 ## 9. What worked, what didn't, what's next
 
@@ -146,7 +281,10 @@ own starting hypothesis and that refutation was reported honestly. A
 second, distribution-free calibration method (CQR) was run against the
 first (scalar rescale) specifically to stress-test its assumptions, and
 surfaced a real disagreement on Phase 3 energy that a single method would
-have hidden.
+have hidden. Independent cross-review caught real issues before they
+reached the report: Dongxiao's 16 Nov pass on the SCRUM-36 analysis
+corrected several claims that had outrun what the underlying single-run
+data could support (precise wording above now reflects that review).
 
 **What failed, or is still a gap.** Process tracking lags the engineering
 work: `docs/sprint_reports.md` stops at Sprint 4 (1 Oct) with five weeks
@@ -159,24 +297,40 @@ CQR/atom-type work, 5 commits, 4 Nov — see the naming collision noted
 against the newer SCRUM-71 filed in this session). Meeting minutes aren't
 retrievable from the repo or Jira. On the technical side: `phase2_blip`
 still needs retraining from a clean commit (SCRUM-69/48) before it can
-re-enter the official comparison table; no run has been independently
-re-scored yet (SCRUM-38/71); the leakage audit's random-split control
-shows a 17-26% accuracy gap in leakage's direction, not yet attributed to
-leakage vs. noise; and Phase 3 energy calibration still diverges 13-33%
-between the scalar and CQR methods, unresolved.
+re-enter the official comparison table; the leakage audit's random-split
+control shows a 17-26% accuracy gap in leakage's direction, not yet
+attributed to leakage vs. noise; Phase 3 energy calibration still diverges
+13-33% between the scalar and CQR methods, unresolved; and — per §5's
+caveats — no variant has a repeated-seed training replication, so none of
+the cross-model accuracy or calibration deltas in §4-5 carry a formal
+significance claim.
 
 **What's next**, in priority order: retrain `phase2_blip` clean (SCRUM-69)
-and re-run its calibration; get the golden-run guard and MC-stability
-study actually run against the real `phase2_blip_nll`/`phase3_graph_stochastic`
-checkpoints (SCRUM-38/49/71, not just the synthetic golden run); isolate
-Phase 3 energy's remaining scalar-vs-CQR width gap; split force's
+and re-run its calibration; get the MC-stability study run against Graph
+NLL specifically (SCRUM-49 covered BLIP NLL and Graph MSE, not Graph NLL);
+resolve whether SCRUM-70's structural fix (§4) should replace, sit beside,
+or be re-tuned relative to the NLL-only fix, pending Ruturaj's review;
+isolate Phase 3 energy's remaining scalar-vs-CQR width gap; split force's
 heavy-tailed hydrogen residual by hydroxyl-vs-methyl H now that atom-type
-alone didn't explain it; and decide whether Phase 1's numbers need a
-run-to-run noise estimate before being treated as final. Process-side:
-file SCRUM-71 retroactively against its already-shipped CQR work (distinct
-from the new, same-numbered reproducibility ticket filed this session —
-flagged as an open naming collision), reconcile Jira assignee vs.
-git-commit author on SCRUM-31/32/67, and write up the Sprint 5/6/overrun
-retrospectives that are still missing.
+alone didn't explain it; obtain frame-aligned paired exports (Gold ID,
+trajectory ID, E/F reference and prediction, E_var/F_var) for all five
+models so that paired, dependence-aware significance testing (block
+resampling over trajectories, not naive per-component bootstrapping) is
+possible at all — currently it isn't, from the aggregated metrics alone;
+and decide whether Phase 1's numbers need a run-to-run noise estimate
+before being treated as final. Process-side: file SCRUM-71 retroactively
+against its already-shipped CQR work (distinct from the new, same-numbered
+reproducibility ticket filed this session — flagged as an open naming
+collision), reconcile Jira assignee vs. git-commit author on SCRUM-31/32/67,
+and write up the Sprint 5/6/overrun retrospectives that are still missing.
 
 ## 10. Conclusion
+
+*TODO.* Draft once §2 (method) and the Ruturaj/Dongxiao sign-offs on §4's
+open items (SCRUM-70 mechanism review, MC-stability for Graph NLL) land —
+the honest headline per the evidence gathered so far is that Phase 3 is a
+real, substantial win on raw force calibration and a real loss on energy
+accuracy and energy calibration relative to Phase 2, not a strict
+improvement in either direction, and every cross-model number in §4-5 is a
+single-run descriptive comparison rather than a statistically tested one
+(§5's caveats, §9's "what's next").
