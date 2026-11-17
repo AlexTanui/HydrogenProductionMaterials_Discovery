@@ -91,6 +91,32 @@ export function fetchBenchmarks(): Promise<BenchmarkResult[]> {
   return request<BenchmarkResult[]>("/benchmarks");
 }
 
+// Not routed through request(): the response is a PDF file
+// (Content-Disposition: attachment), not JSON, and the caller wants a
+// browser download, not a parsed object.
+export async function downloadBenchmarkReport(): Promise<void> {
+  const response = await fetch(`${BASE_URL}/benchmarks/report`);
+  if (!response.ok) {
+    let detail = `${response.status}`;
+    try {
+      const body = await response.json();
+      if (typeof body?.detail === "string") detail = body.detail;
+    } catch {
+      // not JSON - fall back to the status code
+    }
+    throw new Error(detail);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "phase1_3_report.pdf";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export interface TrainJobStatus {
   id: string;
   molecule: string;

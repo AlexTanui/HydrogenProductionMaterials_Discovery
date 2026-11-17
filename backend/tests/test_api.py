@@ -20,6 +20,7 @@ import time
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from pypdf import PdfReader
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -167,6 +168,23 @@ def test_benchmarks_returns_one_row_per_checkpoint_with_a_unique_phase_key():
     # The full Phase 1 bake-off (5 architectures) plus both BLIP runs plus
     # both Phase 3 runs - every trained checkpoint, not a collapsed subset.
     assert {"phase1_deterministic", "phase1_schnet", "phase1_painn", "phase1_physnet", "phase1_dimenet"} <= phases_present
+
+
+def test_benchmark_report_is_a_pdf_covering_every_row_benchmarks_returns():
+    rows = client.get("/benchmarks").json()
+    response = client.get("/benchmarks/report")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert "attachment" in response.headers["content-disposition"]
+    assert response.content.startswith(b"%PDF")
+
+    reader = PdfReader(io.BytesIO(response.content))
+    body = "\n".join(page.extract_text() for page in reader.pages)
+    assert "Hydrogen Production Materials Discovery" in body
+    # Every model GET /benchmarks reports is actually named in the report -
+    # the whole point is "built from the same data", not a stale template.
+    for row in rows:
+        assert row["model"] in body
 
     for row in rows:
         assert row["energy_mae"] > 0

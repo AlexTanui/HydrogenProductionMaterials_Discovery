@@ -377,6 +377,29 @@ the first place). Deliberately shown alongside the raw numbers rather
 than replacing them, so a caller can see both the model's own raw
 uncertainty and the effect of the post-hoc fix.
 
+### `GET /benchmarks/report`
+
+The dashboard's "build report" action: a single PDF document spanning
+Phase 1 through Phase 3, built from exactly the rows `GET /benchmarks`
+returns (`app.api.benchmarks.get_benchmark_results`, shared between the
+two endpoints) and rendered by `app.services.report.build_phase_report`
+(reportlab). Generated fresh on every call, never cached and never
+recomputing a metric — same read-only discipline as `GET /benchmarks`
+itself.
+
+Response: `application/pdf`, not JSON, with
+`Content-Disposition: attachment; filename=phase1_3_report.pdf` so a
+browser calling it downloads a file rather than rendering it inline.
+Sections: Phase 1 bake-off table, Phase 2/3 accuracy table, UQ table
+(ECE/Spearman/coverage/sharpness), post-hoc calibration table (omitted if
+no row has one yet), and a Phase 3 force-calibration limitations section
+(omitted if no Phase 3 row exists yet) — mirrors
+`frontend/src/pages/Benchmarks.tsx`'s own section structure so the
+downloaded report and the live page agree, but each is its own
+implementation (one Python, one TSX), not a shared template. Written as
+a standalone narrative document (no internal ticket/branch references)
+since it's meant to be handed to someone outside the team.
+
 ### Auth
 
 None. This is an internal research demo — do not deploy publicly without
