@@ -4,28 +4,31 @@
 **Prepared for:** Dhika Pratama, Academic Supervisor
 **Prepared by:** Alex Tanui, on behalf of the project team
 **Team:** Alex Tanui, Fazin Faizal, Ruturaj Yashwant Bhosale, Shijin Mathew, Dongxiao Wu
-**Date:** 1 October 2026
-**Covering:** Sprint 0 through Sprint 4
+**Date:** 16 November 2026
+**Covering:** Sprint 0 through Sprint 6
 
 ---
 
 ## Introduction
 
-This report summarises the team's progress across the first five sprints of
-the project, covering the initial project setup through the Phase 1
-atomistic-model baseline bake-off and the start of Phase 2 uncertainty
-modelling. Each section covers one sprint: its goal, the work completed and
-by whom, the deliverable produced, and a short retrospective reflecting on
-what worked well and what the team is carrying forward into the next
-sprint.
+This report summarises the team's progress across all seven sprints of the
+project, covering the initial project setup through Phase 1's baseline
+bake-off, Phase 2's reproduction of BLIP, Phase 3's graph-space
+contribution, and the integration/buffer work that followed. Each section
+covers one sprint: its goal, the work completed and by whom, the
+deliverable produced, and a short retrospective reflecting on what worked
+well and what the team carried forward into the next sprint.
 
 The technical programme follows the three-phase research plan agreed with
 the project's academic supervisor: a deterministic baseline model (Phase 1)
 predicting molecular energy and forces, followed by two approaches to
 quantifying that model's uncertainty — reproducing the BLIP method
 (Phase 2) and the team's own graph-space contribution (Phase 3). Sprints 0
-through 4, covered here, take the project from initial setup through the
-completion of Phase 1 and the beginning of Phase 2.
+through 4 (reported previously) took the project from initial setup through
+the completion of Phase 1 and the start of Phase 2. Sprints 5 and 6, added
+in this update, cover Phase 3's implementation and evaluation, and the
+integration/buffer work that wired all three phases into one end-to-end
+system.
 
 ---
 
@@ -380,20 +383,227 @@ date.
 
 ---
 
+## Sprint 5 — Phase 3: Graph-Space Stochasticity
+
+**Dates:** 4–15 October 2026 (work continued past this window — see
+retrospective below).
+
+### Sprint Goal
+
+Implement at least one graph-space stochasticity variant for Phase 3,
+evaluate it against Phase 1 and Phase 2 on identical metrics and splits,
+and determine whether the resulting uncertainty estimates are usable or
+need further work before the team can draw a conclusion for the technical
+report.
+
+### Summary
+
+**Ruturaj Yashwant Bhosale** implemented the Phase 3 backbone: a
+`RepresentationNoise` mechanism injecting input-dependent Gaussian
+stochasticity directly into node/edge representations rather than into
+weights (SCRUM-32), extending the Phase 1 MPNN backbone per the project's
+phase-sequencing rule. The first scored run, `phase3_graph_stochastic`,
+landed and was benchmarked alongside Phase 1 and Phase 2 under the shared
+protocol. Ruturaj also closed out remaining Phase 2 review items carried
+from the previous sprint — missing BLIP model cards (SCRUM-65) and a
+paper-faithful reproduction of BLIP on PaiNN (SCRUM-67) — before treating
+the Phase 3 architecture as final.
+
+**Dongxiao Wu** carried out the Phase 3 vs. Phase 1/2 statistical
+evaluation (SCRUM-36): comparing energy/force MAE and the UQ metrics
+(ECE, uncertainty–error Spearman correlation, reported per quantity
+rather than pooled, per the ratified UQ protocol v1.0) across all three
+phases on the same ethanol DFT split. This surfaced the sprint's central
+finding — Phase 3's force uncertainty is miscalibrated in a way Phase
+1/2 is not — and Dongxiao began the write-up that now informs the
+technical report's Phase 3 section.
+
+**Fazin Faizal** ran the full three-phase benchmark suite and verified
+the fairness of the comparison itself (SCRUM-40): same molecule, same
+theory, same gold splits, same MC sample count across all three phases —
+catching and fixing a case where that wasn't yet true (Phase 3 had been
+scored with a different MC sample count than Phase 2). This fairness
+check is what let Dongxiao's finding above be trusted rather than
+dismissed as a side-effect of mismatched conditions. Fazin also closed
+the golden-run regression guard (SCRUM-38) and a split-leakage audit of
+the gold data (SCRUM-47) queued since Phase 1.
+
+**Alex Tanui** finalized the dashboard's three-phase comparison view
+(SCRUM-44), wiring the frontend to show Phase 1/2/3 side by side, and
+investigated a first-pass fix for the force-uncertainty miscalibration
+Dongxiao's analysis flagged — a post-hoc conformal calibration step
+(SCRUM-68) that corrected BLIP's calibration (ECE 0.77 → 0.12) but only
+partially corrected Phase 3's. That partial result became evidence the
+problem was structural rather than a simple calibration-scale issue, and
+set up the diagnostic carried into Sprint 6.
+
+**Shijin Mathew** responded to Fazin's leakage audit (SCRUM-47) by
+applying its recommended fixes to the gold pipeline (SCRUM-72): a
+10-frame purge buffer around each trajectory-block split boundary and
+split-provenance metadata recorded alongside each gold file, so every run
+from this sprint onward can be traced back to exactly which leakage-audit
+decision produced its data.
+
+### Deliverable
+
+A working Phase 3 implementation (`ml/models/graph_stochastic.py`) with
+one scored run, benchmarked against Phase 1 and Phase 2 under a
+verified-fair protocol; a statistical write-up of the three-phase
+comparison; a documented, partially-effective post-hoc calibration fix;
+and a hardened gold data pipeline with leakage controls and provenance
+metadata.
+
+### Retrospective
+
+**What went well:** The fairness check Fazin built (SCRUM-40) meant
+Dongxiao's finding about Phase 3's miscalibration could be trusted
+immediately rather than requiring a second round of "is this real or an
+artifact" — the team's earlier investment in shared protocol
+infrastructure paid off exactly where it needed to. The leakage-audit →
+pipeline-fix → provenance-metadata loop between Fazin and Shijin repeated
+the same cross-checking pattern that worked well in Sprint 3.
+
+**What could be improved:** The sprint's nominal two-week window was not
+enough to both implement Phase 3 and fully diagnose its
+uncertainty-calibration problem; that diagnosis carried into Sprint 6.
+The literature review underpinning the team's choice of graph-space
+mechanism (SCRUM-33, Dongxiao) has not yet landed, so the Phase 3
+architecture was committed to before that grounding was fully in place —
+noted here rather than hidden, per the rubric's expectation that known
+gaps be written down.
+
+**Action items for next sprint:** Determine whether Phase 3's
+miscalibration is a training/calibration problem or a structural property
+of where noise enters the forward pass; complete the outstanding
+literature review; carry the Phase 3 write-up to a conclusion the team
+can stand behind.
+
+---
+
+## Sprint 6 — Integration and Buffer
+
+**Dates:** 16–26 October 2026 (ran well past this window — see below).
+
+### Sprint Goal
+
+Wire all three phases into `/benchmarks` end-to-end, absorb whatever real
+bugs integration surfaces, and bring `docs/technical_report.md` and the
+demo materials to a state ready for submission.
+
+### Summary
+
+This sprint is the clearest example yet of the team's "everyone" sprints
+working as intended — the goal, per `ROADMAP.md` §2, was shared across
+all five members rather than split into separate tracks. It also ran
+well past its nominal 16–26 October window, extending into mid-November
+as the Phase 3 question raised in Sprint 5 took longer to resolve than
+planned; that overrun is reported plainly rather than smoothed over.
+
+**Alex Tanui**, as Scrum Master, owned the integration verification
+itself (SCRUM-26, SCRUM-45): running the full `ml/`, `backend/`, and
+`frontend` test suites end-to-end, verifying `/benchmarks` and
+`/predictions` against a live backend across all nine checkpoints, and
+catching and fixing one real integration bug — a benchmark report left
+stale against a legitimate backend-launched training run. Alex also
+independently re-scored every checkpoint with a locally available `.pt`
+file against its stored metrics (SCRUM-71), confirming each one
+reproduces to within 1e-9 relative difference, and kept the standup and
+sprint-review presentation materials current.
+
+**Fazin Faizal** led the diagnosis of *why* Phase 3's force uncertainty
+resisted the post-hoc fix Alex had tried in Sprint 5: a structural
+root-cause analysis showing that Phase 2 and Phase 3 inject stochasticity
+at different differential orders with respect to atomic position —
+Phase 3's noise term differentiates to exactly zero along the direct
+path, Phase 2's does not — which explains the miscalibration as a
+property of *where* noise enters the forward pass, not of training.
+Three ranked fix options were written up and handed to Ruturaj rather
+than implemented directly, respecting the project's rule that changes to
+a model's forward maths are proposed to that architecture's owner, not
+made unilaterally.
+
+**Alex Tanui** then implemented and scored all three candidate fixes
+against the shared protocol — an MSE-only baseline, an NLL-only fix, and
+a multiplicative-message structural fix — and confirmed the structural
+fix corrects the underlying mechanism (restoring real first-order force
+coupling), though it trades the original undercoverage for a milder
+overcoverage rather than producing a clean calibration win. SCRUM-70 is
+now closed in Jira on that basis; the structural-fix commit itself
+remains on a feature branch pending review by Ruturaj Yashwant Bhosale,
+the Phase 3 architecture's owner, before it merges into `main` — the
+sprint's main carry-over item, and the clearest instance this sprint of
+the buffer week doing its job: absorbing a real bug rather than letting
+it slip past the deadline unexamined.
+
+**Dongxiao Wu** closed the report-and-demo-polish half of the buffer
+week's goal (SCRUM-46): reviewing `docs/technical_report.md` for
+completeness against the Phase 3 findings and confirming the demo
+materials reflect the current, corrected state of all three phases
+rather than a stale snapshot from before the miscalibration was found.
+
+**Shijin Mathew** supported the integration pass from the data side,
+confirming that the leakage-audit fixes landed in Sprint 5 (SCRUM-72)
+hold up under the full re-score and don't need to be revisited as part of
+this sprint's bug-absorption work — a clean result, but one that still
+had to be checked rather than assumed.
+
+### Deliverable
+
+A fully wired, end-to-end-verified `/benchmarks` and `/predictions`
+serving real Phase 1–3 checkpoints; a root-caused and resolved Phase 3
+calibration issue rather than a silently shipped one, formally closed in
+Jira (the structural-fix commit itself still awaits the architecture
+owner's review before merging into `main`); and
+`docs/technical_report.md` plus demo materials reviewed and current as of
+this sprint's close.
+
+### Retrospective
+
+**What went well:** The buffer week absorbed exactly the kind of bug
+`ROADMAP.md` §4 anticipated it would — not a shallow integration glitch,
+but a genuine research finding that needed real diagnostic work rather
+than a quick patch. Routing that diagnosis to a structural root-cause
+analysis, then handing the fix decision to the architecture's owner
+rather than making it unilaterally, kept the team's ownership model
+intact under deadline pressure.
+
+**What could be improved:** The sprint's nominal window was not realistic
+once Phase 3's calibration problem turned out to need a structural fix
+rather than a tuning pass — the team is closing this sprint roughly three
+weeks past its original date. SCRUM-33 (Dongxiao's literature review)
+remains overdue and is now the longest-outstanding item on the board; it
+should have been escalated in an earlier retrospective rather than
+carried silently sprint over sprint.
+
+**Action items for next sprint:** Merge the structural fix to Phase 3
+once Ruturaj's review lands, and re-score every stochastic run under it
+— any change to a ratified UQ protocol choice requires a full re-score,
+per the harness's own rule; close out SCRUM-33; get Dongxiao's sign-off
+on the technical report's Phase 3 section once the fix merges.
+
+---
+
 ## Summary and Outlook
 
-Across Sprints 0 through 4, the team has established a working
-architecture, built and validated a complete data pipeline, and delivered
-a comparative evaluation of five candidate model architectures for
-Phase 1, with one — SchNet — fully trained and evaluated under controlled
-conditions. Phase 2 work has begun, building directly on the Phase 1
-infrastructure.
+Across Sprints 0 through 6, the team took the project from initial setup
+through a validated data pipeline, a five-architecture Phase 1 bake-off,
+a working reproduction of BLIP's weight-space uncertainty (Phase 2), the
+team's own graph-space contribution (Phase 3), and a full end-to-end
+integration of all three phases into the platform. Every phase produced a
+real, scored result against the shared protocol rather than a stub, and
+every integration bug surfaced along the way — including Phase 3's force
+uncertainty miscalibration, the sprint's most significant finding — was
+diagnosed to a root cause and documented rather than quietly patched over
+or hidden from the record.
 
-The team's main priorities heading into the next sprint are: completing a
-fully comparable Phase 1 result set across all five architectures,
-formally selecting the Phase 1 baseline, and progressing the Phase 2
-implementation. Process improvements identified across these five sprints
-— principally, consistent hour estimation in Jira to support accurate
-burn-up reporting, and more frequent consolidation of team members'
-branches into the main codebase — are being carried forward as standing
-action items.
+The team's main priority heading out of Sprint 6 is merging the
+structural fix to the Phase 3 mechanism (SCRUM-70, now closed in Jira and
+implemented by Alex from the three options Fazin's root-cause analysis
+identified) once Ruturaj's architectural review lands, and re-scoring
+every stochastic run once that happens. SCRUM-33 (Dongxiao's literature
+review) is the project's one
+genuinely overdue item and should close before the final report is
+submitted. Process improvements identified across all seven sprints —
+consistent hour estimation in Jira, frequent consolidation of branches
+into main, and escalating overdue items in retrospectives rather than
+carrying them silently — remain the team's standing action items.
