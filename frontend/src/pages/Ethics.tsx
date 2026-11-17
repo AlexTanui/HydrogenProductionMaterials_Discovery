@@ -26,18 +26,28 @@ const CASES: Case[] = [
       "it looked better.",
   },
   {
-    title: "Uninformatively wide uncertainty hiding the opposite failure",
+    title: "A fix that closes the easy half of a calibration gap can look like the whole fix",
     risk:
-      "The opposite mistake is just as real: an uncertainty estimate so wide it is never wrong, but also " +
-      "never useful for prioritising which candidates deserve scarce lab time. That has a cost too — " +
-      "wasted compute and researcher time, which matters for a clean-energy project competing for both.",
+      "If a post-hoc calibration step sharply improves one quantity's calibration, it is tempting to call " +
+      "the whole model 'calibrated' from that one improved number. A reader who did that here would still " +
+      "be trusting a force-uncertainty estimate with a known, unresolved problem — the overconfidence risk " +
+      "from the first case above, reintroduced under cover of a number that looks fixed.",
     evidence:
-      "Phase 3's first-draft mechanism (graph-space noise) avoids BLIP's overconfidence but overshoots: " +
-      "its 90%-nominal energy interval actually covers 99.5% of true values, with predicted uncertainty " +
-      "~8-17x larger than BLIP's. More honest, but not yet actionable.",
+      "Measured, not hypothesised: post-hoc conformal calibration (SCRUM-68) sharply improves Phase 3's " +
+      "energy ECE, but only partially corrects force ECE (see the Post-hoc calibration table on " +
+      "Benchmarks). A structural root-cause analysis (SCRUM-70) traced this to where Phase 3 injects " +
+      "stochasticity — additively into graph representations, with no first-order coupling to atomic " +
+      "position — versus BLIP's multiplicative coupling to the activation itself. That is a property of " +
+      "the architecture, not a tunable calibration parameter, so no scalar post-hoc correction fully fixed " +
+      "it on that checkpoint; a structural fix to the mechanism itself has since been implemented and " +
+      "scored, and the finding is closed, but the revised checkpoint is still pending the architecture " +
+      "owner's review before it replaces the one these figures are drawn from.",
     mitigation:
-      "Track both failure directions explicitly (ECE plus a coverage curve, not ECE alone) before calling " +
-      "any phase 'calibrated' - a single summary number can hide which direction a model is wrong in.",
+      "Report energy and force calibration separately — this project's own UQ protocol v1.0 requires it, " +
+      "never pooled — and treat 'one quantity's number improved' as distinct from 'the phase is " +
+      "calibrated.' The team routed this gap to the architecture's owner as a tracked, root-caused issue " +
+      "(SCRUM-70, now resolved) rather than letting the good-looking energy number stand in for the whole " +
+      "phase.",
   },
   {
     title: "Scope creep from benchmark to deployment",
