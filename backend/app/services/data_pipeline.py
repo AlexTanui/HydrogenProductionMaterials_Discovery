@@ -81,7 +81,15 @@ async def ingest_upload(file: UploadFile, molecule: str | None, theory: str | No
         with np.load(silver_path, allow_pickle=True) as data:
             gold_molecule = gold_molecule or str(data["molecule"])
             gold_theory = gold_theory or str(data["theory"])
-    gold_path = silver_to_gold(silver_path, GOLD_DIR / f"{gold_molecule}_{gold_theory}.npz")
+    try:
+        gold_path = silver_to_gold(silver_path, GOLD_DIR / f"{gold_molecule}_{gold_theory}.npz")
+    except ValueError as exc:
+        # The gold split rejecting the file (e.g. too few frames for a
+        # non-empty train/val/test block): a client error, not a 500, and
+        # no bronze/silver files left behind to dirty the tree.
+        bronze_path.unlink(missing_ok=True)
+        silver_path.unlink(missing_ok=True)
+        raise HTTPException(422, f"{filename}: cannot be split - {exc}") from exc
 
     with np.load(gold_path, allow_pickle=True) as data:
         n_train, n_val, n_test = len(data["train_idx"]), len(data["val_idx"]), len(data["test_idx"])
