@@ -52,17 +52,26 @@ MD17_SOURCES: list[tuple[str, str, str, bool]] = [
 # the bulk after ~4 frames; 10 gives margin for 20 frames per file.
 PURGE_BUFFER_FRAMES = 10
 
-# Gold files kept on their existing split (no buffer) because every
-# benchmarked run was trained and scored on it - re-splitting would mean
-# retraining and re-scoring all of them. The frames those runs actually
-# used already sit 4,114 / 519 frames apart (audit, "actually used").
-# Keyed by gold-file stem; the value is recorded in the file's provenance.
+# Trajectory-ordered gold files kept on their existing split (no buffer),
+# each for the reason given, which is recorded in the file's provenance.
+# Keyed by gold-file stem.
+#   ethanol_dft: every benchmarked run was trained and scored on it, so
+#   re-splitting would mean retraining and re-scoring all of them; the frames
+#   those runs actually used already sit 4,114 / 519 apart (audit, "actually
+#   used").
+# Literature-split files are not listed: they never get a buffer (see
+# LITERATURE_NO_PURGE below).
 PURGE_EXEMPT: dict[str, str] = {
     "ethanol_dft": "SCRUM-47: existing split kept; all benchmarked runs use it",
-    "ethanol_ccsd_t": ("SCRUM-47: literature split frames are not in trajectory order "
-                       "(lag-1 RMSD ~ random-pair RMSD), so a buffer would separate nothing; "
-                       "existing split kept"),
 }
+
+# Why literature-split files (ethanol_ccsd_t, aspirin_ccsd,
+# malonaldehyde_ccsd_t, toluene_ccsd_t) are never purged: their shipped
+# frames are not in trajectory order (random-pair / lag-1 RMSD ratio ~1.0),
+# so a buffer between train and val would separate nothing and only drop
+# validation frames. Recorded as the file's `purge_exemption`.
+LITERATURE_NO_PURGE = ("SCRUM-47: literature split; frames are not in trajectory order "
+                       "(lag-1 RMSD ~ random-pair RMSD), so a buffer would separate nothing")
 
 # Paths left out of the gold file's `-dirty` check. Mirrors
 # ml.training.train.DIRTY_CHECK_EXCLUDES so a gold file and a run record made
@@ -149,8 +158,18 @@ def trajectory_block_split(n_configs: int, train: float = 0.8, val: float = 0.1,
     tr = idx[:n_train]
     va = idx[n_train + purge:n_train + n_val]
     te = idx[n_train + n_val + purge:]
-    assert len(va) > 0 and len(te) > 0, f"purge={purge} leaves an empty val or test block"
+    if len(tr) == 0 or len(va) == 0 or len(te) == 0:
+        raise ValueError(f"{n_configs} frames with purge={purge} leave an empty train, val or test "
+                         f"block ({len(tr)}/{len(va)}/{len(te)})")
     return tr, va, te
+
+
+def purge_fits(n_configs: int, purge: int, train: float = 0.8, val: float = 0.1) -> bool:
+    """Whether a `purge`-frame buffer still leaves at least one val and one
+    test frame in a trajectory block split of `n_configs` frames."""
+    n_train = int(round(n_configs * train))
+    n_val = int(round(n_configs * val))
+    return n_val - purge >= 1 and n_configs - n_train - n_val - purge >= 1
 
 
 def _content_sha256(*arrays: np.ndarray) -> str:
@@ -163,8 +182,9 @@ def _content_sha256(*arrays: np.ndarray) -> str:
 
 
 def _git_commit() -> str:
-    """HEAD commit, suffixed `-dirty` if the tree has uncommitted changes;
-    empty string outside a git checkout.
+    """HEAD commit, suffixed `-dirty` if the tree has uncommitted changes, or
+    `-dirty-unknown` if `git status` itself fails; empty string outside a
+    git checkout.
 
     Same rule as ml.training.train.git_state(): tracked and untracked
     changes both count, except under GIT_DIRTY_EXCLUDES."""
@@ -178,14 +198,22 @@ def _git_commit() -> str:
     if not head:
         return ""
     pathspec = [".", *(f":(exclude){path}" for path in GIT_DIRTY_EXCLUDES)]
-    return head + ("-dirty" if git("status", "--porcelain", "--", *pathspec) else "")
+    status = git("status", "--porcelain", "--", *pathspec)
+    if status is None:
+        # Like git_state()'s git_dirty=None: unknown is not clean.
+        return head + "-dirty-unknown"
+    return head + ("-dirty" if status else "")
 
 
 def silver_to_gold(silver_path: str | Path, gold_path: str | Path,
                     train: float = 0.8, val: float = 0.1, test: float = 0.1,
                     use_literature_split: Optional[bool] = None,
                     purge: Optional[int] = None) -> Path:
-    """`purge` defaults to PURGE_BUFFER_FRAMES, or 0 for a PURGE_EXEMPT file."""
+    """`purge` defaults to PURGE_BUFFER_FRAMES; 0 for a PURGE_EXEMPT file, a
+    literature split, or a file too small for the buffer (recorded in
+    `split_params` as `purge_exemption` / `purge_skipped`).
+
+    Raises ValueError if the split would leave train, val or test empty."""
     silver_path = Path(silver_path)
     gold_path = Path(gold_path)
     gold_path.parent.mkdir(parents=True, exist_ok=True)
@@ -198,11 +226,18 @@ def silver_to_gold(silver_path: str | Path, gold_path: str | Path,
     if use_literature_split is None:
         use_literature_split = has_lit_split
 
-    exemption = PURGE_EXEMPT.get(gold_path.stem, "")
+    literature = bool(use_literature_split and has_lit_split)
+    exemption = PURGE_EXEMPT.get(gold_path.stem, "") or (LITERATURE_NO_PURGE if literature else "")
+    purge_skipped = ""
     if purge is None:
         purge = 0 if exemption else PURGE_BUFFER_FRAMES
+        if purge and not literature and not purge_fits(n_configs, purge, train, val):
+            # Too small for the buffer (under ~108 frames at 80/10/10), e.g. a
+            # small POST /data/upload. Split it unpurged, as before SCRUM-72,
+            # and say so in the file rather than failing.
+            purge_skipped = f"{n_configs} frames: too few for a {purge}-frame purge"
+            purge = 0
 
-    literature = bool(use_literature_split and has_lit_split)
     if literature:
         # The literature test set is fixed by the source; only the
         # train/val boundary is ours to purge.
@@ -213,6 +248,9 @@ def silver_to_gold(silver_path: str | Path, gold_path: str | Path,
         train_idx = remaining[:n_train_of_remaining]
         val_idx = remaining[n_train_of_remaining + purge:]
         split_method = "literature_test+block_train_val"
+        if len(train_idx) == 0 or len(val_idx) == 0 or len(test_idx) == 0:
+            raise ValueError(f"{gold_path.stem}: literature split leaves an empty train, val or test "
+                             f"block ({len(train_idx)}/{len(val_idx)}/{len(test_idx)})")
     else:
         train_idx, val_idx, test_idx = trajectory_block_split(n_configs, train, val, test, purge=purge)
         split_method = "trajectory_block"
@@ -233,6 +271,7 @@ def silver_to_gold(silver_path: str | Path, gold_path: str | Path,
         split_params=json.dumps({
             "train": train, "val": val, "test": test,
             "purge_frames": int(purge), "purge_exemption": exemption,
+            "purge_skipped": purge_skipped,
         }, sort_keys=True),
         git_commit=_git_commit(),
     )

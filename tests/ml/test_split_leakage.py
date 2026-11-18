@@ -57,7 +57,7 @@ SPLIT_FINGERPRINTS = {
 
 # Evidence for both in docs/reviews/leakage-audit-2026-10-31.md.
 # Proposed 31 Oct, applied in SCRUM-72: 10 frames for new splits; files in
-# preprocessing.PURGE_EXEMPT keep their existing split.
+# preprocessing.PURGE_EXEMPT and literature splits keep their existing split.
 AGREED_PURGE_BUFFER_FRAMES: Optional[int] = PURGE_BUFFER_FRAMES
 # Approved 31 Oct: no held-out frame closer to a training frame than the
 # median RMSD across 2 MD steps (0.028 A for ethanol DFT).
@@ -136,6 +136,8 @@ def test_purge_buffer_meets_the_agreed_size(name):
     gaps = split_gaps(d["train_idx"], d["val_idx"], d["test_idx"])
     if name in PURGE_EXEMPT:
         pytest.skip(f"{name} is exempt: {PURGE_EXEMPT[name]}; gaps: {gaps}")
+    if bool(d["used_literature_split"]):
+        pytest.skip(f"{name} is a literature split, never purged (LITERATURE_NO_PURGE); gaps: {gaps}")
     if AGREED_PURGE_BUFFER_FRAMES is None:
         pytest.skip(f"purge buffer not agreed yet (10 frames proposed for new splits, existing ethanol "
                     f"split kept); {name} gaps: {gaps}")
