@@ -632,10 +632,14 @@ def render_markdown(results: list[RunResult], rows: list[dict[str, Any]], shared
     if any("rescore" in result.test for result in results):
         lines += [
             "",
-            "Runs scored before evaluate.py recorded fingerprints were re-scored by "
-            "`scripts/fingerprint_run_records.py` to add one. Their stored metrics are unchanged; "
-            "the last column is the largest relative difference the re-score measured against them "
-            "(tolerance 1e-5 relative, because multithreaded CPU scoring is not bit-reproducible).",
+            "Every run with a local checkpoint was independently re-scored by "
+            "`scripts/fingerprint_run_records.py` (SCRUM-71) - not just ones scored before "
+            "evaluate.py recorded a fingerprint, which is all the original version of that script "
+            "did. Their stored metrics are unchanged; the last column is the largest relative "
+            "difference the re-score measured against them (tolerance 1e-5 relative, because "
+            "multithreaded CPU scoring is not bit-reproducible). A run with no relative-difference "
+            "entry in that column had no local checkpoint to verify against "
+            "(experiments/checkpoints/ is gitignored), not a re-score skipped by choice.",
         ]
     return "\n".join(lines) + "\n"
 

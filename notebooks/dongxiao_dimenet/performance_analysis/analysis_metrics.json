@@ -1,0 +1,74 @@
+{
+  "scope": "Descriptive reanalysis of saved test predictions; no new training",
+  "n_test": 1000,
+  "energy_signed_bias": 1.576001267982996,
+  "fraction_energy_overpredicted": 0.957,
+  "energy_mse_bias_fraction": 0.8240697199447319,
+  "force_component_mae_by_element": {
+    "C": 2.356776624459773,
+    "O": 1.9252432782836257,
+    "H": 1.187957001440434
+  },
+  "configuration_force_mae_percentiles": {
+    "50": 1.4384270200022944,
+    "90": 2.181775207431228,
+    "95": 2.490623339127611,
+    "99": 3.190467441807742
+  },
+  "worst_force_configurations": [
+    {
+      "gold_index": 1957,
+      "force_component_mae": 4.806519711459124,
+      "energy_absolute_error": 2.8309263351693517
+    },
+    {
+      "gold_index": 1568,
+      "force_component_mae": 3.519542744314229,
+      "energy_absolute_error": 1.9661783340707188
+    },
+    {
+      "gold_index": 1098,
+      "force_component_mae": 3.5113102109343917,
+      "energy_absolute_error": 1.0440439346566563
+    },
+    {
+      "gold_index": 1788,
+      "force_component_mae": 3.487153680236251,
+      "energy_absolute_error": 3.1145586136117345
+    },
+    {
+      "gold_index": 1655,
+      "force_component_mae": 3.4571096532874637,
+      "energy_absolute_error": 2.8507875564828282
+    },
+    {
+      "gold_index": 1250,
+      "force_component_mae": 3.3836360265742296,
+      "energy_absolute_error": 0.7628188964590663
+    },
+    {
+      "gold_index": 1101,
+      "force_component_mae": 3.3661207876823567,
+      "energy_absolute_error": 2.246560013605631
+    },
+    {
+      "gold_index": 1469,
+      "force_component_mae": 3.3345171919575445,
+      "energy_absolute_error": 1.2825063827767735
+    },
+    {
+      "gold_index": 1885,
+      "force_component_mae": 3.2676907314194574,
+      "energy_absolute_error": 2.0042652252450353
+    },
+    {
+      "gold_index": 1997,
+      "force_component_mae": 3.2489940281267518,
+      "energy_absolute_error": 1.580647862268961
+    }
+  ],
+  "gold_sha256": "8e6571e1c0f0ac5a4fbab8a3236c26abff0095f54772866ad6ffa7f525deb441",
+  "prediction_sha256": "b04aaa85a90849f532e38c196501100ab6cd2dee62d6e72881a540304285f4a9",
+  "selected_checkpoint_sha256": "aa560b100f943232b8701c8ad43ac94bb05ed4a01565542896a492ded12bbc46",
+  "test_used_for_additional_tuning": false
+}

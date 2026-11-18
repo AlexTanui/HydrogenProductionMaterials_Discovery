@@ -1,0 +1,13 @@
+run,method,quantity,coverage,width,ece
+phase2_blip_nll,CQR,energy,0.9154,0.3170071093679464,
+phase2_blip_nll,CQR,force,0.9174222222222223,0.837272112063501,
+phase2_blip_nll,Scalar,energy,0.9154,,0.017350000000000004
+phase2_blip_nll,Scalar,force,0.9188518518518518,,0.0446833333333333
+phase3_graph_stochastic,CQR,energy,0.9058,0.4433128906369646,
+phase3_graph_stochastic,CQR,force,0.918725925925926,0.9641330307970218,
+phase3_graph_stochastic,Scalar,energy,0.9094,,0.010999999999999954
+phase3_graph_stochastic,Scalar,force,0.9200296296296296,,0.04825740740740739
+phase3_graph_stochastic_nll,CQR,energy,0.903,0.7410580468810222,
+phase3_graph_stochastic_nll,CQR,force,0.9166222222222222,0.839027884423721,
+phase3_graph_stochastic_nll,Scalar,energy,0.9108,,0.009200000000000014
+phase3_graph_stochastic_nll,Scalar,force,0.916162962962963,,0.04146111111111109

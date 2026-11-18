@@ -454,7 +454,13 @@ model:
                              #   blip (Phase 2), graph_stochastic (Phase 3, not yet registered)
   hidden_channels: 128       # every other key goes to that model's constructor unchanged,
   num_layers: 4              #   so the accepted keys differ per model
-  num_mc_samples: 20         # stochastic forward passes for UQ (blip / graph_stochastic only)
+  num_mc_samples: 20         # stochastic forward passes for UQ (blip / graph_stochastic only).
+                             #   Not confirmed stable by the SCRUM-49 study (docs/reviews/scrum-49-mc-stability-2026-11-14.md):
+                             #   no K up to 100 met the agreed seed-spread criterion for either checkpoint
+                             #   tested, and spread didn't shrink monotonically with K. Kept as the
+                             #   pragmatic default pending a team decision - every ECE/coverage/Spearman
+                             #   figure in this project carries a ~0.01-0.03 seed-level noise floor at
+                             #   this K that a higher K is not shown to reduce.
   perturbation_strength: 0.1 # graph_stochastic only
 train:
   epochs: 200

@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-15",
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "new_seeds": [
+    43,
+    44
+  ],
+  "purpose": "Fine-tuning seed sensitivity from ONE shared pretrained checkpoint; not independent pretraining seeds.",
+  "fixed": "Gold splits, checkpoint, architecture, noise sigma 0.05, 20 epochs per arm, optimizer, validation MC streams and selection criterion.",
+  "changes": "Training batch shuffle seed and training noise seed only. Evaluation streams remain fixed across seeds.",
+  "stopping_rule": "Exactly two additional seed pairs. No hyperparameter search or test evaluation.",
+  "reporting": "Include all three seeds, paired differences and sample standard deviation; no significance claim."
+}

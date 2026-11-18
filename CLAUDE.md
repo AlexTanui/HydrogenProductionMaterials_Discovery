@@ -28,9 +28,12 @@ Two caveats that matter when reading any result: `phase2_blip` was
 trained from a **dirty tree** and is therefore refused by the benchmark
 harness's clean-commit guard (SCRUM-48), and its record has no eval MC
 sample count either — it needs retraining from a clean commit before it
-can appear in any table. And **no run has been
-re-scored**; every record reads "not re-scored", so reproducibility is
-recorded but unverified until the golden-run guard (SCRUM-38) lands.
+can appear in any table. **Re-scoring (SCRUM-71, 14 Nov 2026):** every
+real checkpoint with a local `.pt` file (`experiments/checkpoints/` is
+gitignored, so this excludes a few retired leakage-audit runs) has now
+been independently re-scored and reproduces its stored metrics to within
+1e-9 relative or better — see each run's `rescore` block and
+`reports/all_phases.md`'s "Re-score max relative difference" column.
 
 Team structure, full architecture, folder-by-folder ownership, API
 contracts, data schema, and experiment config schema all live in one place:

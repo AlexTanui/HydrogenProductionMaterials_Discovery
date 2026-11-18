@@ -50,6 +50,19 @@ JOB_LOGS_DIR = ROOT_DIR / "experiments" / "job_logs"
 # K=1 run was trained from a dirty tree (docs/phase2_remaining_work.md);
 # labelled honestly in the UI, not hidden. "phase2_blip" (unqualified)
 # keeps meaning the current/default BLIP for anything that only wants one.
+#
+# Same pattern for Phase 3, added after SCRUM-40: phase3_graph_stochastic_base
+# is the original run (train_num_mc_samples=1, nll_warmup_epochs=0 - not
+# hook-matched against phase2_blip's 4/20); phase3_graph_stochastic is
+# phase3_graph_stochastic_nll.pt, trained with the same 4/20 hooks as
+# phase2_blip, which SCRUM-40 found to be the fair, protocol-equal
+# comparison (docs/reviews/scrum-40-protocol-fairness-resolution-2026-11-12.md).
+# Before this fix, "phase3_graph_stochastic" (unqualified) served the
+# mismatched-hooks checkpoint, so the dashboard's headline Phase 2 vs
+# Phase 3 numbers were the unfair comparison, not the fair one - the same
+# bug SCRUM-40 found in reports/all_phases.md. "phase3_graph_stochastic"
+# (unqualified) now means the current/default Phase 3, matching how
+# "phase2_blip" already works.
 PHASE_CHECKPOINTS: dict[str, Path] = {
     "phase1_deterministic": CHECKPOINTS_DIR / "phase1_baseline.pt",
     "phase1_schnet": CHECKPOINTS_DIR / "phase1_schnet.pt",
@@ -58,7 +71,8 @@ PHASE_CHECKPOINTS: dict[str, Path] = {
     "phase1_dimenet": CHECKPOINTS_DIR / "phase1_dimenet.pt",
     "phase2_blip_k1": CHECKPOINTS_DIR / "phase2_blip.pt",
     "phase2_blip": CHECKPOINTS_DIR / "phase2_blip_nll.pt",
-    "phase3_graph_stochastic": CHECKPOINTS_DIR / "phase3_graph_stochastic.pt",
+    "phase3_graph_stochastic_base": CHECKPOINTS_DIR / "phase3_graph_stochastic.pt",
+    "phase3_graph_stochastic": CHECKPOINTS_DIR / "phase3_graph_stochastic_nll.pt",
 }
 DEFAULT_PHASE = "phase1_deterministic"
 PHASE_ALIASES: dict[str, str] = {"phase1": "phase1_deterministic", "phase2": "phase2_blip", "phase3": "phase3_graph_stochastic"}

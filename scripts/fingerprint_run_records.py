@@ -1,15 +1,27 @@
-"""Add scoring-data fingerprints to run records scored before evaluate.py recorded them.
+"""Independently re-score every run record and add/verify its scoring-data fingerprint (SCRUM-71).
 
-For every experiments/runs/<name>/test_metrics.json without `data.fingerprint`:
+For every experiments/runs/<name>/test_metrics.json:
 
 1. re-score experiments/checkpoints/<name>.pt with
    `evaluate_checkpoint` - the stored split, seed and batch size;
 2. compare every stored metric with the re-score, relative difference
    |fresh - stored| / |stored|;
 3. only if **every metric of every run** is within
-   `evaluate.REPRODUCIBILITY_RTOL` (1e-5 relative), write the fresh
-   fingerprint into `data.fingerprint` and the measured differences into a
-   `rescore` block. Otherwise nothing is written and the script exits 1.
+   `evaluate.REPRODUCIBILITY_RTOL` (1e-5 relative), write the measured
+   differences into a `rescore` block (plus `data.fingerprint`, if the
+   record predates evaluate.py recording one). Otherwise nothing is
+   written and the script exits 1.
+
+**Every run is re-scored, not just ones missing a fingerprint** (SCRUM-71 -
+the original behaviour here skipped any run that already had one, which
+meant no real checkpoint was ever actually independently re-run and
+diffed, only legacy records got a fingerprint backfilled). A record that
+already has a fingerprint gets its fingerprint verified (the freshly
+re-scored data must hash to the same value - a mismatch means the scoring
+data itself changed since the record was written, and is reported as an
+error, not silently overwritten) and its `rescore` block added or
+refreshed. A record with no fingerprint yet (legacy) gets both: the
+fingerprint backfilled and the rescore block added, exactly as before.
 
 The stored metrics are never changed. Re-scoring reproduces numbers that
 were already reported and selects or tunes nothing, so the test split is
@@ -19,7 +31,7 @@ pass sums in a thread-dependent order), which is why the comparison uses a
 tolerance and records the actual differences rather than claiming identity.
 
     python scripts/fingerprint_run_records.py            # dry run: report only
-    python scripts/fingerprint_run_records.py --write    # add fingerprints
+    python scripts/fingerprint_run_records.py --write    # add fingerprints + rescore blocks
 """
 from __future__ import annotations
 
@@ -93,35 +105,55 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     pending = []
+    fingerprint_mismatches = []
     for run_dir in sorted(Path(args.runs_dir).iterdir()):
         path = run_dir / "test_metrics.json"
         if not path.is_file():
             continue
         stored = json.loads(path.read_text(encoding="utf-8"))
-        if "fingerprint" in stored["data"]:
-            print(f"{run_dir.name}: already fingerprinted, skipped")
+        had_fingerprint = "fingerprint" in stored["data"]
+        checkpoint_path = Path(args.checkpoints_dir) / f"{run_dir.name}.pt"
+        if not checkpoint_path.is_file():
+            # experiments/checkpoints/ is gitignored - a run trained on a
+            # different machine (or whose checkpoint was since deleted to
+            # save disk) has no local file to re-score against. Not an
+            # error for this script's purpose: it can't independently
+            # verify this run right now, but that's a missing artifact,
+            # not a reproducibility failure.
+            print(f"{run_dir.name}: no local checkpoint ({checkpoint_path.name}) - cannot re-score, skipped")
             continue
         fresh = evaluate.evaluate_checkpoint(
-            Path(args.checkpoints_dir) / f"{run_dir.name}.pt",
+            checkpoint_path,
             split=stored["data"]["split"],
             batch_size=stored["timing"]["batch_size"],
             seed=stored["seed"],
         )
+        if had_fingerprint and fresh["data"]["fingerprint"] != stored["data"]["fingerprint"]:
+            fingerprint_mismatches.append(run_dir.name)
+            print(f"{run_dir.name}: FINGERPRINT MISMATCH - the scoring data itself differs from "
+                  f"when this was first scored (stored {stored['data']['fingerprint']!r}, "
+                  f"fresh {fresh['data']['fingerprint']!r})")
+            continue
         differences = compare(stored, fresh)
         worst = max(differences.values())
         within = worst <= evaluate.REPRODUCIBILITY_RTOL
         print(f"{run_dir.name}: {len(differences)} metrics, max relative difference {worst:.2e} "
-              f"({'within' if within else 'OUTSIDE'} {evaluate.REPRODUCIBILITY_RTOL:g})")
-        pending.append((path, stored, fresh, differences, within))
+              f"({'within' if within else 'OUTSIDE'} {evaluate.REPRODUCIBILITY_RTOL:g})"
+              f"{' [fingerprint verified, already present]' if had_fingerprint else ' [backfilling fingerprint]'}")
+        pending.append((path, stored, fresh, differences, within, had_fingerprint))
 
+    if fingerprint_mismatches:
+        print(f"{len(fingerprint_mismatches)} run(s) have a fingerprint mismatch - "
+              f"investigate before trusting their stored metrics: {fingerprint_mismatches}")
+        return 1
     if not pending:
-        print("nothing to fingerprint")
+        print("nothing to re-score")
         return 0
-    if not all(within for *_, within in pending):
+    if not all(within for *_, within, _ in pending):
         print("Not every metric reproduced within tolerance - nothing written.")
         return 1
     if not args.write:
-        print("Dry run - pass --write to add the fingerprints.")
+        print("Dry run - pass --write to add/refresh the rescore blocks.")
         return 0
 
     provenance = {
@@ -132,10 +164,13 @@ def main(argv: list[str] | None = None) -> int:
         "script": "scripts/fingerprint_run_records.py",
         "torch_num_threads": torch.get_num_threads(),
     }
-    for path, stored, fresh, differences, _ in pending:
-        stored["data"]["fingerprint"] = fresh["data"]["fingerprint"]
+    for path, stored, fresh, differences, _, had_fingerprint in pending:
+        if not had_fingerprint:
+            stored["data"]["fingerprint"] = fresh["data"]["fingerprint"]
         stored["rescore"] = {
-            "purpose": "add data.fingerprint; reproduces the stored metrics and tunes nothing",
+            "purpose": ("independently re-score; reproduces the stored metrics and tunes nothing"
+                        if had_fingerprint else
+                        "add data.fingerprint; reproduces the stored metrics and tunes nothing"),
             **provenance,
             "seed": fresh["seed"],
             "batch_size": fresh["timing"]["batch_size"],

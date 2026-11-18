@@ -1,0 +1,28 @@
+{
+  "commit": "75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7",
+  "checks": [
+    "15 source hashes verified",
+    "Exact training and validation ID arrays match",
+    "Training and validation ID hashes match run records",
+    "Shared data/train config blocks match",
+    "Test fingerprints match across five runs",
+    "Same energy/force definitions and units",
+    "Same evaluation seed and batch size",
+    "20 MC draws for every stochastic evaluation",
+    "Eight ECE values independently recomputed"
+  ],
+  "test_fingerprint": "518af6e3d57bdb884dcd51e785b7330469395da40990764d4771ff099a198839",
+  "n_test": 55509,
+  "n_train": 10000,
+  "n_validation": 5000,
+  "training_seeds": [
+    42
+  ],
+  "limitations": [
+    "Source-reported test fingerprints; no checkpoint re-scoring performed",
+    "One training seed per configuration; no training-run uncertainty estimate",
+    "No aligned shared-model per-frame prediction exports in inspected tracked tree",
+    "Loss objectives, selection rules, model parameters and training code versions differ",
+    "Molecular trajectory frames and force components are not independent replicates"
+  ]
+}

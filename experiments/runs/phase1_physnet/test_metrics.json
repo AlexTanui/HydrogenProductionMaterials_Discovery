@@ -259,5 +259,45 @@
     "uncertainty_correlation": null,
     "uncertainty_note": "ECE and uncertainty-error correlation are defined by Dongxiao; this model has no predict_distribution (deterministic, or Phase 2/3 hasn't wired one in yet), so there is no uncertainty to score against that definition"
   },
-  "warnings": []
+  "warnings": [],
+  "rescore": {
+    "purpose": "independently re-score; reproduces the stored metrics and tunes nothing",
+    "date": "2026-11-14",
+    "git_commit": "75dc38f5005b2e9821b4c2ab09e6ab4cd58a5da7",
+    "git_dirty": true,
+    "evaluate_py_sha256": "2a5fb56d68319ad1e4bb9904eb54ed9ee7e3ecf41c3b914b7a7f1863a617dbab",
+    "script": "scripts/fingerprint_run_records.py",
+    "torch_num_threads": 4,
+    "seed": 0,
+    "batch_size": 32,
+    "tolerance_relative": 1e-05,
+    "max_relative_difference": 0.0,
+    "relative_differences": {
+      "metrics.schema_version": 0.0,
+      "metrics.per_key.0.n_frames": 0.0,
+      "metrics.per_key.0.n_atoms": 0.0,
+      "metrics.per_key.0.energy_mae_total": 0.0,
+      "metrics.per_key.0.energy_rmse_total": 0.0,
+      "metrics.per_key.0.energy_mae_per_atom": 0.0,
+      "metrics.per_key.0.energy_rmse_per_atom": 0.0,
+      "metrics.per_key.0.force_mae_component": 0.0,
+      "metrics.per_key.0.force_rmse_component": 0.0,
+      "metrics.per_key.0.force_mae_atom_norm": 0.0,
+      "metrics.per_key.0.force_rmse_atom_norm": 0.0,
+      "metrics.overall.n_keys": 0.0,
+      "metrics.overall.n_frames": 0.0,
+      "metrics.overall.n_atoms": 0.0,
+      "metrics.overall.force_mae_component": 0.0,
+      "metrics.overall.force_rmse_component": 0.0,
+      "metrics.overall.force_mae_atom_norm": 0.0,
+      "metrics.overall.force_rmse_atom_norm": 0.0,
+      "metrics.overall.energy_mae_total": 0.0,
+      "metrics.overall.energy_rmse_total": 0.0,
+      "metrics.overall.energy_mae_per_atom": 0.0,
+      "metrics.overall.energy_rmse_per_atom": 0.0,
+      "benchmark_row.energy_mae": 0.0,
+      "benchmark_row.force_mae": 0.0
+    },
+    "stored_metrics_unchanged": true
+  }
 }
