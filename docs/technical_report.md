@@ -342,20 +342,20 @@ Jira assignment have drifted apart — tickets assigned to Ruturaj in Jira
 Alex Tanui. Real work shipped with no matching Jira ticket (SCRUM-71's
 CQR/atom-type work, 5 commits, 4 Nov — see the naming collision noted
 against the newer SCRUM-71 filed in this session). Meeting minutes aren't
-retrievable from the repo or Jira. On the technical side: `phase2_blip`
-still needs retraining from a clean commit (SCRUM-69/48) before it can
-re-enter the official comparison table; the leakage audit's random-split
-control shows a 17-26% accuracy gap in leakage's direction, not yet
-attributed to leakage vs. noise; Phase 3 energy calibration still diverges
-13-33% between the scalar and CQR methods, unresolved; and — per §5's
-caveats — no variant has a repeated-seed training replication, so none of
-the cross-model accuracy or calibration deltas in §4-5 carry a formal
-significance claim.
+retrievable from the repo or Jira. On the technical side, `phase2_blip`'s
+earlier run was trained from a dirty tree, so the SCRUM-48 guard refused
+it; it has since been retrained clean (SCRUM-69, `1eaea76`) and stays out
+of the official table by design, because the matched NLL pair is the
+comparison. Still open: the leakage audit's random-split control shows a
+17-26% accuracy gap in leakage's direction, not yet attributed to leakage
+vs. noise; Phase 3 energy calibration still diverges 13-33% between the
+scalar and CQR methods, unresolved; and — per §5's caveats — no variant has
+a repeated-seed training replication, so none of the cross-model accuracy
+or calibration deltas in §4-5 carry a formal significance claim.
 
-**What's next**, in priority order: retrain `phase2_blip` clean (SCRUM-69)
-and re-run its calibration; get the MC-stability study run against Graph
-NLL specifically (SCRUM-49 covered BLIP NLL and Graph MSE, not Graph NLL);
-resolve whether SCRUM-70's structural fix (§4) should replace, sit beside,
+**What's next**, in priority order: get the MC-stability study run against
+Graph NLL specifically (SCRUM-49 covered BLIP NLL and Graph MSE, not Graph
+NLL); resolve whether SCRUM-70's structural fix (§4) should replace, sit beside,
 or be re-tuned relative to the NLL-only fix, pending Ruturaj's review;
 isolate Phase 3 energy's remaining scalar-vs-CQR width gap; split force's
 heavy-tailed hydrogen residual by hydroxyl-vs-methyl H now that atom-type
