@@ -1,5 +1,7 @@
 # Proposal: four `train.py` fixes from the 22 Oct audit (1 Nov 2026)
 
+> **Update, 18 Nov 2026: adopted on 1 Nov as option A.** Items 4, N1 and 2c are implemented on `main` in `853e010`, `c9502b2` fixed the cross-phase `selection` check that followed, and option A's three retrains have run. N6 is deferred. The rest of this document is the 1 Nov proposal, unchanged, so parts of it are out of date: the audit it cites is now on `main`, `e332e1d` has landed, and SCRUM-61 is Done.
+
 **Status: proposal only. No code has changed.** Each fix changes how some models train or what their records mean, so it needs team agreement before anyone implements it. Findings are from `docs/reviews/main-audit-2026-10-22.md` (branch `fazin-audit-oct22`), re-checked as still open on `main` at `46b5f99` on 31 Oct.
 
 ## Summary
