@@ -287,7 +287,7 @@ each run's re-score result; no report in `reports/` reads "not re-scored"
 any more. All ten re-scores ran at `75dc38f` with uncommitted changes in
 the working tree (`git_dirty: true`). The `evaluate.py` hash each block
 records matches the committed file at that commit, and every stored metric
-was reproduced to within 7.7e-10 relative, so the result stands; what git
+was reproduced to within 7.75e-10 relative, so the result stands; what git
 can't recover is the exact tree they ran in.
 
 ## 8. Platform
