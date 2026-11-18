@@ -200,12 +200,15 @@ number in this report can be read as proving:
 3. MD frames (and pooled force components within one structure) are
    correlated, not independent observations — significance testing on the
    pooled 1,498,743 force components as if independent is invalid.
-4. `calibrate.py`'s corrected-quantile implementation (NumPy
-   `method="higher"`, clamped out-of-range levels) is not the textbook
-   exact order-statistic correction
-   (`ceil((n+1)*(1-alpha))` with an infinite interval when the rank exceeds
-   `n`). Worth auditing against the metric owner (Fazin) before citing this
-   as "the standard" CQR correction in the final report.
+4. `calibrate.py`'s corrected quantile uses NumPy `method="higher"` at
+   level (1−α)(1+1/n) rather than the textbook ⌈(n+1)(1−α)⌉-th order
+   statistic. Audited by the metric owner (Fazin, 17 Nov): at α = 0.1 it
+   picks rank 49,960 instead of 49,959 for the 55,509 validation energies
+   (one rank on the conservative side), and the same rank as the exact rule
+   for the 1,498,743 pooled force components. The clamp applies only when
+   n < 9, where the exact rule would give an infinite interval, so it never
+   triggers here. It can be described as the standard split-conformal
+   correction, to within one rank.
 5. Each variant has exactly one training run; re-scoring or changing the
    inference seed is not an independent training replication, so no
    confidence interval or p-value is justified from these tables alone.
