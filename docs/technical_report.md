@@ -239,10 +239,10 @@ measured.
 **Purge buffer and split provenance (SCRUM-72, PR #11).** PR #11
 implements the audit's two proposals, a 10-frame purge buffer between
 blocks and split provenance in every gold file; it is under review and not
-merged. `ethanol_dft` and `ethanol_ccsd_t`, the only gold files any config
-trains on, are exempt and keep their splits. Regenerated at the PR's head
-on 17 Nov, both kept byte-identical train/val/test indices, so no
-benchmark number changes either way.
+merged. The only gold files any config trains on keep their splits:
+`ethanol_dft` is exempt; `ethanol_ccsd_t` is a literature split, never
+purged. Regenerated at `58ee9f4` on 18 Nov, both kept byte-identical
+train/val/test indices, so no benchmark number changes.
 
 **Compute budget (SCRUM-49, 1 Nov; `docs/reviews/compute-budget-2026-11-01.md`).**
 MC cost is linear in K (per-sample cost within ±12% from K = 2 to 100 on
