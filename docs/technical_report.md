@@ -279,11 +279,16 @@ is a different question from the training-data provenance questions in §6.
 
 Dongxiao's 16 Nov review independently reran this reproducibility check
 (`docs/dongxiao_scrum36/alex_review_2026_11_16/verify_review.py`) against
-pinned source hashes and confirmed the same tolerances; it also flagged
-that some generated Markdown in the repo still said "not re-scored" after
-SCRUM-71 landed and was stale at the time of her review — worth a final
-pass before submission to make sure every generated report reflects the
-current re-score status.
+pinned source hashes and confirmed the same tolerances. It also flagged
+generated Markdown that still read "not re-scored" after SCRUM-71 landed.
+The two reports that did, `reports/phase2_vs_phase3.md` and
+`reports/phase2_vs_phase3_nll.md`, were regenerated on 18 Nov and now show
+each run's re-score result; no report in `reports/` reads "not re-scored"
+any more. All ten re-scores ran at `75dc38f` with uncommitted changes in
+the working tree (`git_dirty: true`). The `evaluate.py` hash each block
+records matches the committed file at that commit, and every stored metric
+was reproduced to within 7.7e-10 relative, so the result stands; what git
+can't recover is the exact tree they ran in.
 
 ## 8. Platform
 
