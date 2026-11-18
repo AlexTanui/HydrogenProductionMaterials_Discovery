@@ -146,3 +146,15 @@ the run to re-measure the variation, for example on another machine.
    uncovered tail leaves 4,114 / 519 frames between the frames actually
    used. See
    [docs/reviews/leakage-audit-2026-10-31.md](reviews/leakage-audit-2026-10-31.md).
+7. **Two known harness issues are recorded, not fixed.** Validation
+   metrics are a mean of batch means, so the val subset's last batch of 8
+   frames counts as much as a full batch of 32. That affects checkpoint
+   selection, early stopping and the LR scheduler, but not how test scores
+   are computed: `evaluate.py` accumulates sums over every test frame.
+   Weighting by frame would change `selection` for every model, so it is
+   deferred to the next full retrain. Separately, `protocol.loss` in
+   `train.py` still says the KL term is "BLIP only", although Phase 3 uses
+   it too. It is left as is because `loss` is a must-match key: correcting
+   the text would stop old and new records sharing a table. See item N6 and
+   the end of
+   [docs/reviews/train-fixes-proposal.md](reviews/train-fixes-proposal.md).

@@ -200,12 +200,15 @@ number in this report can be read as proving:
 3. MD frames (and pooled force components within one structure) are
    correlated, not independent observations — significance testing on the
    pooled 1,498,743 force components as if independent is invalid.
-4. `calibrate.py`'s corrected-quantile implementation (NumPy
-   `method="higher"`, clamped out-of-range levels) is not the textbook
-   exact order-statistic correction
-   (`ceil((n+1)*(1-alpha))` with an infinite interval when the rank exceeds
-   `n`). Worth auditing against the metric owner (Fazin) before citing this
-   as "the standard" CQR correction in the final report.
+4. `calibrate.py`'s corrected quantile uses NumPy `method="higher"` at
+   level (1−α)(1+1/n) rather than the textbook ⌈(n+1)(1−α)⌉-th order
+   statistic. Audited by the metric owner (Fazin, 17 Nov): at α = 0.1 it
+   picks rank 49,960 instead of 49,959 for the 55,509 validation energies
+   (one rank on the conservative side), and the same rank as the exact rule
+   for the 1,498,743 pooled force components. The clamp applies only when
+   n < 9, where the exact rule would give an infinite interval, so it never
+   triggers here. It can be described as the standard split-conformal
+   correction, to within one rank.
 5. Each variant has exactly one training run; re-scoring or changing the
    inference seed is not an independent training replication, so no
    confidence interval or p-value is justified from these tables alone.
@@ -216,11 +219,50 @@ number in this report can be read as proving:
    differences (e.g. the Graph NLL vs BLIP NLL Spearman gap above) should
    not be read as an established, stable advantage on that basis.
 
-## 6. Validation: leakage audit and compute budget
+## 6. Validation: leakage, splits, compute budget and MC sample count
 
-`docs/reviews/leakage-audit-2026-10-31.md`,
-`docs/reviews/compute-budget-2026-11-01.md`. Open item: SCRUM-72 (purge
-buffer + split provenance, not yet applied).
+**Leakage audit (SCRUM-47, 31 Oct; `docs/reviews/leakage-audit-2026-10-31.md`).**
+Adjacent MD frames are near-duplicates, so the audit measured how close
+each held-out frame comes to a training frame, as RMSD after Kabsch
+alignment over ethanol's 12 equivalent-hydrogen relabellings. One MD step
+moves ethanol 0.014 Å. The approved rule, enforced in the tests, allows no
+held-out frame within two MD steps (0.028 Å) of a training frame. On
+ethanol (DFT), test passes: its closest training frame is 0.034 Å away.
+Each block boundary has one near-duplicate, one MD step from the block
+before it, but no benchmarked run trains or selects on those frames: the
+stride subsets leave 4,114 and 519 frames between the frames actually
+used. A random-split control scored 26% lower energy MAE and 17% lower
+force MAE than the block split on the same machine and commit, from one
+run each, so the gap may be within run-to-run noise, which has not been
+measured.
+
+**Purge buffer and split provenance (SCRUM-72, PR #11).** PR #11
+implements the audit's two proposals, a 10-frame purge buffer between
+blocks and split provenance in every gold file; it is under review and not
+merged. The only gold files any config trains on keep their splits:
+`ethanol_dft` is exempt; `ethanol_ccsd_t` is a literature split, never
+purged. Regenerated at `58ee9f4` on 18 Nov, both kept byte-identical
+train/val/test indices, so no benchmark number changes.
+
+**Compute budget (SCRUM-49, 1 Nov; `docs/reviews/compute-budget-2026-11-01.md`).**
+MC cost is linear in K (per-sample cost within ±12% from K = 2 to 100 on
+every device profiled); one sample costs about 0.6 ms per frame for BLIP
+and 0.33 ms for Phase 3 on the Mac. Memory is flat in K, because samples
+run one after another. Per the run records, 200 epochs on the Mac's CPU
+take 1.22 h (BLIP MSE), 3.98 h (BLIP NLL), 0.77 h (Graph MSE) and 2.29 h
+(Graph NLL), against 0.63 h for MPNN. That mitigates R10, the risk of
+stochastic training and ablations outgrowing the compute or the timeline.
+
+**MC sample count (SCRUM-49, 14 Nov; `docs/reviews/scrum-49-mc-stability-2026-11-14.md`,
+raw results in `reports/mc_stability/`).** Every stochastic run keeps
+K = 20, for consistency. The agreed criterion needs each energy and force
+ECE, coverage@90% and Spearman within 0.01 of its K = 100 value, with a
+three-seed spread within 0.01. No K up to 100 passes, because of energy
+Spearman alone; leaving it out, K = 50 passes. At K = 20 the caveats are
+per quantity: energy Spearman is within seed noise of zero; force Spearman
+reads 0.020–0.025 below its K = 100 value; Graph MSE's energy ECE reads
+0.017 below; every other figure is within 0.01, with seed spread at most
+0.004. The study covered BLIP NLL and Graph MSE, not Graph NLL.
 
 ## 7. Reproducibility
 
@@ -237,11 +279,16 @@ is a different question from the training-data provenance questions in §6.
 
 Dongxiao's 16 Nov review independently reran this reproducibility check
 (`docs/dongxiao_scrum36/alex_review_2026_11_16/verify_review.py`) against
-pinned source hashes and confirmed the same tolerances; it also flagged
-that some generated Markdown in the repo still said "not re-scored" after
-SCRUM-71 landed and was stale at the time of her review — worth a final
-pass before submission to make sure every generated report reflects the
-current re-score status.
+pinned source hashes and confirmed the same tolerances. It also flagged
+generated Markdown that still read "not re-scored" after SCRUM-71 landed.
+The two reports that did, `reports/phase2_vs_phase3.md` and
+`reports/phase2_vs_phase3_nll.md`, were regenerated on 18 Nov and now show
+each run's re-score result; no report in `reports/` reads "not re-scored"
+any more. All ten re-scores ran at `75dc38f` with uncommitted changes in
+the working tree (`git_dirty: true`). The `evaluate.py` hash each block
+records matches the committed file at that commit, and every stored metric
+was reproduced to within 7.75e-10 relative, so the result stands; what git
+can't recover is the exact tree they ran in.
 
 ## 8. Platform
 
@@ -295,20 +342,20 @@ Jira assignment have drifted apart — tickets assigned to Ruturaj in Jira
 Alex Tanui. Real work shipped with no matching Jira ticket (SCRUM-71's
 CQR/atom-type work, 5 commits, 4 Nov — see the naming collision noted
 against the newer SCRUM-71 filed in this session). Meeting minutes aren't
-retrievable from the repo or Jira. On the technical side: `phase2_blip`
-still needs retraining from a clean commit (SCRUM-69/48) before it can
-re-enter the official comparison table; the leakage audit's random-split
-control shows a 17-26% accuracy gap in leakage's direction, not yet
-attributed to leakage vs. noise; Phase 3 energy calibration still diverges
-13-33% between the scalar and CQR methods, unresolved; and — per §5's
-caveats — no variant has a repeated-seed training replication, so none of
-the cross-model accuracy or calibration deltas in §4-5 carry a formal
-significance claim.
+retrievable from the repo or Jira. On the technical side, `phase2_blip`'s
+earlier run was trained from a dirty tree, so the SCRUM-48 guard refused
+it; it has since been retrained clean (SCRUM-69, `1eaea76`) and stays out
+of the official table by design, because the matched NLL pair is the
+comparison. Still open: the leakage audit's random-split control shows a
+17-26% accuracy gap in leakage's direction, not yet attributed to leakage
+vs. noise; Phase 3 energy calibration still diverges 13-33% between the
+scalar and CQR methods, unresolved; and — per §5's caveats — no variant has
+a repeated-seed training replication, so none of the cross-model accuracy
+or calibration deltas in §4-5 carry a formal significance claim.
 
-**What's next**, in priority order: retrain `phase2_blip` clean (SCRUM-69)
-and re-run its calibration; get the MC-stability study run against Graph
-NLL specifically (SCRUM-49 covered BLIP NLL and Graph MSE, not Graph NLL);
-resolve whether SCRUM-70's structural fix (§4) should replace, sit beside,
+**What's next**, in priority order: get the MC-stability study run against
+Graph NLL specifically (SCRUM-49 covered BLIP NLL and Graph MSE, not Graph
+NLL); resolve whether SCRUM-70's structural fix (§4) should replace, sit beside,
 or be re-tuned relative to the NLL-only fix, pending Ruturaj's review;
 isolate Phase 3 energy's remaining scalar-vs-CQR width gap; split force's
 heavy-tailed hydrogen residual by hydroxyl-vs-methyl H now that atom-type
