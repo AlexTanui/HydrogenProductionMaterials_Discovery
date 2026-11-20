@@ -65,14 +65,21 @@ async def ingest_upload(file: UploadFile, molecule: str | None, theory: str | No
                 raise HTTPException(413, f"upload exceeds {_MAX_UPLOAD_BYTES // (1024*1024)} MiB limit")
             out.write(chunk)
 
+    # Failures below keep only the message and clean up *after* the except
+    # block: inside it, the exception's traceback can still hold the bronze or
+    # silver file open, and Windows won't delete an open file (WinError 32 ->
+    # a 500 and a leftover file that dirties the tree).
+    error = None
     try:
         silver_path = bronze_to_silver(bronze_path, SILVER_DIR, molecule=molecule, theory=theory)
     except Exception as exc:
         # The real integrity gate (NaN/shape/unit checks, ml/data/preprocessing.py
         # ::validate_sample) rejecting bad data - surface its message
         # directly rather than a generic 500; this is meant to be seen.
+        error = f"{filename}: failed validation - {exc}"
+    if error is not None:
         bronze_path.unlink(missing_ok=True)
-        raise HTTPException(422, f"{filename}: failed validation - {exc}") from exc
+        raise HTTPException(422, error)
 
     GOLD_DIR.mkdir(parents=True, exist_ok=True)
     gold_molecule = molecule
@@ -81,7 +88,17 @@ async def ingest_upload(file: UploadFile, molecule: str | None, theory: str | No
         with np.load(silver_path, allow_pickle=True) as data:
             gold_molecule = gold_molecule or str(data["molecule"])
             gold_theory = gold_theory or str(data["theory"])
-    gold_path = silver_to_gold(silver_path, GOLD_DIR / f"{gold_molecule}_{gold_theory}.npz")
+    try:
+        gold_path = silver_to_gold(silver_path, GOLD_DIR / f"{gold_molecule}_{gold_theory}.npz")
+    except ValueError as exc:
+        # The gold split rejecting the file (e.g. too few frames for a
+        # non-empty train/val/test block): a client error, not a 500.
+        error = f"{filename}: cannot be split - {exc}"
+    if error is not None:
+        # No bronze/silver files left behind to dirty the tree.
+        bronze_path.unlink(missing_ok=True)
+        silver_path.unlink(missing_ok=True)
+        raise HTTPException(422, error)
 
     with np.load(gold_path, allow_pickle=True) as data:
         n_train, n_val, n_test = len(data["train_idx"]), len(data["val_idx"]), len(data["test_idx"])

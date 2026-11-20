@@ -128,6 +128,33 @@ shapes.
 | `train_idx`, `val_idx`, `test_idx` | int[] | disjoint index arrays into `R`/`E`/`F` |
 | `molecule`, `theory` | str | dataset identity |
 | `used_literature_split` | bool | whether `test_idx` came from the shipped split or a trajectory-block split |
+| `source_sha256` | str | sha256 of the raw bytes of `z`, `R`, `E`, `F` (content, not the `.npz` file, so it is stable across regenerations) |
+| `split_method` | str | `trajectory_block`, or `literature_test+block_train_val` when the shipped test set is kept |
+| `split_params` | str (JSON) | `train`/`val`/`test` fractions; `purge_frames` actually applied; `purge_exemption` (why an exempt or literature file is not purged, else empty); `purge_skipped` (why a file was too small for the buffer, else empty) |
+| `git_commit` | str | commit that wrote the file, suffixed `-dirty` if the tree had uncommitted changes (tracked or untracked, except `experiments/runs/` - the same rule as run records' `git_dirty`), or `-dirty-unknown` if `git status` failed; empty outside git |
+
+The last four keys were added in SCRUM-72; gold files written before it
+lack them, and `tests/ml/test_split_leakage.py` fails on them until they are
+regenerated with `python -m ml.data.preprocessing`.
+
+**Purge buffer (SCRUM-72).** For trajectory-block splits, `silver_to_gold`
+drops `PURGE_BUFFER_FRAMES = 10` frames at the start of `val` and of
+`test`, so no held-out frame sits one MD step from the previous block.
+Those frames are in no split. Three cases get no buffer, and the file
+records why in `split_params`:
+
+- **`PURGE_EXEMPT`** (`ethanol_dft`): keeps its original split because
+  every benchmarked run was trained and scored on it.
+- **Literature splits** (`ethanol_ccsd_t`, `aspirin_ccsd`,
+  `malonaldehyde_ccsd_t`, `toluene_ccsd_t`): their shipped frames are not
+  in trajectory order, so a buffer would separate nothing
+  (`LITERATURE_NO_PURGE`).
+- **Small files** (under 108 frames at 80/10/10, e.g. a small
+  `POST /data/upload`): the buffer would empty `val` or `test`, so the file
+  is split unpurged and `purge_skipped` says so.
+
+A split that would still leave `train`, `val` or `test` empty raises
+`ValueError`. See `docs/reviews/leakage-audit-2026-10-31.md`.
 
 ---
 

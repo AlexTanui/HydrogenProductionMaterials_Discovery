@@ -61,3 +61,146 @@ def test_a_declared_unit_other_than_the_project_units_is_reported():
     """The check CLAUDE.md relies on: metrics assume kcal/mol and A without converting."""
     problems = validate_sample(_sample(r_unit="Bohr", e_unit="eV"))
     assert problems == ["unexpected r_unit 'Bohr', expected 'Ang'", "unexpected e_unit 'eV', expected 'kcal/mol'"]
+
+
+# --- SCRUM-72: purge buffer and split provenance -------------------------
+
+def test_purge_zero_is_the_original_split():
+    for got, expected in zip(trajectory_block_split(555092, purge=0), trajectory_block_split(555092)):
+        assert np.array_equal(got, expected)
+
+
+def test_purge_leaves_a_gap_of_exactly_that_many_frames_and_keeps_train():
+    tr0, _, _ = trajectory_block_split(1000)
+    tr, va, te = trajectory_block_split(1000, purge=10)
+    assert np.array_equal(tr, tr0)
+    assert va[0] - tr[-1] - 1 == 10 and te[0] - va[-1] - 1 == 10
+    assert te[-1] == 999
+
+
+def test_purge_that_empties_a_block_is_rejected():
+    with pytest.raises(ValueError, match="empty"):
+        trajectory_block_split(100, purge=10)
+
+
+def _silver(tmp_path, n=1000, literature_test=0):
+    rng = np.random.default_rng(0)
+    path = tmp_path / "silver.npz"
+    mask = np.zeros(n, bool)
+    if literature_test:
+        mask[n - literature_test:] = True
+    np.savez_compressed(path, z=np.array([6, 1, 1]), R=rng.random((n, 3, 3)), E=rng.random(n),
+                        F=rng.random((n, 3, 3)), molecule="x", theory="dft",
+                        has_literature_split=literature_test > 0, literature_test_mask=mask)
+    return path
+
+
+def test_gold_file_records_its_split_provenance(tmp_path):
+    import json
+    from ml.data.preprocessing import PURGE_BUFFER_FRAMES, silver_to_gold
+    g = np.load(silver_to_gold(_silver(tmp_path), tmp_path / "uracil_dft.npz"), allow_pickle=False)
+    for key in ("source_sha256", "split_method", "split_params", "git_commit"):
+        assert key in g.files
+    assert str(g["split_method"]) == "trajectory_block"
+    assert json.loads(str(g["split_params"]))["purge_frames"] == PURGE_BUFFER_FRAMES
+    assert g["val_idx"][0] - g["train_idx"][-1] - 1 == PURGE_BUFFER_FRAMES
+
+
+def test_exempt_gold_file_keeps_the_unpurged_split(tmp_path):
+    import json
+    from ml.data.preprocessing import silver_to_gold
+    g = np.load(silver_to_gold(_silver(tmp_path), tmp_path / "ethanol_dft.npz"), allow_pickle=False)
+    for got, expected in zip((g["train_idx"], g["val_idx"], g["test_idx"]), trajectory_block_split(1000)):
+        assert np.array_equal(got, expected)
+    params = json.loads(str(g["split_params"]))
+    assert params["purge_frames"] == 0 and params["purge_exemption"]
+
+
+def test_source_hash_is_stable_across_regenerations(tmp_path):
+    from ml.data.preprocessing import silver_to_gold
+    silver = _silver(tmp_path)
+    a = np.load(silver_to_gold(silver, tmp_path / "a" / "uracil_dft.npz"))["source_sha256"]
+    b = np.load(silver_to_gold(silver, tmp_path / "b" / "uracil_dft.npz"))["source_sha256"]
+    assert str(a) == str(b)
+
+
+def test_gold_dirty_rule_matches_the_run_records():
+    """A gold file and a run record made from the same tree must agree on
+    whether it was dirty (SCRUM-72 review)."""
+    pytest.importorskip("torch_geometric")
+    from ml.data.preprocessing import GIT_DIRTY_EXCLUDES
+    from ml.training.train import DIRTY_CHECK_EXCLUDES
+    assert tuple(GIT_DIRTY_EXCLUDES) == tuple(DIRTY_CHECK_EXCLUDES)
+
+
+def test_small_file_is_split_without_purge_and_says_so(tmp_path):
+    """A 20-frame upload (backend test_data_upload_...) splits 16/2/2 as
+    before SCRUM-72, instead of failing (SCRUM-72 review, point 1)."""
+    import json
+    from ml.data.preprocessing import silver_to_gold
+    g = np.load(silver_to_gold(_silver(tmp_path, n=20), tmp_path / "zzz_test_molecule_dft.npz"),
+                allow_pickle=False)
+    assert tuple(len(g[k]) for k in ("train_idx", "val_idx", "test_idx")) == (16, 2, 2)
+    params = json.loads(str(g["split_params"]))
+    assert params["purge_frames"] == 0 and "too few" in params["purge_skipped"]
+
+
+@pytest.mark.parametrize("n, purged", [(107, False), (108, True)])
+def test_purge_applies_from_108_frames(tmp_path, n, purged):
+    import json
+    from ml.data.preprocessing import silver_to_gold
+    g = np.load(silver_to_gold(_silver(tmp_path, n=n), tmp_path / "x_dft.npz"), allow_pickle=False)
+    assert (json.loads(str(g["split_params"]))["purge_frames"] > 0) == purged
+
+
+def test_literature_split_is_never_purged(tmp_path):
+    import json
+    from ml.data.preprocessing import LITERATURE_NO_PURGE, silver_to_gold
+    g = np.load(silver_to_gold(_silver(tmp_path, n=1000, literature_test=500), tmp_path / "aspirin_ccsd.npz"),
+                allow_pickle=False)
+    params = json.loads(str(g["split_params"]))
+    assert params["purge_frames"] == 0 and params["purge_exemption"] == LITERATURE_NO_PURGE
+    assert len(g["train_idx"]) + len(g["val_idx"]) == 500
+
+
+def test_literature_split_with_no_val_frames_raises(tmp_path):
+    from ml.data.preprocessing import silver_to_gold
+    with pytest.raises(ValueError, match="empty"):
+        silver_to_gold(_silver(tmp_path, n=6, literature_test=3), tmp_path / "x_ccsd.npz")
+
+
+def test_git_commit_is_not_clean_when_git_status_fails(monkeypatch):
+    import subprocess
+    from ml.data import preprocessing
+
+    real_run = subprocess.run
+
+    def fake_run(cmd, *args, **kwargs):
+        if cmd[:2] == ["git", "status"]:
+            raise subprocess.CalledProcessError(128, cmd)
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(preprocessing.subprocess, "run", fake_run)
+    commit = preprocessing._git_commit()
+    if commit:  # empty outside a git checkout
+        assert commit.endswith("-dirty-unknown")
+
+
+@pytest.mark.parametrize("n, literature_test", [(5, 0), (6, 3)])
+def test_silver_file_is_closed_when_the_split_is_rejected(tmp_path, monkeypatch, n, literature_test):
+    """SCRUM-72 review 3: a rejected split must not leave the silver file open,
+    or ingest_upload can't delete it on Windows (WinError 32 -> a 500)."""
+    from ml.data import preprocessing
+    opened = []
+    real_load = np.load
+
+    def tracking_load(*args, **kwargs):
+        f = real_load(*args, **kwargs)
+        opened.append(f)
+        return f
+
+    monkeypatch.setattr(preprocessing.np, "load", tracking_load)
+    with pytest.raises(ValueError, match="empty"):
+        preprocessing.silver_to_gold(_silver(tmp_path, n=n, literature_test=literature_test),
+                                     tmp_path / "x_dft.npz")
+    assert opened and all(f.fid is None for f in opened), "silver file left open"
