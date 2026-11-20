@@ -218,11 +218,16 @@ def silver_to_gold(silver_path: str | Path, gold_path: str | Path,
     gold_path = Path(gold_path)
     gold_path.parent.mkdir(parents=True, exist_ok=True)
 
-    data = np.load(silver_path, allow_pickle=True)
-    z, R, E, F = data["z"], data["R"], data["E"], data["F"]
+    # Read everything up front and close the file: an exception raised below
+    # would otherwise keep it open through its traceback, and Windows can't
+    # delete an open file (ingest_upload removes the silver file on failure).
+    with np.load(silver_path, allow_pickle=True) as data:
+        z, R, E, F = data["z"], data["R"], data["E"], data["F"]
+        has_lit_split = bool(data["has_literature_split"]) if "has_literature_split" in data.files else False
+        literature_test_mask = data["literature_test_mask"] if has_lit_split else None
+        molecule, theory = str(data["molecule"]), str(data["theory"])
     n_configs = R.shape[0]
 
-    has_lit_split = bool(data["has_literature_split"]) if "has_literature_split" in data.files else False
     if use_literature_split is None:
         use_literature_split = has_lit_split
 
@@ -241,7 +246,7 @@ def silver_to_gold(silver_path: str | Path, gold_path: str | Path,
     if literature:
         # The literature test set is fixed by the source; only the
         # train/val boundary is ours to purge.
-        test_mask = data["literature_test_mask"]
+        test_mask = literature_test_mask
         test_idx = np.where(test_mask)[0]
         remaining = np.where(~test_mask)[0]
         n_train_of_remaining = int(round(len(remaining) * (train / (train + val))))
@@ -262,7 +267,7 @@ def silver_to_gold(silver_path: str | Path, gold_path: str | Path,
     np.savez_compressed(
         gold_path, z=z, R=R, E=E, F=F,
         train_idx=train_idx, val_idx=val_idx, test_idx=test_idx,
-        molecule=str(data["molecule"]), theory=str(data["theory"]),
+        molecule=molecule, theory=theory,
         used_literature_split=literature,
         # Split provenance (SCRUM-72): enough to tell which split a run
         # was scored on, and to regenerate it.

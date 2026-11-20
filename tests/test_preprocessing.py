@@ -184,3 +184,23 @@ def test_git_commit_is_not_clean_when_git_status_fails(monkeypatch):
     commit = preprocessing._git_commit()
     if commit:  # empty outside a git checkout
         assert commit.endswith("-dirty-unknown")
+
+
+@pytest.mark.parametrize("n, literature_test", [(5, 0), (6, 3)])
+def test_silver_file_is_closed_when_the_split_is_rejected(tmp_path, monkeypatch, n, literature_test):
+    """SCRUM-72 review 3: a rejected split must not leave the silver file open,
+    or ingest_upload can't delete it on Windows (WinError 32 -> a 500)."""
+    from ml.data import preprocessing
+    opened = []
+    real_load = np.load
+
+    def tracking_load(*args, **kwargs):
+        f = real_load(*args, **kwargs)
+        opened.append(f)
+        return f
+
+    monkeypatch.setattr(preprocessing.np, "load", tracking_load)
+    with pytest.raises(ValueError, match="empty"):
+        preprocessing.silver_to_gold(_silver(tmp_path, n=n, literature_test=literature_test),
+                                     tmp_path / "x_dft.npz")
+    assert opened and all(f.fid is None for f in opened), "silver file left open"
