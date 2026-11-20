@@ -24,7 +24,7 @@ from pypdf import PdfReader
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.core.config import GOLD_DIR, PHASE_CHECKPOINTS
+from app.core.config import GOLD_DIR, PHASE_CHECKPOINTS, settings
 from app.main import app
 from app.models.db import Base, get_db
 
@@ -350,3 +350,23 @@ def test_data_upload_rejects_an_unsupported_file_type():
         files={"file": ("data.txt", b"not a real dataset", "text/plain")},
     )
     assert response.status_code == 422
+
+
+def test_read_only_mode_blocks_writes_but_not_reads():
+    # Default (local dev): read_only is off, so the write routes are open
+    # (exercised for real by the job and upload tests above).
+    assert settings.read_only is False
+
+    # Hosted deployment (READ_ONLY=1): training and uploads fail fast with
+    # 503 before touching disk; reads keep working.
+    settings.read_only = True
+    try:
+        train = client.post("/jobs/train", json={"molecule": "ethanol", "phase": "mpnn", "epochs": 1})
+        assert train.status_code == 503
+        assert "read-only" in train.json()["detail"]
+        upload = client.post("/data/upload", files={"file": ("x.npz", b"not-a-real-file")})
+        assert upload.status_code == 503
+        assert client.get("/molecules").status_code == 200
+        assert client.get("/jobs").status_code == 200
+    finally:
+        settings.read_only = False

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "frontend": {
+      "root": "frontend",
+      "rewrites": [
+        {
+          "source": "/(.*)",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    "backend": {
+      "root": ".",
+      "entrypoint": "backend/vercel_entry.py",
+      "functions": {
+        "backend/vercel_entry.py": {
+          "maxDuration": 300,
+          "includeFiles": "{experiments/checkpoints/**,experiments/results/**,experiments/configs/**,deploy/gold/**}",
+          "excludeFiles": "{.venv/**,.git/**,.vercel/**,frontend/**,docs/**,notebooks/**,reports/**,raj_mpnn/**,scripts/**,tests/**,backend/tests/**,backend/app.db,data/{bronze,silver,gold,external}/**,experiments/job_logs/**,**/__pycache__/**}"
+        }
+      },
+      "rewrites": [
+        {
+          "source": "/api/:path(.*)?",
+          "destination": "/:path"
+        }
+      ]
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "frontend"
+      }
+    }
+  ]
+}

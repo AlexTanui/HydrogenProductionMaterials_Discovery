@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Form, UploadFile
+from fastapi import APIRouter, Depends, Form, UploadFile
+
+from app.core.read_only import require_writable
 
 from app.models.schemas import DataUploadResponse
 from app.services import data_pipeline
@@ -8,7 +10,7 @@ from app.services import data_pipeline
 router = APIRouter(prefix="/data", tags=["data"])
 
 
-@router.post("/upload", response_model=DataUploadResponse)
+@router.post("/upload", response_model=DataUploadResponse, dependencies=[Depends(require_writable)])
 async def upload(
     file: UploadFile,
     molecule: str | None = Form(default=None),

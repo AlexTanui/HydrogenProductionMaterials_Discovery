@@ -1,0 +1,24 @@
+# Upload only what the frontend build and the backend function need.
+# Everything here is excluded from `vercel deploy`'s upload, not from git.
+# Top-level paths are anchored with a leading "/": a bare "data" would also
+# drop ml/data/ (the data layer the backend imports).
+.venv
+.git
+.pytest_cache
+**/__pycache__
+**/.DS_Store
+.env*
+/frontend/node_modules
+/frontend/dist
+/frontend/tsconfig.tsbuildinfo
+/backend/app.db
+/backend/.env
+/backend/tests
+/tests
+/data
+/docs
+/notebooks
+/reports
+/raj_mpnn
+/scripts
+/experiments/job_logs

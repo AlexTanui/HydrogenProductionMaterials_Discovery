@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -21,7 +22,11 @@ if str(ROOT_DIR) not in sys.path:
 
 CHECKPOINTS_DIR = ROOT_DIR / "experiments" / "checkpoints"
 RESULTS_DIR = ROOT_DIR / "experiments" / "results"
-GOLD_DIR = ROOT_DIR / "data" / "gold" / "md17"
+# GOLD_DIR is overridable (relative to the repo root) for the hosted
+# deployment only, which serves from the test-split-only copy built by
+# scripts/build_serving_gold.py (GOLD_DIR=deploy/gold/md17) because Vercel
+# rejects files over 100 MB. Unset locally: the real gold files, as before.
+GOLD_DIR = ROOT_DIR / os.environ.get("GOLD_DIR", "data/gold/md17")
 BRONZE_DIR = ROOT_DIR / "data" / "bronze" / "md17"
 SILVER_DIR = ROOT_DIR / "data" / "silver" / "md17"
 CONFIGS_DIR = ROOT_DIR / "experiments" / "configs"
@@ -104,6 +109,13 @@ class Settings(BaseSettings):
     app_name: str = "Hydrogen Materials Discovery API"
     database_url: str = f"sqlite:///{BACKEND_DIR}/app.db"
     cors_origins: list[str] = ["http://localhost:5173"]
+
+    # True on the hosted (Vercel) deployment: a Function's filesystem is
+    # read-only outside /tmp and it can't keep a multi-hour training
+    # subprocess alive, so POST /jobs/train and POST /data/upload return a
+    # clear 503 there instead of failing halfway. Reads (predictions,
+    # benchmarks, molecules, report) are unaffected. Off for local dev.
+    read_only: bool = False
 
     class Config:
         env_file = ".env"

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from app.core.read_only import require_writable
 
 from app.models.schemas import TrainJobRequest, TrainJobStatus
 from app.services import jobs as jobs_service
@@ -16,7 +18,7 @@ def phases() -> list[str]:
     return jobs_service.list_phases()
 
 
-@router.post("/train", response_model=TrainJobStatus)
+@router.post("/train", response_model=TrainJobStatus, dependencies=[Depends(require_writable)])
 def start_training(request: TrainJobRequest) -> TrainJobStatus:
     job = jobs_service.start_job(request.molecule, request.phase, request.theory, request.epochs)
     return TrainJobStatus(**jobs_service.job_status(job))

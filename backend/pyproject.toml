@@ -1,0 +1,9 @@
+[project]
+name = "app"
+version = "0.1.0"
+dependencies = [ "fastapi>=0.110", "uvicorn[standard]>=0.29", "sqlalchemy>=2.0", "pydantic-settings>=2.2", "python-multipart>=0.0.9", "reportlab>=4.2", "pypdf>=5.0", "torch==2.13.0+cpu", "torch-geometric==2.8.0.post1", "numpy>=2.0", "scipy>=1.17", "pyyaml>=6.0" ]
+requires-python = "~=3.13.0"
+
+[[tool.uv.index]]
+name = "extra-1"
+url = "https://download.pytorch.org/whl/cpu"

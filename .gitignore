@@ -77,3 +77,6 @@ frontend/.vite/
 
 # Reports
 reports/*.pdf
+
+# Test-split-only gold copy for the hosted backend (scripts/build_serving_gold.py)
+deploy/
