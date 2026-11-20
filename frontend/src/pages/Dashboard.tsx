@@ -36,6 +36,36 @@ const ROADMAP = [
   },
 ];
 
+// Roles from glossary.md §1 (Team structure); "owns" from the ownership
+// agreed in CLAUDE.md / glossary.md §3. Update both places together.
+const TEAM = [
+  {
+    name: "Alex Tanui",
+    role: "Scrum Master / Technical Lead / General Project Engineer",
+    owns: "Backend API and dashboard (integration); SchNet and the Phase 2 BLIP model.",
+  },
+  {
+    name: "Fazin Faizal",
+    role: "Developer / QA & Benchmarking Engineer",
+    owns: "Shared training/evaluation harness, metrics and UQ protocol v1.0 (ECE, Spearman), three-phase benchmark, tests; PaiNN.",
+  },
+  {
+    name: "Ruturaj Yashwant Bhosale",
+    role: "ML/AI Engineer – GNN Lead",
+    owns: "The Phase 1 MPNN backbone that Phases 2 and 3 extend; implements the Phase 3 graph-space model.",
+  },
+  {
+    name: "Shijin Mathew",
+    role: "Data Engineer / ML Data Pipeline Lead",
+    owns: "MD17/MD22 data pipeline (bronze → silver → gold), splits and validation; PhysNet.",
+  },
+  {
+    name: "Dongxiao Wu",
+    role: "ML Research & Model Evaluation Engineer",
+    owns: "Literature review, evaluation and the literature-informed Phase 3 design; DimeNet++.",
+  },
+];
+
 export default function Dashboard() {
   return (
     <>
@@ -100,6 +130,19 @@ export default function Dashboard() {
                 <h3>{r.title}</h3>
                 <p>{r.body}</p>
               </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card">
+        <p className="card-title">Team</p>
+        <div className="team-grid">
+          {TEAM.map((m) => (
+            <div className="team-member" key={m.name}>
+              <h3>{m.name}</h3>
+              <p className="team-role">{m.role}</p>
+              <p>{m.owns}</p>
             </div>
           ))}
         </div>
